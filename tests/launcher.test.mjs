@@ -1,0 +1,487 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve, dirname } from "node:path";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { once } from "node:events";
+import { finished } from "node:stream/promises";
+import { createServer } from "../server/http.mjs";
+import { call, request } from "../server/remote.mjs";
+import {
+  runtimeArguments,
+  prepareWorkspace,
+  prepareAgentWorkspace,
+} from "../bin/runtime.mjs";
+import { runtimeLog } from "../bin/runtime-logs.mjs";
+
+const exec = promisify(execFile);
+const cli = resolve("bin/harakiri.mjs");
+
+async function until(read, message) {
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const value = await read();
+    if (value) return value;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(`Timed out: ${message}`);
+}
+
+async function fixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), "harakiri-launch-"));
+  const { server, board } = createServer({ database: ":memory:" });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(async () => {
+    server.closeAllConnections();
+    server.close();
+    board.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const owner = { url, token: board.ownerToken };
+  const mission = await call(owner, "mission_create", {
+    name: "Launch fixture",
+    objective: "Inspect execution without model calls",
+  });
+  owner.channelId = mission.id;
+  const invitation = await call(owner, "invitation_create");
+  const commands = join(directory, "commands"),
+    sessions = join(directory, "sessions"),
+    workspace = join(directory, "mission files ' with spaces");
+  await mkdir(commands);
+  const fake = `#!/usr/bin/env node
+const fs=require('node:fs'),path=require('node:path');
+const args=process.argv.slice(2),runtime=path.basename(process.argv[1]);
+if(args.includes('--version')){console.log(runtime+' fixture 1.0');process.exit(0);}
+if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'old runtime':'--dangerously-bypass-approvals-and-sandbox --dangerously-skip-permissions --settings');process.exit(0);}
+(async()=>{
+ const file=runtime==='codex'?JSON.parse(args.find(a=>a.startsWith('mcp_servers.harakiri.args=')).split('=').slice(1).join('='))[1]:JSON.parse(args[args.indexOf('--mcp-config')+1]).mcpServers.harakiri.args[1];
+ const state=JSON.parse(fs.readFileSync(file,'utf8'));
+ let input='';for await(const data of process.stdin)input+=data;
+ const prompt=runtime==='codex'?input:args.at(-1);
+ if(!prompt.includes('Local execution workspace:')||!prompt.includes(JSON.stringify(state.cwd))||fs.realpathSync(state.cwd)!==process.cwd())throw Error('Missing workspace instructions');
+ const native='native-'+state.agentId;
+ if(state.nativeSession&&!args.includes(native))throw Error('Resume lost native session');
+ fs.appendFileSync(path.join(process.cwd(),'observations.jsonl'),JSON.stringify({args,cwd:process.cwd(),prompt})+'\\n');
+ console.log(JSON.stringify(runtime==='codex'?{type:'thread.started',thread_id:native}:{type:'system',session_id:native}));
+ console.error('stderr is live');
+ if(process.env.HARAKIRI_TEST_FAIL){console.error('Managed policy blocked execution (network policy) '+state.token);process.exitCode=23;return;}
+ if(process.env.HARAKIRI_TEST_HOLD){await new Promise(r=>setTimeout(r,30000));}
+ console.log(JSON.stringify({type:'turn.completed'}));
+})().catch(e=>{console.error(e.message);process.exitCode=1;});
+`;
+  for (const runtime of ["claude", "codex"])
+    await writeFile(join(commands, runtime), fake, { mode: 0o700 });
+  const env = { ...process.env, PATH: commands + ":" + process.env.PATH };
+  const args = (runtime, ...extra) => [
+    cli,
+    "launch",
+    "--board",
+    `${url}/j/${invitation.token}`,
+    "--runtime",
+    runtime,
+    "--workspace",
+    workspace,
+    "--state-dir",
+    sessions,
+    "--max-turns",
+    "1",
+    ...extra,
+  ];
+  const states = async () =>
+    Promise.all(
+      (await readdir(sessions)).map(async (name) => {
+        const file = join(sessions, name, "session.json");
+        return { file, state: JSON.parse(await readFile(file, "utf8")) };
+      }),
+    );
+  return {
+    directory,
+    url,
+    owner,
+    board,
+    mission,
+    env,
+    args,
+    states,
+    workspace,
+    sessions,
+  };
+}
+
+for (const runtime of ["claude", "codex"]) {
+  test(`${runtime}: full access, custom folders, identity and permissions survive resume`, async (t) => {
+    const f = await fixture(t);
+    await exec(
+      process.execPath,
+      f.args(runtime, "--permissions", "full", "--count", "2"),
+      { env: f.env },
+    );
+    const sessions = await f.states();
+    assert.equal(sessions.length, 2);
+    assert.notEqual(sessions[0].state.cwd, sessions[1].state.cwd);
+    for (const { state, file } of sessions) {
+      assert.equal(state.execution.permissions, "full");
+      assert.equal(state.execution.layout, "per-agent");
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
+      assert.notEqual(state.cwd, dirname(file));
+      assert.deepEqual(await readdir(state.cwd), ["observations.jsonl"]);
+    }
+    const { file, state } = sessions[0];
+    await exec(
+      process.execPath,
+      [cli, "resume", "--session", file, "--max-turns", "1"],
+      { env: f.env },
+    );
+    const resumed = JSON.parse(await readFile(file, "utf8"));
+    assert.equal(resumed.agentId, state.agentId);
+    assert.equal(resumed.nativeSession, state.nativeSession);
+    assert.equal(resumed.cwd, state.cwd);
+    const turns = (
+      await readFile(join(state.cwd, "observations.jsonl"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(turns.length, 2);
+    for (const turn of turns) {
+      if (runtime === "codex") {
+        assert.ok(
+          turn.args.includes("--dangerously-bypass-approvals-and-sandbox"),
+        );
+        assert.ok(turn.args.includes('approval_policy="never"'));
+      } else {
+        assert.ok(turn.args.includes("--dangerously-skip-permissions"));
+        assert.deepEqual(
+          JSON.parse(turn.args[turn.args.indexOf("--settings") + 1]),
+          { sandbox: { enabled: false } },
+        );
+      }
+    }
+    assert.ok(
+      turns[1].args.includes(runtime === "codex" ? "resume" : "--resume"),
+    );
+    assert.match(turns[0].prompt, /Shared mission folder:/);
+    const record = await call(f.owner, "record_read", { id: state.agentId });
+    assert.equal(record.execution.workspace, state.cwd);
+    assert.equal(record.execution.permissions, "full");
+    assert.equal(record.execution.lastError, null);
+    assert.equal(record.status, "offline");
+    assert.equal(
+      (await readFile(record.execution.stdoutPath, "utf8")).trim().split("\n")
+        .length,
+      4,
+    );
+    assert.match(
+      await readFile(record.execution.stderrPath, "utf8"),
+      /stderr is live/,
+    );
+    // Reports never ride along in agent reads or shared event payloads.
+    const peer = { ...sessions[1].state, url: f.url };
+    assert.equal(
+      (await call(peer, "record_read", { id: state.agentId })).execution,
+      undefined,
+    );
+    assert.ok(
+      (await call(peer, "records_read", { type: "agent" })).items.every(
+        (a) => !a.execution,
+      ),
+    );
+    assert.ok(
+      (await call(peer, "context_read")).agents.every((a) => !a.execution),
+    );
+    assert.ok(
+      !JSON.stringify(await call(peer, "updates_read")).includes(state.cwd),
+    );
+    await assert.rejects(
+      exec(
+        process.execPath,
+        [cli, "resume", "--session", file, "--permissions", "default"],
+        { env: f.env },
+      ),
+      /Resume uses the saved workspace/,
+    );
+  });
+}
+
+test("Shared folders and the legacy --cwd alias use one deliberate working folder", async (t) => {
+  const f = await fixture(t);
+  const args = f.args("codex", "--layout", "shared", "--count", "2");
+  await exec(process.execPath, args, { env: f.env });
+  const states = await f.states();
+  for (const { state } of states) {
+    assert.equal(state.cwd, states[0].state.cwd);
+    assert.equal(state.execution.shared, state.cwd);
+    assert.equal(state.execution.layout, "shared");
+  }
+  const observations = (
+    await readFile(join(states[0].state.cwd, "observations.jsonl"), "utf8")
+  )
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  assert.equal(observations.length, 2);
+  assert.ok(
+    observations.every(
+      (o) =>
+        o.args.includes('sandbox_mode="workspace-write"') &&
+        !o.args.includes("--dangerously-bypass-approvals-and-sandbox"),
+    ),
+  );
+  const config = await prepareWorkspace(
+    { cwd: f.workspace, "state-dir": f.sessions },
+    f.mission.id,
+    f.sessions,
+  );
+  assert.equal(config.layout, "shared");
+  assert.equal(
+    (await prepareAgentWorkspace(config, "legacy")).cwd,
+    states[0].state.cwd,
+  );
+});
+
+test("Legacy sessions resume in their original folder without losing identity or raising permissions", async (t) => {
+  const f = await fixture(t);
+  await exec(process.execPath, f.args("codex"), { env: f.env });
+  const [{ file, state }] = await f.states();
+  delete state.execution;
+  state.cwd = dirname(file);
+  await writeFile(file, JSON.stringify(state), { mode: 0o600 });
+  await exec(
+    process.execPath,
+    [cli, "resume", "--session", file, "--max-turns", "1"],
+    { env: f.env },
+  );
+  const resumed = JSON.parse(await readFile(file, "utf8"));
+  assert.equal(resumed.cwd, state.cwd);
+  assert.equal(resumed.nativeSession, state.nativeSession);
+  const { execution } = await call(f.owner, "record_read", {
+    id: state.agentId,
+  });
+  assert.equal(execution.layout, "legacy");
+  assert.equal(execution.permissions, "default");
+  assert.equal(execution.shared, null);
+});
+
+test("Validation rejects unsupported access and conflicting/unwritable folders before any registration", async (t) => {
+  const f = await fixture(t);
+  const occupied = join(f.directory, "not-a-folder");
+  await writeFile(occupied, "fixture");
+  for (const [extra, pattern] of [
+    [["--permissions", "full", "--board-only"], /cannot be combined/],
+    [["--permissions", "guess"], /must be default or full/],
+    [["--layout", "guess"], /must be per-agent or shared/],
+    [["--cwd", f.workspace], /either --cwd or --workspace/],
+  ])
+    await assert.rejects(
+      exec(process.execPath, f.args("codex", ...extra), { env: f.env }),
+      pattern,
+    );
+  const badPath = f.args("codex");
+  badPath[badPath.indexOf("--workspace") + 1] = occupied;
+  await assert.rejects(
+    exec(process.execPath, badPath, { env: f.env }),
+    /EEXIST|Not a folder/,
+  );
+  await assert.rejects(
+    exec(process.execPath, f.args("codex", "--permissions", "full"), {
+      env: { ...f.env, HARAKIRI_TEST_UNSUPPORTED: "1" },
+    }),
+    /does not support/,
+  );
+  assert.equal(f.board.list(f.mission.id, "agent").length, 0);
+  await assert.rejects(
+    prepareWorkspace(
+      { workspace: f.sessions, "state-dir": f.sessions },
+      f.mission.id,
+      f.sessions,
+    ),
+    /separate folders/,
+  );
+  const alias = join(f.directory, "session-alias");
+  await symlink(f.sessions, alias);
+  await assert.rejects(
+    prepareWorkspace(
+      { workspace: alias, "state-dir": f.sessions },
+      f.mission.id,
+      f.sessions,
+    ),
+    /separate folders/,
+  );
+});
+
+test("Logs arrive during execution, and shutdown persists the native session", async (t) => {
+  const f = await fixture(t);
+  const child = spawn(
+    process.execPath,
+    f.args("claude", "--permissions", "full"),
+    { env: { ...f.env, HARAKIRI_TEST_HOLD: "1" }, stdio: "ignore" },
+  );
+  const exited = once(child, "exit");
+  t.after(async () => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+    await exited;
+  });
+  const report = await until(
+    async () =>
+      (await call(f.owner, "context_read")).agents.find(
+        (a) => a.execution && a.status === "working",
+      ),
+    "working agent report",
+  );
+  await until(
+    async () =>
+      (
+        await readFile(report.execution.stdoutPath, "utf8").catch(() => "")
+      ).includes("session_id"),
+    "live stdout before turn exit",
+  );
+  await until(
+    async () =>
+      (
+        await readFile(report.execution.stderrPath, "utf8").catch(() => "")
+      ).includes("stderr is live"),
+    "live stderr before turn exit",
+  );
+  assert.equal(child.exitCode, null);
+  child.kill("SIGTERM");
+  await exited;
+  const [{ state }] = await f.states();
+  assert.equal(state.nativeSession, "native-" + state.agentId);
+  assert.equal(f.board.get(state.agentId).status, "offline");
+});
+
+test("Runtime failures remain private, redact credentials and clear after successful resume", async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(
+    exec(process.execPath, f.args("claude", "--permissions", "full"), {
+      env: { ...f.env, HARAKIRI_TEST_FAIL: "1" },
+    }),
+    /Managed policy blocked execution/,
+  );
+  const [{ state, file }] = await f.states();
+  const record = await call(f.owner, "record_read", { id: state.agentId });
+  assert.equal(record.status, "error");
+  assert.match(record.execution.lastError, /Managed policy blocked execution/);
+  assert.ok(!record.execution.lastError.includes(state.token));
+  assert.match(record.execution.lastError, /\[redacted\]/);
+  assert.ok(
+    !(await call(f.owner, "messages_read")).messages.some((m) =>
+      m.body.includes("Managed policy"),
+    ),
+  );
+  const privateMessages = await call(f.owner, "messages_read", {
+    direct_agent_id: state.agentId,
+  });
+  assert.ok(
+    privateMessages.messages.some((m) => m.body.includes("Managed policy")),
+  );
+  await assert.rejects(
+    request(
+      f.url,
+      "/api/heartbeat",
+      {
+        status: "idle",
+        execution: {
+          ...record.execution,
+          token: "never accept arbitrary fields",
+        },
+      },
+      state.token,
+    ),
+    /Invalid launcher execution report/,
+  );
+  await request(f.url, "/api/heartbeat", { status: "idle" }, state.token);
+  assert.equal(
+    (await call(f.owner, "record_read", { id: state.agentId })).execution
+      .lastError,
+    record.execution.lastError,
+    "old heartbeat clients do not erase execution reports",
+  );
+  await exec(
+    process.execPath,
+    [cli, "resume", "--session", file, "--max-turns", "1"],
+    { env: f.env },
+  );
+  assert.equal(
+    (await call(f.owner, "record_read", { id: state.agentId })).execution
+      .lastError,
+    null,
+  );
+});
+
+test("Default and board-only permissions are explicit on both fresh and resumed runtime turns", () => {
+  for (const nativeSession of [null, "native-session"]) {
+    const codex = runtimeArguments(
+      { runtime: "codex", nativeSession, boardOnly: true },
+      "/state/session.json",
+      "prompt",
+      "/mcp.mjs",
+    );
+    assert.ok(codex.args.includes('sandbox_mode="read-only"'));
+    assert.ok(
+      !codex.args.includes("--dangerously-bypass-approvals-and-sandbox"),
+    );
+    const claude = runtimeArguments(
+      { runtime: "claude", nativeSession, boardOnly: true },
+      "/state/session.json",
+      "prompt",
+      "/mcp.mjs",
+    );
+    assert.equal(claude.args[claude.args.indexOf("--tools") + 1], "");
+    assert.ok(!claude.args.includes("--dangerously-skip-permissions"));
+    for (const runtime of ["claude", "codex"]) {
+      const args = runtimeArguments(
+        {
+          runtime,
+          nativeSession,
+          cwd: "/work/agent",
+          execution: { permissions: "default", shared: "/work/shared" },
+        },
+        "/state/session.json",
+        "prompt",
+        "/mcp.mjs",
+      ).args;
+      assert.ok(!args.some((v) => v.startsWith("--dangerously")));
+      assert.ok(
+        runtime === "claude"
+          ? args.includes("/work/shared")
+          : args.includes(
+              'sandbox_workspace_write.writable_roots=["/work/shared"]',
+            ),
+      );
+    }
+  }
+});
+
+test("Live logs rotate with bounded retention and private file permissions", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "harakiri-log-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const file = join(directory, "output.log");
+  const log = await runtimeLog(file, 16);
+  log.end(Buffer.from("a".repeat(100)));
+  await finished(log);
+  assert.deepEqual((await readdir(directory)).sort(), [
+    "output.log",
+    "output.log.1",
+    "output.log.2",
+    "output.log.3",
+  ]);
+  assert.equal((await stat(file)).size, 4);
+  for (const path of await readdir(directory)) {
+    const s = await stat(join(directory, path));
+    assert.ok(s.size <= 16);
+    assert.equal(s.mode & 0o777, 0o600);
+  }
+});

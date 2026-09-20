@@ -1,0 +1,42 @@
+{
+  "name": "harakiri-blackboard",
+  "version": "0.3.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node bin/dev.mjs",
+    "build": "tsc -p tsconfig.json && vite build",
+    "start": "node --env-file-if-exists=var/tunnel.env server/http.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "agent": "node bin/harakiri.mjs",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"server/*.mjs\" \"bin/*.mjs\" \"tests/*.mjs\"",
+    "test:live": "node tests/runtime-live.mjs"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "lucide-react": "^1.46.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "harakiri": "bin/harakiri.mjs"
+  }
+}

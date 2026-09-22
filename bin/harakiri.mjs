@@ -149,6 +149,16 @@ async function worker(file, resume = false) {
     child = null,
     status = "idle",
     paused = false;
+  let permission = null,
+    turnPermission = null,
+    interrupted = false,
+    heartbeat = null,
+    controlError = null;
+  const canRun = (p) => p && ["planning", "authorized"].includes(p.state);
+  // Publishing a plan advances the readiness revision during the planning turn.
+  // It must not interrupt the coordinator before it can acknowledge that plan.
+  const permissionKey = (p) =>
+    p && (p.state === "planning" ? "planning" : `${p.state}:${p.revision}`);
   const execution = {
     environment: "local",
     host: hostname(),
@@ -185,25 +195,54 @@ async function worker(file, resume = false) {
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  const beat = async () => {
-    try {
-      const control = await request(
-        state.url,
-        "/api/heartbeat",
-        { status, execution },
-        state.token,
-      );
-      paused = control.control === "pause" || control.missionState !== "active";
-      if (paused && child) killChild();
-    } catch {
-      /* Transient disconnect: watch/read retries retain the cursor. */
-    }
-  };
+  const beat = () =>
+    (heartbeat ||= (async () => {
+      try {
+        const control = await request(
+          state.url,
+          "/api/heartbeat",
+          { status, execution },
+          state.token,
+        );
+        permission = control.participation;
+        controlError =
+          permission &&
+          ["waiting", "planning", "authorized", "paused", "closed"].includes(
+            permission.state,
+          ) &&
+          Number.isInteger(permission.revision)
+            ? null
+            : new Error(
+                "The board service does not support mission preparation. Restart it with the updated Blackboard version before launching agents.",
+              );
+        paused = !canRun(permission);
+      } catch {
+        // Never begin a new turn using a cached authorization after a disconnect.
+        permission = null;
+        paused = true;
+      }
+      if (child && (paused || permissionKey(permission) !== turnPermission)) {
+        interrupted = true;
+        killChild();
+      }
+    })().finally(() => {
+      heartbeat = null;
+    }));
   const timer = setInterval(beat, 12000);
-  async function turn(prompt) {
-    status = "working";
+  async function turn(prompt, context) {
+    turnPermission = permissionKey(context.participation);
+    interrupted = false;
+    status =
+      context.participation.state === "planning" ? "planning" : "working";
     await beat();
-    if (paused || stopped) return false;
+    if (controlError) throw controlError;
+    if (paused || stopped || permissionKey(permission) !== turnPermission)
+      return false;
+    const phase =
+      context.participation.state === "planning"
+        ? "PREPARATION ONLY. Read the mission, publish an initial shared plan with plan_update, then read its current startupRevision and call coordinator_ready. You may organize planned work, but do not implement the mission or start execution. Finish this turn while waiting for the human to start."
+        : "Execution is authorized under the current mission and direction. Read pending assignments and human instructions before acting. Tasks and additional workstreams remain optional.";
+    prompt = `${phase}\n${workspaceInstructions(state)}\nCurrent mission and authorization: ${JSON.stringify({ mission: context.mission, participation: context.participation, role: context.mission.coordinatorId === state.agentId ? "coordinator" : "agent" })}\n\n${prompt}`;
     const spec = runtimeArguments(state, file, prompt, mcp);
     let buffer = "",
       errorText = "",
@@ -291,9 +330,10 @@ async function worker(file, resume = false) {
       mode: 0o600,
     });
     await save(file, state);
+    child = null;
     if (logError)
       throw new Error(`Cannot write runtime logs: ${logError.message}`);
-    if (paused || stopped) return false;
+    if (paused || stopped || interrupted) return false;
     if (result !== 0 || failed)
       throw Object.assign(
         new Error(errorText || `${state.runtime} exited with code ${result}`),
@@ -306,6 +346,7 @@ async function worker(file, resume = false) {
   }
   try {
     await beat();
+    if (controlError) throw controlError;
     await writableDirectory(state.cwd, { create: false });
     if (execution.shared && execution.shared !== state.cwd)
       await writableDirectory(execution.shared, { create: false });
@@ -321,20 +362,36 @@ async function worker(file, resume = false) {
     runtimeArguments(state, file, "", mcp);
     const instructions = await guide();
     let initial = true;
+    let waitingCursor = state.cursor;
     while (!stopped && (!maxTurns || turns < maxTurns)) {
       try {
         await beat();
+        if (controlError) throw controlError;
         if (paused) {
-          status = "paused";
+          status = permission?.state === "waiting" ? "waiting" : "paused";
           await beat();
-          await new Promise((r) => setTimeout(r, 1000));
+          // Watch without acknowledging or replacing the durable replay cursor.
+          // Registration/preparation never consumes a model turn for a worker.
+          const update = await request(
+            state.url,
+            "/api/watch",
+            {
+              channel_id: state.channelId,
+              after: waitingCursor,
+              timeout: 1000,
+            },
+            state.token,
+          );
+          waitingCursor = update.cursor;
           continue;
         }
         if (initial) {
           const ctx = await call(state, "context_read");
+          if (!canRun(ctx.participation)) continue;
           const current = ctx.agents.find((a) => a.id === state.agentId);
           const completed = await turn(
             `${instructions}\n\nYou are ${state.name}, registered in Harakiri as ${current?.role || "agent"}. Your identity is ${state.agentId}. ${workspaceInstructions(state)} Read context_read now, follow the mission and human instructions, and publish useful findings through Harakiri MCP. ${state.boardOnly ? "This is a board-only integration run. Use Harakiri tools only." : ""} You and the other agents own execution tasks. Use task_create and task_update when concrete work benefits from ownership or progress tracking; keep reports useful to the human. Tasks are optional. Do not run a watch loop yourself: this launcher will wake your session when relevant updates arrive. Finish the turn when waiting.`,
+            ctx,
           );
           if (completed) {
             state.cursor = ctx.cursor;
@@ -355,8 +412,11 @@ async function worker(file, resume = false) {
         );
         if (stopped) break;
         if (page.events.length) {
+          const ctx = await call(state, "context_read");
+          if (!canRun(ctx.participation)) continue;
           const completed = await turn(
             `New Harakiri updates. Human instructions have priority. Re-read context_read if goals, roles or assignments changed. Act only if there is useful work; publish evidence rather than repeated acknowledgments.\n${JSON.stringify(page.events)}\nFinish this turn when waiting; the launcher continues listening.`,
+            ctx,
           );
           if (!completed) continue;
         }

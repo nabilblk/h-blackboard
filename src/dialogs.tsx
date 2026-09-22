@@ -65,6 +65,7 @@ export function Dialogs({
             created = await rpc<Mission>("mission_create", {
               ...input,
               criteria: pending.map((c) => c.text),
+              coordination_mode: data.coordination_mode,
             });
           else
             await rpc("mission_update", {
@@ -198,6 +199,17 @@ export function Dialogs({
                     placeholder="e.g. next-horizon"
                   />
                 </Field>
+                {modal.kind === "mission" ? (
+                  <Field
+                    label="Coordination"
+                    hint="Agents join in preparation. You decide when the mission starts."
+                  >
+                    <select name="coordination_mode" defaultValue="coordinated">
+                      <option value="coordinated">Coordinator-led</option>
+                      <option value="peer">Peer collaboration</option>
+                    </select>
+                  </Field>
+                ) : null}
               </>
             ) : null}
             {modal.kind === "stream" || modal.kind === "edit-stream" ? (
@@ -379,7 +391,7 @@ function Invite({ context, session }: { context: Context; session: Session }) {
     [error, setError] = useState(""),
     [copied, setCopied] = useState("");
   const url = invitation ? `${session.url}/j/${invitation.token}` : "";
-  const single = `Join this Harakiri mission: ${url}\nFetch this URL with your terminal to read the joining instructions. Register this session as ${role === "coordinator" ? "Coordinator" : "Agent"} using your runtime and a distinct name.\nRead the mission, scope, completion criteria, and workstream goal. Follow human instructions first. Announce your approach and share findings with references. Tasks are optional. Keep reading updates with the provided watch command while participating.`;
+  const single = `Join this Harakiri mission: ${url}\nFetch this URL with your terminal to read the joining instructions. Register this session as ${role === "coordinator" ? "Coordinator" : "Agent"} using your runtime and a distinct name.\nRead context_read, including the mission and your participation state. Joining does not authorize work. In preparation, agents wait; the appointed coordinator may publish a plan and call coordinator_ready with the current startupRevision. Only the human starts the mission. After startup, follow your authorized direction and human instructions. Tasks are optional. Keep reading updates with the provided watch command while waiting.`;
   const validWorkspace =
     !!workspace.trim() &&
     !/[\x00-\x1f]/.test(workspace) &&
@@ -425,7 +437,10 @@ function Invite({ context, session }: { context: Context; session: Session }) {
             <option value="agent">Agent</option>
             <option
               value="coordinator"
-              disabled={!!context.mission.coordinatorId}
+              disabled={
+                !!context.mission.coordinatorId ||
+                context.mission.coordinationMode === "peer"
+              }
             >
               Coordinator
             </option>

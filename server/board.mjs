@@ -5,6 +5,13 @@ import { dirname } from "node:path";
 import { EventEmitter } from "node:events";
 import { operations, validate } from "./contracts.mjs";
 import { validateExecution } from "./execution.mjs";
+import {
+  migrateStartup,
+  participation,
+  planningOperations,
+  preparationChange,
+  startupStatus,
+} from "./startup.mjs";
 const key = (prefix) => `${prefix}_${randomBytes(6).toString("hex")}`;
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const secret = () => randomBytes(32).toString("base64url");
@@ -52,6 +59,7 @@ export class Blackboard extends EventEmitter {
         .prepare("INSERT INTO credentials VALUES(?,?,?)")
         .run(digest(this.ownerToken), "human", null);
     }
+    migrateStartup(this);
     if (file !== ":memory:")
       for (const path of [file, file + "-wal", file + "-shm"])
         if (existsSync(path)) chmodSync(path, 0o600);
@@ -174,7 +182,7 @@ export class Blackboard extends EventEmitter {
     must(
       actor.human ||
         channel.coordinatorId === actor.id ||
-        !channel.coordinatorId,
+        channel.coordinationMode === "peer",
       "Ask the coordinator to organize this work.",
       403,
     );
@@ -185,6 +193,17 @@ export class Blackboard extends EventEmitter {
       "This record changed. Read the current version before saving.",
       409,
     );
+  }
+  admit(channel, agent, instruction, issuer, source = "direction") {
+    return this.update(agent, {
+      admission: {
+        revision: channel.startupRevision,
+        instruction,
+        issuedBy: issuer,
+        source,
+        at: Date.now(),
+      },
+    });
   }
   event(channel, actor, type, data) {
     const at = Date.now();
@@ -227,6 +246,7 @@ export class Blackboard extends EventEmitter {
         : {}),
       role: channel.coordinatorId === a.id ? "coordinator" : "agent",
       online: Date.now() - a.lastSeen < 45000,
+      participation: participation(channel, a),
     };
   }
   context(actor, id) {
@@ -265,6 +285,10 @@ export class Blackboard extends EventEmitter {
     );
     return {
       mission: channel,
+      startup: startupStatus(channel, agents),
+      participation: actor.human
+        ? null
+        : participation(channel, this.get(actor.id)),
       workstreams: actor.human
         ? workstreams
         : [
@@ -610,9 +634,15 @@ export class Blackboard extends EventEmitter {
         )
         .run(a.id, JSON.stringify({ ...report, reportedAt: Date.now() }));
     }
-    const status = ["idle", "working", "paused", "error", "offline"].includes(
-      state,
-    )
+    const status = [
+      "idle",
+      "waiting",
+      "planning",
+      "working",
+      "paused",
+      "error",
+      "offline",
+    ].includes(state)
       ? state
       : a.status;
     this.put({ ...a, lastSeen: status === "offline" ? 0 : Date.now(), status });
@@ -621,6 +651,7 @@ export class Blackboard extends EventEmitter {
       control: a.control,
       missionState: c.archived ? "archived" : c.state,
       role: c.coordinatorId === a.id ? "coordinator" : "agent",
+      participation: participation(c, a),
     };
   }
   invitation(token) {
@@ -700,8 +731,14 @@ export class Blackboard extends EventEmitter {
       );
       const c = this.get(invite.channel);
       must(c.state !== "closed", "Mission is closed", 409);
-      if (invite.role === "coordinator")
+      if (invite.role === "coordinator") {
         must(!c.coordinatorId, "This mission already has a coordinator.", 409);
+        must(
+          c.coordinationMode === "coordinated",
+          "Choose coordinated mode before using a coordinator invitation.",
+          409,
+        );
+      }
       const streamId = stream
         ? this.list(c.id, "workstream").find(
             (s) => s.id === stream || s.name === stream,
@@ -722,13 +759,18 @@ export class Blackboard extends EventEmitter {
         cursor: 0,
         delivered: 0,
         humanDirected: false,
+        admission: null,
       });
       const token = secret();
       this.db
         .prepare("INSERT INTO credentials VALUES(?,?,?)")
         .run(digest(token), agent.id, c.id);
       if (invite.role === "coordinator")
-        this.update(c, { coordinatorId: agent.id });
+        this.update(c, {
+          coordinatorId: agent.id,
+          ...preparationChange(c),
+          state: c.state === "active" ? "preparing" : c.state,
+        });
       this.message(
         c,
         { id: agent.id },
@@ -800,17 +842,34 @@ export class Blackboard extends EventEmitter {
         409,
       );
       if (me) {
+        const permission = participation(c, me);
+        const setupMessage =
+          operation === "message_post" &&
+          ["preparing", "active"].includes(c.state) &&
+          me.control !== "pause";
+        const planning =
+          permission.state === "planning" && planningOperations.has(operation);
         must(
-          (c.state === "active" && me.control !== "pause") ||
+          permission.state === "authorized" ||
+            planning ||
+            setupMessage ||
             (operation === "message_post" &&
               (p.audience === "human" ||
                 p.direct_agent_id === actor.id ||
                 (p.thread_id &&
                   this.readable(actor, c, p.thread_id, "message")
                     .directAgentId === actor.id))),
-          "Work is paused. Read human instructions before continuing.",
+          permission.state === "paused" || permission.state === "closed"
+            ? "Work is paused. Read human instructions before continuing."
+            : `Execution is not authorized. ${permission.reason}`,
           409,
         );
+        if (planning && operation === "task_update")
+          must(
+            ["open", "paused"].includes(p.status),
+            "Preparation permits planned tasks, not working or completed tasks. Start the mission first.",
+            409,
+          );
       }
       let result;
       switch (operation) {
@@ -838,8 +897,12 @@ export class Blackboard extends EventEmitter {
               met: false,
             })),
             coordinatorId: null,
+            coordinationMode: p.coordination_mode,
+            startupRevision: 1,
+            coordinatorReady: null,
+            startedAt: null,
             plan: "",
-            state: "active",
+            state: "preparing",
             archived: false,
             archivedAt: null,
           });
@@ -855,7 +918,7 @@ export class Blackboard extends EventEmitter {
           this.message(
             c,
             actor,
-            "Mission created. Read the objective, scope, and completion criteria.",
+            "Mission created in preparation. Agents may join; execution waits for the human to start the mission.",
           );
           result = c;
           break;
@@ -868,6 +931,7 @@ export class Blackboard extends EventEmitter {
             objective: p.objective,
             scope: p.scope,
             criteria: p.criteria.map((x) => ({ ...x, id: x.id || key("cr") })),
+            ...(c.state !== "active" ? preparationChange(c) : {}),
           });
           this.update(this.get(c.defaultStreamId), { goal: p.objective });
           this.message(
@@ -902,22 +966,164 @@ export class Blackboard extends EventEmitter {
         }
         case "mission_state": {
           this.human(actor);
-          result = this.update(c, { state: p.state });
+          if (p.version !== undefined || p.state === "active")
+            this.version(c, p.version);
+          if (c.state === p.state) {
+            result = c;
+            break;
+          }
+          if (p.state === "active") {
+            const readiness = startupStatus(c, this.list(c.id, "agent"));
+            must(
+              readiness.canStart,
+              c.state === "closed"
+                ? "Reopen the mission in preparation before starting it."
+                : readiness.reason,
+              409,
+            );
+            // A single transaction releases the present roster. Later arrivals
+            // require their own direction in coordinated mode.
+            for (const agent of c.state === "preparing" || !c.startedAt
+              ? this.list(c.id, "agent")
+              : []) {
+              const current = agent.admission?.revision === c.startupRevision;
+              if (!current)
+                this.admit(
+                  c,
+                  agent,
+                  c.plan || c.objective,
+                  actor.id,
+                  "mission-start",
+                );
+            }
+          }
+          result = this.update(c, {
+            state: p.state,
+            ...(p.state === "active"
+              ? { startedAt: c.startedAt || Date.now() }
+              : {}),
+            ...(p.state === "preparing" ? preparationChange(c) : {}),
+          });
           this.message(c, actor, `Mission ${p.state}: ${p.reason}`, {
             kind: "decision",
           });
+          break;
+        }
+        case "coordination_set": {
+          this.human(actor);
+          this.version(c, p.version);
+          if (c.coordinationMode === p.mode) {
+            result = c;
+            break;
+          }
+          must(
+            c.state !== "closed",
+            "Reopen the mission before changing coordination.",
+            409,
+          );
+          result = this.update(c, {
+            coordinationMode: p.mode,
+            coordinatorId: null,
+            ...preparationChange(c),
+            state: c.state === "paused" ? "paused" : "preparing",
+          });
+          this.message(
+            c,
+            actor,
+            `Human selected ${p.mode === "peer" ? "peer collaboration" : "coordinator-led collaboration"}. Execution waits for the human to start the mission.`,
+            { kind: "decision" },
+          );
           break;
         }
         case "coordinator_set": {
           this.human(actor);
           this.version(c, p.version);
           const a = p.agent_id ? this.record(c, p.agent_id, "agent") : null;
-          result = this.update(c, { coordinatorId: a?.id || null });
+          if (c.coordinatorId === (a?.id || null)) {
+            result = c;
+            break;
+          }
+          must(
+            c.state !== "closed",
+            "Reopen the mission before appointing a coordinator.",
+            409,
+          );
+          result = this.update(c, {
+            coordinatorId: a?.id || null,
+            coordinationMode: a ? "coordinated" : c.coordinationMode,
+            ...preparationChange(c),
+            state: c.state === "active" ? "preparing" : c.state,
+          });
           this.message(
             c,
             actor,
-            `${a ? `${a.name} is now the coordinator` : "Peer collaboration enabled"}. ${p.reason}`,
+            `${a ? `${a.name} is now the coordinator` : "Waiting for a coordinator; coordinated mode remains selected"}. ${p.reason} Execution waits for readiness and the human to start the mission.`,
             { kind: "decision" },
+          );
+          break;
+        }
+        case "coordinator_ready": {
+          must(
+            actor.id === c.coordinatorId,
+            "Only the appointed coordinator can acknowledge readiness.",
+            403,
+          );
+          must(
+            c.state === "preparing",
+            "Acknowledge readiness while the mission is preparing.",
+            409,
+          );
+          must(
+            p.revision === c.startupRevision,
+            "Startup instructions changed. Read context_read and acknowledge the current revision.",
+            409,
+          );
+          must(
+            c.plan.trim(),
+            "Publish the initial shared plan before acknowledging readiness.",
+            409,
+          );
+          result = this.update(c, {
+            coordinatorReady: {
+              agentId: actor.id,
+              revision: p.revision,
+              acknowledgedAt: Date.now(),
+            },
+          });
+          this.message(
+            c,
+            actor,
+            "Coordinator ready. Waiting for the human to start the mission.",
+            { kind: "decision" },
+          );
+          break;
+        }
+        case "agent_admit": {
+          must(
+            actor.human || actor.id === c.coordinatorId,
+            "Coordinator or human required.",
+            403,
+          );
+          const agents = [...new Set(p.agent_ids)].map((id) =>
+            this.record(c, id, "agent"),
+          );
+          for (const agent of agents) {
+            must(
+              actor.human || !agent.humanDirected,
+              "This agent has a direct human assignment. Ask the human to release it.",
+              403,
+            );
+            this.admit(c, agent, p.instruction, actor.id);
+          }
+          result = {
+            agentIds: agents.map((a) => a.id),
+            revision: c.startupRevision,
+          };
+          this.message(
+            c,
+            actor,
+            `Direction for ${agents.length === 1 ? agents[0].name : `${agents.length} agents`}: ${p.instruction}`,
+            { kind: "decision", notifyAgentIds: result.agentIds },
           );
           break;
         }
@@ -929,7 +1135,10 @@ export class Blackboard extends EventEmitter {
           );
           this.version(c, p.version);
           this.references(actor, c, p.refs);
-          result = this.update(c, { plan: p.plan });
+          result = this.update(c, {
+            plan: p.plan,
+            ...(c.state !== "active" ? preparationChange(c) : {}),
+          });
           this.message(c, actor, p.plan, { kind: "decision", refs: p.refs });
           break;
         }
@@ -983,7 +1192,7 @@ export class Blackboard extends EventEmitter {
             403,
           );
           must(
-            !c.coordinatorId || c.coordinatorId === actor.id,
+            c.coordinationMode === "peer" || c.coordinatorId === actor.id,
             "Ask the coordinator for a workstream assignment.",
             403,
           );
@@ -1021,7 +1230,14 @@ export class Blackboard extends EventEmitter {
             issuedBy: actor.id,
             status: "pending",
           });
-          if (actor.human) this.update(a, { humanDirected: true });
+          const admitted = this.admit(
+            c,
+            a,
+            p.instruction,
+            actor.id,
+            "assignment",
+          );
+          if (actor.human) this.update(admitted, { humanDirected: true });
           this.message(c, actor, `${a.name} → ${w.name}\n${p.instruction}`, {
             kind: "decision",
             audience: a.id,
@@ -1190,7 +1406,9 @@ export class Blackboard extends EventEmitter {
         }
         case "task_create": {
           const manager =
-            actor.human || c.coordinatorId === actor.id || !c.coordinatorId;
+            actor.human ||
+            c.coordinatorId === actor.id ||
+            c.coordinationMode === "peer";
           const agentIds = [
             ...new Set(p.agent_ids.length ? p.agent_ids : me ? [me.id] : []),
           ];
@@ -1234,7 +1452,9 @@ export class Blackboard extends EventEmitter {
           const t = this.record(c, p.task_id, "task");
           this.version(t, p.version);
           const manager =
-            actor.human || c.coordinatorId === actor.id || !c.coordinatorId;
+            actor.human ||
+            c.coordinatorId === actor.id ||
+            c.coordinationMode === "peer";
           must(
             manager || t.agentIds.includes(actor.id),
             "Only an assigned agent, coordinator or human can update this task.",
@@ -1266,6 +1486,12 @@ export class Blackboard extends EventEmitter {
         }
         case "invitation_create": {
           this.human(actor);
+          if (p.role === "coordinator")
+            must(
+              c.coordinationMode === "coordinated" && !c.coordinatorId,
+              "Choose coordinator-led collaboration with no current coordinator before creating a coordinator invitation.",
+              409,
+            );
           const streamId = p.stream_id || c.defaultStreamId;
           must(
             !this.record(c, streamId, "workstream").archived,

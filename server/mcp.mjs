@@ -13,6 +13,7 @@ const excluded = new Set([
   "mission_state",
   "mission_archive",
   "coordinator_set",
+  "coordination_set",
   "agent_control",
   "message_edit",
   "messages_seen",

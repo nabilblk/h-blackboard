@@ -9,7 +9,7 @@ const channel = { channel_id: id },
 export const operations = {
   context_read: {
     description:
-      "Read the mission, plan, workstream goals, pending assignments, execution tasks, human requests and conversation. Your owned tasks are prioritized in bounded agent context; use records_read for the full task list and messages_read for more history.",
+      "Read the mission, startup readiness, and your participation permission before acting. Joining is not permission to execute. Includes plan, workstreams, pending assignments, tasks, human requests and conversation. Use records_read for full lists and messages_read for more history.",
     read: true,
     schema: z.object({ ...channel }),
   },
@@ -77,12 +77,13 @@ export const operations = {
   },
   mission_create: {
     description:
-      "Human: create a mission channel with its default Main workstream.",
+      "Human: create a preparing mission with its default Main workstream. Joining does not authorize execution.",
     schema: z.object({
       name: short,
       objective: text,
       scope: optional,
       criteria: z.array(short).max(50).default([]),
+      coordination_mode: z.enum(["coordinated", "peer"]).default("coordinated"),
     }),
   },
   mission_update: {
@@ -106,11 +107,36 @@ export const operations = {
     }),
   },
   mission_state: {
-    description: "Human: pause, reopen, or close the mission.",
+    description:
+      "Human: prepare, start, pause, or close the mission. Starting requires the current version and coordinator readiness in coordinated mode.",
     schema: z.object({
       ...channel,
-      state: z.enum(["active", "paused", "closed"]),
+      version: z.number().int().positive().optional(),
+      state: z.enum(["preparing", "active", "paused", "closed"]),
       reason: text,
+    }),
+  },
+  coordination_set: {
+    description:
+      "Human: explicitly choose coordinated or peer collaboration. Changing mode returns the mission to preparation.",
+    schema: z.object({
+      ...channel,
+      ...version,
+      mode: z.enum(["coordinated", "peer"]),
+    }),
+  },
+  coordinator_ready: {
+    description:
+      "Coordinator: after reading the current mission and publishing an initial shared plan, acknowledge readiness for this startup revision. Only the human starts execution. Read context_read for startupRevision; stale acknowledgments are rejected.",
+    schema: z.object({ ...channel, revision: z.number().int().positive() }),
+  },
+  agent_admit: {
+    description:
+      "Coordinator or human: give joined agents permission to work under a shared direction after the mission starts. Use for arrivals in an active coordinated mission; no task or extra workstream is needed. Assignment creation also supplies admission. This does not start a preparing mission or override a human pause.",
+    schema: z.object({
+      ...channel,
+      agent_ids: z.array(id).min(1).max(1000),
+      instruction: text,
     }),
   },
   mission_archive: {
@@ -130,7 +156,7 @@ export const operations = {
   },
   plan_update: {
     description:
-      "Coordinator or human: publish the shared plan and its rationale. A plan can organize workstreams without tasks.",
+      "Coordinator or human: publish the shared plan and rationale. Tasks are optional. During preparation this invalidates readiness; read the current startupRevision before coordinator_ready.",
     schema: z.object({ ...channel, ...version, plan: text, refs }),
   },
   stream_create: {
@@ -157,7 +183,7 @@ export const operations = {
   },
   assignment_create: {
     description:
-      "Coordinator or human: assign an existing agent to a workstream with instructions. It remains pending until acknowledged. Human-directed assignments cannot be replaced by a coordinator until released by the human.",
+      "Coordinator or human: give an existing agent a workstream direction, including Main. This admits a late arrival to an active mission but cannot start a preparing mission. Assignment remains pending until acknowledged. Human-directed assignments cannot be replaced by a coordinator until released by the human.",
     schema: z.object({
       ...channel,
       agent_id: id,

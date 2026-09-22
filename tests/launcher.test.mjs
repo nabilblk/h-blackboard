@@ -38,7 +38,7 @@ async function until(read, message) {
   throw new Error(`Timed out: ${message}`);
 }
 
-async function fixture(t) {
+async function fixture(t, preparing = false) {
   const directory = await mkdtemp(join(tmpdir(), "harakiri-launch-"));
   const { server, board } = createServer({ database: ":memory:" });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -53,8 +53,15 @@ async function fixture(t) {
   const mission = await call(owner, "mission_create", {
     name: "Launch fixture",
     objective: "Inspect execution without model calls",
+    coordination_mode: preparing ? "coordinated" : "peer",
   });
   owner.channelId = mission.id;
+  if (!preparing)
+    await call(owner, "mission_state", {
+      version: mission.version,
+      state: "active",
+      reason: "Start the launcher fixture",
+    });
   const invitation = await call(owner, "invitation_create");
   const commands = join(directory, "commands"),
     sessions = join(directory, "sessions"),
@@ -74,6 +81,14 @@ if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'o
  const native='native-'+state.agentId;
  if(state.nativeSession&&!args.includes(native))throw Error('Resume lost native session');
  fs.appendFileSync(path.join(process.cwd(),'observations.jsonl'),JSON.stringify({args,cwd:process.cwd(),prompt})+'\\n');
+ if(process.env.HARAKIRI_TEST_PREPARE){
+   if(!prompt.includes('PREPARATION ONLY'))throw Error('Coordinator received execution instructions during preparation');
+   const call=async(operation,input={})=>{const res=await fetch(state.url+'/api/rpc',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+state.token},body:JSON.stringify({operation,input:{channel_id:state.channelId,...input},key:require('node:crypto').randomUUID()})});const data=await res.json();if(!res.ok)throw Error(data.error);return data;};
+   let ctx=await call('context_read');
+   await call('plan_update',{version:ctx.mission.version,plan:'Compare distinct alternatives in Main; tasks are optional.'});
+   ctx=await call('context_read');
+   await call('coordinator_ready',{revision:ctx.mission.startupRevision});
+ }
  console.log(JSON.stringify(runtime==='codex'?{type:'thread.started',thread_id:native}:{type:'system',session_id:native}));
  console.error('stderr is live');
  if(process.env.HARAKIRI_TEST_FAIL){console.error('Managed policy blocked execution (network policy) '+state.token);process.exitCode=23;return;}
@@ -121,6 +136,173 @@ if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'o
 }
 
 for (const runtime of ["claude", "codex"]) {
+  test(`${runtime}: a restarted waiting session still cannot start until a human releases it`, async (t) => {
+    const f = await fixture(t, true);
+    await call(f.owner, "coordination_set", {
+      version: f.board.get(f.mission.id).version,
+      mode: "peer",
+    });
+    const children = [];
+    const run = (args) => {
+      const child = spawn(process.execPath, args, {
+        env: f.env,
+        stdio: "ignore",
+      });
+      const exited = once(child, "exit");
+      children.push({ child, exited });
+      return { child, exited };
+    };
+    t.after(async () => {
+      for (const { child, exited } of children) {
+        if (child.exitCode === null && child.signalCode === null)
+          child.kill("SIGTERM");
+        await exited;
+      }
+    });
+    const first = run(f.args(runtime));
+    const agent = await until(
+      () =>
+        f.board.list(f.mission.id, "agent").find((a) => a.status === "waiting"),
+      "first worker waits",
+    );
+    const [{ file, state }] = await f.states();
+    assert.deepEqual(await readdir(state.cwd), []);
+    first.child.kill("SIGTERM");
+    await first.exited;
+    const resumed = run([cli, "resume", "--session", file, "--max-turns", "1"]);
+    await until(
+      () => f.board.get(agent.id).status === "waiting",
+      "resumed worker waits",
+    );
+    assert.equal(f.board.list(f.mission.id, "agent").length, 1);
+    assert.deepEqual(await readdir(state.cwd), []);
+    await call(f.owner, "mission_state", {
+      version: f.board.get(f.mission.id).version,
+      state: "active",
+      reason: "Release peer mission",
+    });
+    const [code] = await resumed.exited;
+    assert.equal(code, 0);
+    assert.equal(
+      (await readFile(join(state.cwd, "observations.jsonl"), "utf8"))
+        .trim()
+        .split("\n").length,
+      1,
+    );
+  });
+
+  test(`${runtime}: bulk workers consume no model turns until coordinator readiness AND human start`, async (t) => {
+    const f = await fixture(t, true);
+    const child = spawn(process.execPath, f.args(runtime, "--count", "3"), {
+      env: f.env,
+      stdio: "ignore",
+    });
+    const exited = once(child, "exit");
+    t.after(async () => {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGTERM");
+      await exited;
+    });
+    await until(
+      () =>
+        f.board
+          .list(f.mission.id, "agent")
+          .filter((a) => a.status === "waiting").length === 3,
+      "three waiting workers",
+    );
+    const sessions = await f.states();
+    for (const { state } of sessions)
+      assert.deepEqual(await readdir(state.cwd), []);
+    const link = await call(f.owner, "invitation_create", {
+      role: "coordinator",
+    });
+    const joined = await request(f.url, "/api/join", {
+      invitation: link.token,
+      name: "manual-lead",
+      runtime,
+    });
+    const lead = { url: f.url, channelId: f.mission.id, token: joined.token };
+    const plan = await call(lead, "plan_update", {
+      version: f.board.get(f.mission.id).version,
+      plan: "Explore separate directions in Main",
+    });
+    await call(lead, "coordinator_ready", { revision: plan.startupRevision });
+    // Wait through another control read: readiness alone must not release work.
+    const lastSeen = f.board.get(sessions[0].state.agentId).lastSeen;
+    await until(
+      () => f.board.get(sessions[0].state.agentId).lastSeen > lastSeen,
+      "worker checked ready-but-not-started mission",
+    );
+    for (const { state } of sessions)
+      assert.deepEqual(await readdir(state.cwd), []);
+    await call(f.owner, "mission_state", {
+      version: f.board.get(f.mission.id).version,
+      state: "active",
+      reason: "Human starts prepared work",
+    });
+    const [code] = await exited;
+    assert.equal(code, 0);
+    for (const { state } of sessions) {
+      const turns = (
+        await readFile(join(state.cwd, "observations.jsonl"), "utf8")
+      )
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      assert.equal(turns.length, 1);
+      assert.match(turns[0].prompt, /Execution is authorized/);
+      assert.match(turns[0].prompt, /Explore separate directions in Main/);
+      assert.equal(
+        JSON.parse(
+          await readFile(
+            join(f.sessions, state.agentId, "session.json"),
+            "utf8",
+          ),
+        ).nativeSession,
+        "native-" + state.agentId,
+      );
+    }
+    assert.equal(f.board.list(f.mission.id, "task").length, 0);
+  });
+
+  test(`${runtime}: promoting an already joined worker runs planning without starting execution`, async (t) => {
+    const f = await fixture(t, true);
+    const child = spawn(process.execPath, f.args(runtime), {
+      env: { ...f.env, HARAKIRI_TEST_PREPARE: "1" },
+      stdio: "ignore",
+    });
+    const exited = once(child, "exit");
+    t.after(async () => {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGTERM");
+      await exited;
+    });
+    const agent = await until(
+      () =>
+        f.board.list(f.mission.id, "agent").find((a) => a.status === "waiting"),
+      "worker waits before coordinator appointment",
+    );
+    const [{ state }] = await f.states();
+    assert.deepEqual(await readdir(state.cwd), []);
+    await call(f.owner, "coordinator_set", {
+      version: f.board.get(f.mission.id).version,
+      agent_id: agent.id,
+      reason: "Appoint after the agent joined",
+    });
+    const [code] = await exited;
+    assert.equal(code, 0);
+    const ctx = await call(f.owner, "context_read");
+    assert.equal(ctx.mission.state, "preparing");
+    assert.equal(ctx.startup.coordinatorReady, true);
+    assert.equal(
+      ctx.startup.canStart,
+      false,
+      "an exited coordinator is unavailable even if it acknowledged readiness",
+    );
+    assert.match(ctx.mission.plan, /Compare distinct alternatives/);
+    assert.equal(ctx.tasks.length, 0);
+  });
+
   test(`${runtime}: full access, custom folders, identity and permissions survive resume`, async (t) => {
     const f = await fixture(t);
     await exec(
@@ -319,6 +501,23 @@ test("Validation rejects unsupported access and conflicting/unwritable folders b
     ),
     /separate folders/,
   );
+});
+
+test("An older board service fails visibly before the launcher starts any model turn", async (t) => {
+  const f = await fixture(t);
+  const heartbeat = f.board.heartbeat.bind(f.board);
+  f.board.heartbeat = (...args) => {
+    const response = heartbeat(...args);
+    delete response.participation;
+    return response;
+  };
+  await assert.rejects(
+    exec(process.execPath, f.args("codex"), { env: f.env }),
+    /board service does not support mission preparation/,
+  );
+  const [{ state }] = await f.states();
+  assert.deepEqual(await readdir(state.cwd), []);
+  assert.equal(f.board.get(state.agentId).status, "error");
 });
 
 test("Logs arrive during execution, and shutdown persists the native session", async (t) => {

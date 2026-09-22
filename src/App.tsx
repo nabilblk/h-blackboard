@@ -33,6 +33,7 @@ import { get, rpc } from "./client";
 import { Badge, Empty, Runtime, Text, Time } from "./ui";
 import { Dialogs } from "./dialogs";
 import { SidePanel } from "./panels";
+import { StartupBanner } from "./Startup";
 import {
   DirectDirectory,
   Mailbox,
@@ -778,7 +779,11 @@ export default function App() {
                   <i
                     className={`square ${coordinator ? "accent" : "muted hollow"}`}
                   />
-                  {coordinator ? coordinator.name : "Peer collaboration"}
+                  {coordinator
+                    ? coordinator.name
+                    : context.mission.coordinationMode === "peer"
+                      ? "Peer collaboration"
+                      : "Awaiting coordinator"}
                   <ChevronDown size={12} />
                 </button>
               </div>
@@ -808,6 +813,13 @@ export default function App() {
                   Restore channel
                 </button>
               </div>
+            ) : context.mission.state === "preparing" ? (
+              <StartupBanner
+                key={context.mission.id}
+                context={context}
+                refresh={reload}
+                details={() => setPanel({ kind: "mission" })}
+              />
             ) : context.mission.state !== "active" ? (
               <div className="state-banner">
                 Mission {context.mission.state}. Human messages and controls

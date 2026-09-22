@@ -35,6 +35,18 @@ function fixture(t, file) {
   const lead = register("lead", "coordinator"),
     one = register("one"),
     two = register("two");
+  act(lead.actor, "plan_update", {
+    version: board.get(mission.id).version,
+    plan: "Share evidence while respecting private conversations",
+  });
+  act(lead.actor, "coordinator_ready", {
+    revision: board.get(mission.id).startupRevision,
+  });
+  act(human, "mission_state", {
+    version: board.get(mission.id).version,
+    state: "active",
+    reason: "Start the messaging fixture",
+  });
   return { board, human, mission, act, lead, one, two };
 }
 
@@ -319,8 +331,11 @@ test("Sent search finds old messages and threads across workstreams with visibil
     [dm.id],
   );
   assert.equal(
-    act(human, "messages_search", { view: "sent", visibility: "public" })
-      .messages.length,
+    act(human, "messages_search", {
+      view: "sent",
+      visibility: "public",
+      query: "Needle",
+    }).messages.length,
     2,
   );
   assert.throws(

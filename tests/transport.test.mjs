@@ -33,8 +33,14 @@ async function fixture(t) {
     name: "Transport test",
     objective: "Exercise the real board API",
     scope: "Test fixture only.",
+    coordination_mode: "peer",
   });
   owner.channelId = mission.id;
+  await call(owner, "mission_state", {
+    version: mission.version,
+    state: "active",
+    reason: "Start the transport fixture",
+  });
   const link = await call(owner, "invitation_create");
   const joined = await request(url, "/api/join", {
     invitation: link.token,
@@ -164,6 +170,9 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
   assert.ok(tools.some((x) => x.name === "records_read"));
   assert.ok(tools.some((x) => x.name === "assignment_ack"));
   assert.ok(!tools.some((x) => x.name === "coordinator_set"));
+  assert.ok(!tools.some((x) => x.name === "coordination_set"));
+  assert.ok(tools.some((x) => x.name === "coordinator_ready"));
+  assert.ok(tools.some((x) => x.name === "agent_admit"));
   assert.ok(!tools.some((x) => x.name === "messages_seen"));
   assert.ok(!tools.some((x) => x.name === "mission_archive"));
   assert.ok(
@@ -215,13 +224,30 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
   assert.match(skill.contents[0].text, /task/i);
   assert.equal((await call(owner, "context_read")).tasks.length, 0);
 
+  await call(owner, "coordination_set", {
+    version: (await call(owner, "context_read")).mission.version,
+    mode: "coordinated",
+  });
   const leadInvite = await call(owner, "invitation_create", {
     role: "coordinator",
   });
-  await request(url, "/api/join", {
+  const leadJoin = await request(url, "/api/join", {
     invitation: leadInvite.token,
     name: "transport-coordinator",
     runtime: "claude",
+  });
+  const lead = { url, channelId: owner.channelId, token: leadJoin.token };
+  let current = (await call(lead, "context_read")).mission;
+  await call(lead, "plan_update", {
+    version: current.version,
+    plan: "Verify the shared finding",
+  });
+  current = (await call(lead, "context_read")).mission;
+  await call(lead, "coordinator_ready", { revision: current.startupRevision });
+  await call(owner, "mission_state", {
+    version: (await call(owner, "context_read")).mission.version,
+    state: "active",
+    reason: "Start coordinated work",
   });
   const created = await client.callTool({
     name: "task_create",

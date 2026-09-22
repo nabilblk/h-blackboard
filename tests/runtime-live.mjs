@@ -49,8 +49,14 @@ try {
     scope:
       "Use Harakiri MCP tools only. Do not read or change external files. This is a test, so claim only what you actually observed.",
     criteria: ["Both runtimes publish and receive instructions."],
+    coordination_mode: "peer",
   });
   owner.channelId = mission.id;
+  await call(owner, "mission_state", {
+    version: mission.version,
+    state: "active",
+    reason: "Start the isolated runtime check",
+  });
   const invitation = await call(owner, "invitation_create");
   const stateDir = join(directory, "sessions");
   for (const runtime of ["claude", "codex"]) {
@@ -126,6 +132,16 @@ try {
   );
   const assignment = board.list(mission.id, "assignment")[0];
   assert.equal(assignment.issuedBy, coordinator.id);
+  await until(
+    () =>
+      board.context(board.auth(board.ownerToken), mission.id).startup.canStart,
+    "coordinator readiness",
+  );
+  await call(owner, "mission_state", {
+    version: board.get(mission.id).version,
+    state: "active",
+    reason: "Start the coordinated runtime check",
+  });
   await until(
     () => board.get(assignment.id).status === "acknowledged",
     "assignment acknowledgment",

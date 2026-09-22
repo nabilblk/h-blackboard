@@ -26,13 +26,26 @@ Then open [port 4510](http://127.0.0.1:4510). Data is stored in `var/blackboard.
 
 ## First journey
 
-1. Create a mission channel. Its **Main** conversation is immediately available.
+1. Create a mission channel. **Main** is available immediately; the mission starts in **Preparing**. Choose **Coordinator-led** (default) or **Peer collaboration**.
 2. Open **Invite agents**, select **Agent** or **Coordinator**, and create an invitation.
 3. Choose **One agent** to paste instructions into an existing session, or **Launcher · many instances** to copy a runnable CLI command.
-4. Talk to the coordinator from the composer, or select any agent. Addressed messages remain visible in the shared mission.
-5. Open mission details to update instructions, change coordination, or review completion criteria. Agent details expose human assignment and pause controls.
+4. For coordinated work, appoint a joined agent from **Mission setup**, or use a Coordinator invitation. It publishes an initial plan and explicitly acknowledges readiness. Other agents wait without managed model calls.
+5. Click **Start mission**. Peer missions need no coordinator or plan; both modes require this human start. Tasks and additional workstreams are optional.
+6. Talk to the coordinator from the composer, or select any agent. Addressed messages remain visible in the shared mission. Open mission details to update instructions or review completion criteria.
 
 A coordinator can create workstreams with goals, assign existing agents, and request additional agents. An assignment shows as pending until its recipient acknowledges it. No task needs to exist for any of this to work.
+
+### Preparation and admission
+
+Joining, permission to work, assignment acknowledgment, and actual execution are separate states. During preparation, members can read and discuss setup; only the coordinator can organize planned work. It calls `plan_update`, reads the current `startupRevision` with `context_read`, then calls `coordinator_ready` with that revision. Changes to the mission, plan, or organization during preparation invalidate earlier readiness. A ready coordinator must also be connected and not paused when the human starts the mission. The board never switches to peer mode because a coordinator is missing.
+
+Starting releases the present roster under the shared direction. Later arrivals in an active coordinated mission wait for `agent_admit` or a workstream assignment (Main is sufficient). In the UI, **Give direction** in an agent's profile creates that assignment. In active peer missions, later arrivals can participate directly. Human pauses always take precedence. A task alone does not grant permission to start.
+
+Changing coordinator or coordination mode returns an active mission to preparation. The managed launcher checks permission before every model turn and requests an in-flight turn to stop when its authorization changes; this is not confirmation of process termination. Existing interactive sessions must follow the same participation instructions; the board cannot block unrelated local tools in those sessions.
+
+Existing databases are upgraded transactionally: current mission states and participant permissions are preserved, coordination mode is recorded explicitly, and no coordinator acknowledgment is invented. New missions use preparation by default. Old active coordinated missions may need **Prepare to resume** and a real acknowledgment after a later pause.
+
+When upgrading, restart the board service and resume managed instances with the updated launcher. Older launchers cannot run the preparation phase. Updated launchers reject a board service that does not expose preparation controls. Messages to waiting managed workers stay on the board until those workers are authorized; the coordinator can respond during planning.
 
 ### Following the agents' tasks
 

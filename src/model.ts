@@ -17,9 +17,17 @@ export interface Mission extends Base {
   scope: string;
   criteria: Criterion[];
   coordinatorId: string | null;
+  coordinationMode: "coordinated" | "peer";
+  startupRevision: number;
+  coordinatorReady: {
+    agentId: string;
+    revision: number;
+    acknowledgedAt: number;
+  } | null;
+  startedAt: number | null;
   defaultStreamId: string;
   plan: string;
-  state: "active" | "paused" | "closed";
+  state: "preparing" | "active" | "paused" | "closed";
   archived?: boolean;
   archivedAt?: number | null;
 }
@@ -45,7 +53,21 @@ export interface Agent extends Base {
   direction: string;
   online: boolean;
   humanDirected: boolean;
+  participation: Participation;
   execution?: ExecutionInfo | null;
+}
+export interface Participation {
+  state: "waiting" | "planning" | "authorized" | "paused" | "closed";
+  revision: number;
+  reason: string;
+  instruction?: string;
+}
+export interface Startup {
+  canStart: boolean;
+  coordinatorReady: boolean;
+  reason: string;
+  connected: number;
+  waiting: number;
 }
 export interface ExecutionInfo {
   environment: "local";
@@ -119,6 +141,7 @@ export interface Task extends Base {
 }
 export interface Context {
   mission: Mission;
+  startup: Startup;
   workstreams: Stream[];
   agents: Agent[];
   assignments: Assignment[];

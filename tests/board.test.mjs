@@ -17,15 +17,57 @@ function setup(t, file) {
     objective: "Compare useful directions and publish evidence.",
     scope: "Work on this board only.",
     criteria: ["The human can evaluate the alternatives."],
+    coordination_mode: "peer",
   });
   const act = (actor, operation, input = {}, key) =>
     op(actor, operation, { channel_id: mission.id, ...input }, key);
-  const invite = (role = "agent") => act(human, "invitation_create", { role });
+  const start = () =>
+    act(human, "mission_state", {
+      version: board.get(mission.id).version,
+      state: "active",
+      reason: "Start the board fixture",
+    });
+  start();
+  const invite = (role = "agent") => {
+    if (
+      role === "coordinator" &&
+      board.get(mission.id).coordinationMode !== "coordinated"
+    )
+      act(human, "coordination_set", {
+        version: board.get(mission.id).version,
+        mode: "coordinated",
+      });
+    return act(human, "invitation_create", { role });
+  };
   const register = (name, runtime = "codex", invitation = invite().token) => {
     const result = board.join({ invitation, name, runtime });
-    return { ...result, actor: board.auth(result.token) };
+    const actor = board.auth(result.token);
+    if (result.agent.role === "coordinator") {
+      act(actor, "plan_update", {
+        version: board.get(mission.id).version,
+        plan: "Coordinate the board fixture in Main",
+      });
+      act(actor, "coordinator_ready", {
+        revision: board.get(mission.id).startupRevision,
+      });
+      start();
+    } else if (board.get(mission.id).coordinationMode === "coordinated") {
+      act(human, "agent_admit", {
+        agent_ids: [result.agent.id],
+        instruction: "Participate in the board fixture",
+      });
+    }
+    return { ...result, actor };
   };
-  return { board, human, mission, act, op, invite, register };
+  return {
+    board,
+    human,
+    mission: board.get(mission.id),
+    act,
+    op,
+    invite,
+    register,
+  };
 }
 
 test("Archiving hides a channel and freezes work while preserving public and private history", (t) => {
@@ -193,7 +235,11 @@ test("Only the human archives or restores, with version checks and an explicit r
     () => act(worker.actor, "task_create", { title: "Continue too soon" }),
     /paused/,
   );
-  act(human, "mission_state", { state: "active", reason: "Continue work" });
+  act(human, "mission_state", {
+    version: board.get(mission.id).version,
+    state: "active",
+    reason: "Continue work",
+  });
   act(worker.actor, "task_create", { title: "Continue after human resumes" });
   act(human, "mission_state", { state: "closed", reason: "Finished" });
   const closed = act(human, "mission_archive", {
@@ -390,7 +436,7 @@ test("Human can override coordination, message any agent, and release a direct a
         version: board.get(mission.id).version,
         plan: "Use stale authority.",
       }),
-    /Only the coordinator/,
+    /not authorized|Only the coordinator/,
   );
 });
 

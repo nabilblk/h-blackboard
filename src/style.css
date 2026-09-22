@@ -1042,6 +1042,35 @@ select[multiple] option {
   color: var(--color-status-warning);
   font-size: 12px;
 }
+.startup-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 16px 24px;
+  background: var(--color-surface-raised);
+}
+.startup-summary {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--color-text-primary);
+}
+.startup-summary strong {
+  font-size: 14px;
+  margin-right: 12px;
+}
+.startup-summary .mono {
+  color: var(--secondary);
+}
+.startup-summary p {
+  margin: 4px 0 0;
+  color: var(--secondary);
+}
+.startup-error {
+  flex-basis: 100%;
+  color: var(--color-status-danger);
+  margin: 0;
+}
 .conversation {
   display: flex;
   flex-direction: column;

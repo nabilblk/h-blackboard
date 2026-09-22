@@ -47,6 +47,11 @@ export function SidePanel({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const m = context.mission;
+  const needsPreparation =
+    m.state === "closed" ||
+    (m.state === "paused" &&
+      m.coordinationMode === "coordinated" &&
+      !context.startup.coordinatorReady);
   const [record, setRecord] = useState(panel.record);
   const [editingMessage, setEditingMessage] = useState(false),
     [messageDraft, setMessageDraft] = useState("");
@@ -261,27 +266,55 @@ export function SidePanel({
                 ) : null}
               </section>
               <section className="panel-block">
-                <h3 className="label">Coordinator</h3>
-                <select
-                  aria-label="Coordinator"
-                  value={m.coordinatorId || ""}
-                  disabled={busy || m.archived}
-                  onChange={(e) =>
-                    action("coordinator_set", {
-                      version: m.version,
-                      agent_id: e.target.value || null,
-                      reason:
-                        "Human changed coordination from mission controls.",
-                    })
-                  }
+                <Field
+                  label="Coordination"
+                  hint="Changing the organization returns the mission to preparation. You decide when execution starts."
                 >
-                  <option value="">None · peer collaboration</option>
-                  {context.agents.map((a) => (
-                    <option value={a.id} key={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                  <select
+                    aria-label="Coordination mode"
+                    value={m.coordinationMode}
+                    disabled={busy || m.archived || m.state === "closed"}
+                    onChange={(e) =>
+                      action("coordination_set", {
+                        version: m.version,
+                        mode: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="coordinated">Coordinator-led</option>
+                    <option value="peer">Peer collaboration</option>
+                  </select>
+                </Field>
+                {m.coordinationMode === "coordinated" ? (
+                  <>
+                    <h3 className="label">Coordinator</h3>
+                    <select
+                      aria-label="Coordinator"
+                      value={m.coordinatorId || ""}
+                      disabled={busy || m.archived || m.state === "closed"}
+                      onChange={(e) =>
+                        action("coordinator_set", {
+                          version: m.version,
+                          agent_id: e.target.value || null,
+                          reason:
+                            "Human changed coordination from mission controls.",
+                        })
+                      }
+                    >
+                      <option value="">Awaiting coordinator</option>
+                      {context.agents.map((a) => (
+                        <option value={a.id} key={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    {m.state === "preparing" ? (
+                      <p className="hint" role="status">
+                        {context.startup.reason}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
                 <p className="hint">
                   Your instructions take priority. You can talk to any agent at
                   any time.
@@ -309,7 +342,10 @@ export function SidePanel({
                 </div>
                 <Text
                   value={
-                    m.plan || "No plan published yet. Agents can begin in Main."
+                    m.plan ||
+                    (m.coordinationMode === "coordinated"
+                      ? "The coordinator prepares an initial direction before you start the mission."
+                      : "Agents can organize in Main after you start the mission. A shared plan is optional.")
                   }
                 />
               </section>
@@ -321,10 +357,21 @@ export function SidePanel({
                   </Badge>
                   <button
                     className="button"
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      (m.state !== "active" &&
+                        !needsPreparation &&
+                        !context.startup.canStart)
+                    }
                     onClick={() =>
                       action("mission_state", {
-                        state: m.state === "active" ? "paused" : "active",
+                        version: m.version,
+                        state:
+                          m.state === "active"
+                            ? "paused"
+                            : needsPreparation
+                              ? "preparing"
+                              : "active",
                         reason:
                           "Human changed mission state from the channel controls.",
                       })
@@ -332,9 +379,15 @@ export function SidePanel({
                   >
                     {m.state === "active"
                       ? "Pause mission"
-                      : m.state === "paused"
-                        ? "Resume mission"
-                        : "Reopen mission"}
+                      : m.state === "preparing"
+                        ? "Start mission"
+                        : needsPreparation
+                          ? m.state === "closed"
+                            ? "Reopen in preparation"
+                            : "Prepare to resume"
+                          : m.state === "paused"
+                            ? "Resume mission"
+                            : "Reopen mission"}
                   </button>
                   {m.state !== "closed" ? (
                     <button
@@ -343,6 +396,7 @@ export function SidePanel({
                       onClick={() =>
                         action("mission_state", {
                           state: "closed",
+                          version: m.version,
                           reason: "Human closed the mission.",
                         })
                       }
@@ -415,6 +469,13 @@ export function SidePanel({
                             ?.name
                         }
                       </small>
+                      {a.participation.state === "waiting" ? (
+                        <small>
+                          {m.state === "preparing"
+                            ? "Waiting for mission start"
+                            : "Waiting for a direction"}
+                        </small>
+                      ) : null}
                     </div>
                     <Badge
                       tone={
@@ -617,9 +678,25 @@ function AgentDetail({
           disabled={context.mission.archived}
           onClick={() => edit({ kind: "assignment", agent: a })}
         >
-          Assign workstream
+          Give direction
         </button>
       </div>
+      <section className="panel-block">
+        <h3 className="label">Work authorization</h3>
+        <Badge
+          tone={a.participation.state === "authorized" ? "success" : "warning"}
+        >
+          {a.participation.state === "authorized"
+            ? "Authorized"
+            : a.participation.state === "planning"
+              ? "Planning only"
+              : a.participation.state}
+        </Badge>
+        <p className="hint">{a.participation.reason}</p>
+        {a.participation.instruction ? (
+          <Text value={a.participation.instruction} />
+        ) : null}
+      </section>
       <section>
         <h3 className="label">Current workstream</h3>
         <p>{context.workstreams.find((w) => w.id === a.streamId)?.name}</p>

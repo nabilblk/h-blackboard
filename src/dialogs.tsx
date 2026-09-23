@@ -1,11 +1,16 @@
+import runtimes from "../shared/runtimes.json";
+import type { RuntimeId } from "./model";
 import { useState, type FormEvent } from "react";
 import { Copy, Check } from "lucide-react";
 import { rpc, quote } from "./client";
 import { ModalFrame, Field } from "./ui";
+import { RecoveryDialog } from "./Recovery";
 import type { Context, Mission, Modal, Session } from "./model";
 const titles: Record<Modal["kind"], [string, string]> = {
   mission: ["New channel", "Define the mission"],
   "edit-mission": ["Mission", "Update instructions"],
+  criterion: ["Completion criterion", "Update status"],
+  recovery: ["Agent recovery", "Resume existing agents"],
   invite: ["Invite agents", ""],
   stream: ["New workstream", "Define its goal"],
   "edit-stream": ["Workstream", "Update its goal"],
@@ -27,6 +32,7 @@ export function Dialogs({
   saved: (mission?: Mission) => Promise<void>;
 }) {
   const m = context?.mission;
+  const [editingVersion] = useState(m?.version);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [criteria, setCriteria] = useState<
@@ -71,11 +77,21 @@ export function Dialogs({
             await rpc("mission_update", {
               ...base,
               ...input,
-              version: m!.version,
-              criteria: pending,
+              version: editingVersion,
+              criteria: pending.map(({ id, text }) => ({ id, text })),
             });
           break;
         }
+        case "criterion":
+          await rpc("criterion_update", {
+            ...base,
+            version: editingVersion,
+            criterion_id: modal.criterion!.id,
+            met: data.status === "met",
+            summary: data.summary,
+            refs: data.ref ? [data.ref] : [],
+          });
+          break;
         case "stream":
           await rpc("stream_create", { ...base, ...data });
           break;
@@ -124,11 +140,66 @@ export function Dialogs({
       title={modal.kind === "invite" ? m!.name : titles[modal.kind][1]}
       close={close}
     >
-      {modal.kind === "invite" ? (
+      {modal.kind === "recovery" ? (
+        <RecoveryDialog
+          context={context!}
+          session={session}
+          refresh={() => saved()}
+          close={close}
+        />
+      ) : modal.kind === "invite" ? (
         <Invite context={context!} session={session} />
       ) : (
         <form onSubmit={submit}>
           <div className="dialog-body">
+            {modal.kind === "criterion" ? (
+              <>
+                <p>{modal.criterion!.text}</p>
+                <Field label="Status">
+                  <select
+                    name="status"
+                    defaultValue={modal.criterion!.met ? "unmet" : "met"}
+                  >
+                    <option value="met">Reported complete</option>
+                    <option value="unmet">Not yet met</option>
+                  </select>
+                </Field>
+                <Field
+                  label="Evidence or reason"
+                  hint="Shared in Main. Include test results, sources, or the remaining gap. You keep the final decision on mission completion."
+                >
+                  <textarea
+                    name="summary"
+                    rows={4}
+                    required
+                    maxLength={16000}
+                    autoFocus
+                    placeholder="What supports this status?"
+                  />
+                </Field>
+                <Field label="Supporting message · optional">
+                  <select name="ref" defaultValue="">
+                    <option value="">No message reference</option>
+                    {context!.messages
+                      .filter(
+                        (message) => !message.directAgentId && !message.removed,
+                      )
+                      .map((message) => (
+                        <option key={message.id} value={message.id}>
+                          {message.body.slice(0, 100)}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                {editingVersion !== m?.version ? (
+                  <p className="warning" role="status">
+                    The mission changed while you were reviewing it. Close and
+                    reopen this dialog to review the current status before
+                    saving.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             {modal.kind === "mission" || modal.kind === "edit-mission" ? (
               <>
                 <Field label="Objective">
@@ -345,7 +416,13 @@ export function Dialogs({
             <button className="button" type="button" onClick={close}>
               Cancel
             </button>
-            <button className="button primary" disabled={busy}>
+            <button
+              className="button primary"
+              disabled={
+                busy ||
+                (modal.kind === "criterion" && editingVersion !== m?.version)
+              }
+            >
               {busy
                 ? "Saving…"
                 : modal.kind === "mission"
@@ -368,7 +445,7 @@ function Invite({ context, session }: { context: Context; session: Session }) {
   const [tab, setTab] = useState("single"),
     [role, setRole] = useState("agent"),
     [stream, setStream] = useState(context.mission.defaultStreamId),
-    [runtime, setRuntime] = useState("claude"),
+    [runtime, setRuntime] = useState<RuntimeId>("claude"),
     [count, setCount] = useState(4),
     [permissions, setPermissions] = useState("default"),
     [layout, setLayout] = useState("per-agent"),
@@ -503,7 +580,8 @@ function Invite({ context, session }: { context: Context; session: Session }) {
           {tab === "single" ? (
             <>
               <p className="secondary">
-                Paste into an existing Claude Code or Codex session.
+                Paste into an existing Claude Code, Codex, or Grok Build
+                session.
               </p>
               <pre className="code-block">{single}</pre>
               <button
@@ -528,10 +606,13 @@ function Invite({ context, session }: { context: Context; session: Session }) {
                 <Field label="Runtime">
                   <select
                     value={runtime}
-                    onChange={(e) => setRuntime(e.target.value)}
+                    onChange={(e) => setRuntime(e.target.value as RuntimeId)}
                   >
-                    <option value="claude">Claude Code</option>
-                    <option value="codex">Codex</option>
+                    {Object.entries(runtimes).map(([id, spec]) => (
+                      <option key={id} value={id}>
+                        {spec.label}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Instances">
@@ -558,7 +639,7 @@ function Invite({ context, session }: { context: Context; session: Session }) {
                   hint={
                     permissions === "full"
                       ? "No runtime approval prompts or runtime sandbox. Runs with your OS user’s access; machine and organization policies still apply."
-                      : "Codex uses workspace-write without prompts. Claude keeps its normal permission controls."
+                      : runtimes[runtime].defaultAccess
                   }
                 >
                   <select

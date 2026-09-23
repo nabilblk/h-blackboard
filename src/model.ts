@@ -1,3 +1,5 @@
+import runtimes from "../shared/runtimes.json";
+export type RuntimeId = keyof typeof runtimes;
 export type Role = "agent" | "coordinator";
 export interface Base {
   id: string;
@@ -10,6 +12,13 @@ export interface Criterion {
   id: string;
   text: string;
   met: boolean;
+  assessment?: {
+    summary: string;
+    refs: string[];
+    updatedBy: string;
+    updatedAt: number;
+    messageId: string;
+  };
 }
 export interface Mission extends Base {
   name: string;
@@ -43,7 +52,7 @@ export interface Stream extends Base {
 }
 export interface Agent extends Base {
   name: string;
-  runtime: "claude" | "codex";
+  runtime: RuntimeId;
   role: Role;
   capabilities: string;
   streamId: string;
@@ -55,6 +64,7 @@ export interface Agent extends Base {
   humanDirected: boolean;
   participation: Participation;
   execution?: ExecutionInfo | null;
+  recovery?: RecoveryInfo | null;
 }
 export interface Participation {
   state: "waiting" | "planning" | "authorized" | "paused" | "closed";
@@ -84,6 +94,26 @@ export interface ExecutionInfo {
   startedAt: number;
   reportedAt: number;
   lastError: string | null;
+}
+export interface RecoveryInfo {
+  executionId: string;
+  runnerId: string;
+  runnerName: string;
+  runnerOnline: boolean;
+  provider: {
+    id: string;
+    label: string;
+    isolation: "none" | "container" | "vm";
+    capabilities: { resume: boolean };
+  };
+  generation: number;
+  observedGeneration: number;
+  state: "queued" | "starting" | "running" | "stopped" | "failed" | "unknown";
+  error: string | null;
+  requestedAt: number | null;
+  observedAt: number | null;
+  resumeCommand: string | null;
+  launcherCommand: string | null;
 }
 export interface Message extends Base {
   authorId: string;
@@ -166,6 +196,8 @@ export type Modal = {
   kind:
     | "mission"
     | "edit-mission"
+    | "criterion"
+    | "recovery"
     | "invite"
     | "stream"
     | "edit-stream"
@@ -174,6 +206,7 @@ export type Modal = {
     | "plan";
   agent?: Agent;
   stream?: Stream;
+  criterion?: Criterion;
 };
 export type Panel = {
   kind: "mission" | "agents" | "requests" | "tasks" | "record";

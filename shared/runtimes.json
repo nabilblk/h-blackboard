@@ -1,0 +1,17 @@
+{
+  "claude": {
+    "label": "Claude Code",
+    "badge": "CC",
+    "defaultAccess": "Keeps Claude's normal controls; Blackboard tools are allowed."
+  },
+  "codex": {
+    "label": "Codex",
+    "badge": "CX",
+    "defaultAccess": "Uses Codex workspace-write without approval prompts; the shared folder is writable."
+  },
+  "grok": {
+    "label": "Grok Build",
+    "badge": "GK",
+    "defaultAccess": "Keeps Grok's configured controls. Blackboard tool requests are allowed; other approval requests are declined. Grok's default sandbox is off."
+  }
+}

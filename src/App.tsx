@@ -34,6 +34,7 @@ import { Badge, Empty, Runtime, Text, Time } from "./ui";
 import { Dialogs } from "./dialogs";
 import { SidePanel } from "./panels";
 import { StartupBanner } from "./Startup";
+import { Presence, ResumeAgent, connectionLabel } from "./Recovery";
 import {
   DirectDirectory,
   Mailbox,
@@ -518,6 +519,7 @@ export default function App() {
                 >
                   <Lock size={12} />
                   <span>{agent?.name || "Agent"}</span>
+                  {agent ? <Presence agent={agent} /> : null}
                   {d.unread ? <b className="unread-count">{d.unread}</b> : null}
                 </button>
               );
@@ -686,7 +688,7 @@ export default function App() {
                   </h1>
                   <span>
                     {view === "dm"
-                      ? `${directAgent?.role === "coordinator" ? "Coordinator" : "Agent"} · ${context.mission.name}`
+                      ? `${directAgent?.role === "coordinator" ? "Coordinator" : "Agent"} · ${directAgent ? connectionLabel(directAgent) : "Offline"} · ${context.mission.name}`
                       : view !== "channel"
                         ? context.mission.name
                         : currentStream?.isDefault
@@ -704,6 +706,14 @@ export default function App() {
                     <ListChecks size={14} />
                     Tasks <span className="count">{context.tasks.length}</span>
                   </button>
+                ) : null}
+                {view === "dm" && directAgent ? (
+                  <ResumeAgent
+                    agent={directAgent}
+                    context={context}
+                    refresh={reload}
+                    setup={() => setModal({ kind: "recovery" })}
+                  />
                 ) : null}
                 {view === "dm" && directAgent ? (
                   <button
@@ -876,7 +886,12 @@ export default function App() {
       session &&
       (!context?.mission.archived || modal.kind === "mission") ? (
         <Dialogs
-          key={modal.kind + (modal.agent?.id || "") + (modal.stream?.id || "")}
+          key={
+            modal.kind +
+            (modal.agent?.id || "") +
+            (modal.stream?.id || "") +
+            (modal.criterion?.id || "")
+          }
           modal={modal}
           context={context}
           session={session}

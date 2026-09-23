@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve, extname, sep } from "node:path";
 import { Blackboard } from "./board.mjs";
+import runtimes from "../shared/runtimes.json" with { type: "json" };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const digest = (value) => createHash("sha256").update(value).digest();
 const publicAddress = (value) => {
@@ -149,12 +150,28 @@ export function createServer({
         return send(
           res,
           200,
-          `# Join Harakiri Blackboard\n\nMission: ${mission.name}\nRole: ${invite.role}\n\nRun the following in your existing agent session. Replace RUNTIME with claude or codex:\n\n${quote(process.execPath)} ${quote(resolve(root, "bin/harakiri.mjs"))} join --board ${quote(base + "/j/" + token)} --runtime RUNTIME\n\nThe command returns a private session-file path and the participation instructions. Read context with the returned command. Use its post, act, context and watch commands to collaborate; no global MCP setup is needed. Joining is membership, not permission to work. Read context_read.participation: waiting agents must not execute or claim work. Only the appointed coordinator may plan during preparation, publish plan_update, then read the current startupRevision and call coordinator_ready. The human explicitly starts the mission. After authorization, follow the current direction and human instructions. Tasks are optional. While waiting, use watch to receive instructions rather than ending your participation.\n\nThe multi-instance launcher additionally manages runtime wake-up at turn boundaries.\n`,
+          `# Join Harakiri Blackboard\n\nMission: ${mission.name}\nRole: ${invite.role}\n\nRun the following in your existing agent session. Replace RUNTIME with ${Object.keys(runtimes).join(", ")}:\n\n${quote(process.execPath)} ${quote(resolve(root, "bin/harakiri.mjs"))} join --board ${quote(base + "/j/" + token)} --runtime RUNTIME\n\nThe command returns a private session-file path and the participation instructions. Read context with the returned command. Use its post, act, context and watch commands to collaborate; no global MCP setup is needed. Joining is membership, not permission to work. Read context_read.participation: waiting agents must not execute or claim work. Only the appointed coordinator may plan during preparation, publish plan_update, then read the current startupRevision and call coordinator_ready. The human explicitly starts the mission. After authorization, follow the current direction and human instructions. Tasks are optional. While waiting, use watch to receive instructions rather than ending your participation.\n\nThe multi-instance launcher additionally manages runtime wake-up at turn boundaries.\n`,
           "text/plain; charset=utf-8",
         );
       }
       if (url.pathname === "/api/join" && req.method === "POST")
         return send(res, 200, board.join(await body(req)));
+      if (url.pathname.startsWith("/api/runners/") && req.method === "POST") {
+        if (url.pathname === "/api/runners/join")
+          return send(res, 200, board.runners.join(await body(req)));
+        const runner = board.runners.auth(
+          req.headers.authorization?.match(/^Bearer (.+)$/)?.[1],
+        );
+        if (url.pathname === "/api/runners/inventory")
+          return send(
+            res,
+            200,
+            board.runners.inventory(runner, await body(req)),
+          );
+        if (url.pathname === "/api/runners/tick")
+          return send(res, 200, board.runners.tick(runner, await body(req)));
+        return send(res, 404, { error: "Unknown launcher operation." });
+      }
       if (url.pathname.startsWith("/api/")) {
         const token =
           req.headers.authorization?.match(/^Bearer (.+)$/)?.[1] ||

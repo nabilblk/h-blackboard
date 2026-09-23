@@ -5,7 +5,7 @@ import type { Agent } from "./model";
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
-function CopyDetail({ label, value }: { label: string; value: string }) {
+export function CopyDetail({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState("");
   const [error, setError] = useState(false);
   return (

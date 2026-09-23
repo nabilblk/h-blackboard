@@ -9,6 +9,7 @@ import {
   rm,
   stat,
   symlink,
+  realpath,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
@@ -24,6 +25,10 @@ import {
   prepareAgentWorkspace,
 } from "../bin/runtime.mjs";
 import { runtimeLog } from "../bin/runtime-logs.mjs";
+import runtimes from "../shared/runtimes.json" with { type: "json" };
+import { pathToFileURL } from "node:url";
+import { RunnerController } from "../bin/runner.mjs";
+import { LocalProcessProvider } from "../bin/providers/local-process.mjs";
 
 const exec = promisify(execFile);
 const cli = resolve("bin/harakiri.mjs");
@@ -98,6 +103,13 @@ if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'o
 `;
   for (const runtime of ["claude", "codex"])
     await writeFile(join(commands, runtime), fake, { mode: 0o700 });
+  await writeFile(
+    join(commands, "grok"),
+    `#!/usr/bin/env node
+import(${JSON.stringify(pathToFileURL(resolve("tests/fixtures/grok.mjs")).href)});
+`,
+    { mode: 0o700 },
+  );
   const env = { ...process.env, PATH: commands + ":" + process.env.PATH };
   const args = (runtime, ...extra) => [
     cli,
@@ -126,6 +138,7 @@ if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'o
     url,
     owner,
     board,
+    server,
     mission,
     env,
     args,
@@ -135,7 +148,7 @@ if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'o
   };
 }
 
-for (const runtime of ["claude", "codex"]) {
+for (const runtime of Object.keys(runtimes)) {
   test(`${runtime}: a restarted waiting session still cannot start until a human releases it`, async (t) => {
     const f = await fixture(t, true);
     await call(f.owner, "coordination_set", {
@@ -343,6 +356,11 @@ for (const runtime of ["claude", "codex"]) {
           turn.args.includes("--dangerously-bypass-approvals-and-sandbox"),
         );
         assert.ok(turn.args.includes('approval_policy="never"'));
+      } else if (runtime === "grok") {
+        assert.ok(turn.args.includes("--always-approve"));
+        assert.ok(turn.args.includes("--no-leader"));
+        assert.equal(turn.sandbox, "off");
+        assert.equal(turn.config._meta.yoloMode, true);
       } else {
         assert.ok(turn.args.includes("--dangerously-skip-permissions"));
         assert.deepEqual(
@@ -352,7 +370,9 @@ for (const runtime of ["claude", "codex"]) {
       }
     }
     assert.ok(
-      turns[1].args.includes(runtime === "codex" ? "resume" : "--resume"),
+      runtime === "grok"
+        ? turns[1].method === "session/load"
+        : turns[1].args.includes(runtime === "codex" ? "resume" : "--resume"),
     );
     assert.match(turns[0].prompt, /Shared mission folder:/);
     const record = await call(f.owner, "record_read", { id: state.agentId });
@@ -396,6 +416,164 @@ for (const runtime of ["claude", "codex"]) {
     );
   });
 }
+
+test("Grok agents share a workspace without sharing MCP identity or modifying project configuration", async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.workspace, ".grok"), { recursive: true });
+  const config = join(f.workspace, ".grok", "config.toml");
+  const projectMcp = join(f.workspace, ".mcp.json");
+  await writeFile(config, "# Existing user configuration\n");
+  await writeFile(projectMcp, '{"mcpServers":{}}\n');
+  await exec(
+    process.execPath,
+    f.args("grok", "--layout", "shared", "--count", "2"),
+    {
+      env: {
+        ...f.env,
+        HARAKIRI_TEST_MCP: "1",
+        HARAKIRI_SESSION: "/foreign/session.json",
+      },
+    },
+  );
+  const sessions = await f.states();
+  assert.equal(sessions.length, 2);
+  assert.notEqual(
+    sessions[0].state.nativeSession,
+    sessions[1].state.nativeSession,
+  );
+  for (const { state } of sessions) {
+    assert.equal(state.cwd, await realpath(f.workspace));
+    assert.ok(
+      f.board
+        .list(f.mission.id, "message")
+        .some(
+          (m) =>
+            m.authorId === state.agentId &&
+            m.body === "ACP_MCP_" + state.agentId,
+        ),
+    );
+  }
+  assert.equal(
+    await readFile(config, "utf8"),
+    "# Existing user configuration\n",
+  );
+  assert.equal(await readFile(projectMcp, "utf8"), '{"mcpServers":{}}\n');
+  // The same board admits all three runtimes; no runtime-specific mission data.
+  for (const runtime of ["claude", "codex"])
+    await exec(process.execPath, f.args(runtime), { env: f.env });
+  assert.deepEqual(
+    new Set(f.board.list(f.mission.id, "agent").map((agent) => agent.runtime)),
+    new Set(Object.keys(runtimes)),
+  );
+});
+
+test("Grok preflight rejects missing auth, incompatible protocol, and unsupported modes before registration", async (t) => {
+  const f = await fixture(t);
+  for (const [flag, pattern] of [
+    ["HARAKIRI_TEST_NO_AUTH", /needs authentication/],
+    ["HARAKIRI_TEST_BAD_AUTH", /Credentials expired/],
+    ["HARAKIRI_TEST_NO_RESUME", /required ACP session\/resume protocol/],
+    ["HARAKIRI_TEST_UNSUPPORTED", /does not support/],
+    ["HARAKIRI_TEST_BAD_PROTOCOL", /Invalid Grok ACP response/],
+  ]) {
+    await assert.rejects(
+      exec(process.execPath, f.args("grok", "--count", "3"), {
+        env: { ...f.env, [flag]: "1" },
+      }),
+      pattern,
+    );
+    assert.equal(f.board.list(f.mission.id, "agent").length, 0);
+  }
+  await assert.rejects(
+    exec(process.execPath, f.args("grok", "--board-only"), { env: f.env }),
+    /does not yet support --board-only/,
+  );
+  assert.equal(f.board.list(f.mission.id, "agent").length, 0);
+});
+
+for (const [flag, value, pattern] of [
+  ["HARAKIRI_TEST_FAIL", "1", /Managed policy blocked/],
+  ["HARAKIRI_TEST_CRASH", "1", /disconnected/],
+  ["HARAKIRI_TEST_STOP", "max_tokens", /stop reason: max_tokens/],
+  ["HARAKIRI_TEST_STOP", "cancelled", /stop reason: cancelled/],
+])
+  test(`Grok ${flag}/${value}: failure is visible and the original identity can resume`, async (t) => {
+    const f = await fixture(t);
+    await assert.rejects(
+      exec(process.execPath, f.args("grok"), {
+        env: { ...f.env, [flag]: value },
+      }),
+      pattern,
+    );
+    const [{ state, file }] = await f.states();
+    assert.equal(state.nativeSession, "native-" + state.agentId);
+    const agent = await call(f.owner, "record_read", { id: state.agentId });
+    assert.match(agent.execution.lastError, pattern);
+    assert.ok(!agent.execution.lastError.includes(state.token));
+    await exec(
+      process.execPath,
+      [cli, "resume", "--session", file, "--max-turns", "1"],
+      { env: f.env },
+    );
+    assert.equal(
+      (await call(f.owner, "record_read", { id: state.agentId })).execution
+        .lastError,
+      null,
+    );
+    assert.equal(f.board.list(f.mission.id, "agent").length, 1);
+    assert.equal(
+      JSON.parse(await readFile(file, "utf8")).nativeSession,
+      state.nativeSession,
+    );
+  });
+
+test("Stopping a Grok launcher interrupts its owned ACP process and preserves the native session", async (t) => {
+  const f = await fixture(t);
+  const child = spawn(process.execPath, f.args("grok"), {
+    env: { ...f.env, HARAKIRI_TEST_HOLD: "1" },
+    stdio: "ignore",
+  });
+  const exited = once(child, "exit");
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGTERM");
+    await exited;
+  });
+  const session = await until(async () => {
+    try {
+      const [value] = await f.states();
+      return value?.state.nativeSession && value;
+    } catch {
+      return false;
+    }
+  }, "native identity persisted during the model turn");
+  const observed = await until(async () => {
+    try {
+      return JSON.parse(
+        (
+          await readFile(join(session.state.cwd, "observations.jsonl"), "utf8")
+        ).trim(),
+      );
+    } catch {
+      return false;
+    }
+  }, "Grok process running");
+  process.kill(observed.pid, 0);
+  child.kill("SIGTERM");
+  await exited;
+  await until(() => {
+    try {
+      process.kill(observed.pid, 0);
+      return false;
+    } catch (error) {
+      return error.code === "ESRCH";
+    }
+  }, "Grok process stopped");
+  assert.equal(
+    JSON.parse(await readFile(session.file, "utf8")).nativeSession,
+    session.state.nativeSession,
+  );
+});
 
 test("Shared folders and the legacy --cwd alias use one deliberate working folder", async (t) => {
   const f = await fixture(t);
@@ -682,5 +860,133 @@ test("Live logs rotate with bounded retention and private file permissions", asy
     const s = await stat(join(directory, path));
     assert.ok(s.size <= 16);
     assert.equal(s.mode & 0o777, 0o600);
+  }
+});
+
+test("A paired local runner resumes the saved identity and survives a temporary HTML gateway failure", async (t) => {
+  const f = await fixture(t);
+  await exec(process.execPath, f.args("codex"), { env: f.env });
+  const [{ file, state }] = await f.states();
+  const originalNative = state.nativeSession;
+  for (let i = 0; i < 75; i++)
+    await call(f.owner, "message_post", {
+      body: `Saved-cursor instruction ${i}`,
+      audience: state.agentId,
+    });
+  const pair = await call(f.owner, "runner_pair");
+  const connection = await request(f.url, "/api/runners/join", {
+    pairing_token: pair.token,
+    registration_id: crypto.randomUUID(),
+    name: "Local recovery test",
+    provider: LocalProcessProvider.descriptor,
+  });
+  Object.assign(connection, { url: f.url, stateRoot: f.sessions });
+  const provider = new LocalProcessProvider({
+    connection,
+    directory: join(f.directory, "runner"),
+    env: f.env,
+  });
+  const controller = new RunnerController({ connection, provider });
+  const handlers = f.server.listeners("request");
+  let outage = false;
+  f.server.removeAllListeners("request");
+  f.server.on("request", (req, res) => {
+    if (outage && req.headers.authorization === `Bearer ${state.token}`) {
+      res.writeHead(502, { "Content-Type": "text/html" });
+      res.end("<html>Gateway restarting</html>");
+    } else handlers.forEach((handler) => handler(req, res));
+  });
+  try {
+    await controller.sync();
+    assert.equal(
+      provider.bindings[0].pid,
+      null,
+      "Attaching a saved session does not launch it",
+    );
+    const beforeResume = f.board.get(state.agentId).lastSeen;
+    await call(f.owner, "agents_resume", { agent_ids: [state.agentId] });
+    await controller.sync();
+    const resumed = await until(async () => {
+      const agent = f.board.get(state.agentId);
+      return agent.status === "idle" && agent.lastSeen > beforeResume && agent;
+    }, "resumed agent heartbeat");
+    assert.ok(resumed);
+    const pid = provider.bindings[0].pid;
+    assert.ok(pid);
+    await until(
+      async () =>
+        (await readFile(join(state.cwd, "observations.jsonl"), "utf8"))
+          .trim()
+          .split("\n").length >= 2,
+      "native session resumed",
+    );
+    assert.equal(
+      JSON.parse(await readFile(file, "utf8")).nativeSession,
+      originalNative,
+    );
+    await controller.sync();
+    assert.equal(
+      provider.bindings[0].pid,
+      pid,
+      "Repeated sync cannot start a second worker",
+    );
+    assert.equal(f.board.list(f.mission.id, "agent").length, 1);
+    outage = true;
+    const before = f.board.get(state.agentId).lastSeen;
+    await call(f.owner, "message_post", {
+      body: "A follow-up delivered through the reconnecting launcher",
+      audience: state.agentId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    process.kill(pid, 0);
+    outage = false;
+    await until(
+      async () => f.board.get(state.agentId).lastSeen > before,
+      "heartbeat after gateway recovery",
+    );
+    process.kill(pid, 0);
+    assert.equal(
+      JSON.parse(await readFile(file, "utf8")).nativeSession,
+      originalNative,
+    );
+    assert.equal(f.board.list(f.mission.id, "agent").length, 1);
+    const nativeCalls = (
+      await readFile(join(state.cwd, "observations.jsonl"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.ok(
+      nativeCalls
+        .slice(1)
+        .every((entry) => entry.args.includes(originalNative)),
+    );
+    assert.ok(
+      nativeCalls
+        .slice(1)
+        .some((entry) => entry.prompt.includes("Saved-cursor instruction 0")),
+      "An older unread instruction is not lost to the bounded context snapshot",
+    );
+  } finally {
+    outage = false;
+    for (const binding of provider.bindings || [])
+      if (binding.pid) {
+        try {
+          process.kill(binding.pid, "SIGTERM");
+        } catch {}
+      }
+    await until(async () => {
+      try {
+        await stat(file + ".lock");
+        return false;
+      } catch {
+        return true;
+      }
+    }, "worker cleanup");
+    await until(
+      async () => provider.bindings.every((b) => !b.pid),
+      "provider exit observation",
+    );
+    await provider.saving;
   }
 });

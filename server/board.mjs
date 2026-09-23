@@ -3,8 +3,10 @@ import { randomBytes, createHash } from "node:crypto";
 import { mkdirSync, chmodSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { EventEmitter } from "node:events";
+import runtimes from "../shared/runtimes.json" with { type: "json" };
 import { operations, validate } from "./contracts.mjs";
 import { validateExecution } from "./execution.mjs";
+import { Runners } from "./runners.mjs";
 import {
   migrateStartup,
   participation,
@@ -60,6 +62,7 @@ export class Blackboard extends EventEmitter {
         .run(digest(this.ownerToken), "human", null);
     }
     migrateStartup(this);
+    this.runners = new Runners(this);
     if (file !== ":memory:")
       for (const path of [file, file + "-wal", file + "-shm"])
         if (existsSync(path)) chmodSync(path, 0o600);
@@ -237,6 +240,7 @@ export class Blackboard extends EventEmitter {
       ...a,
       ...(viewer?.human
         ? {
+            recovery: this.runners.view(a.id),
             execution: parse(
               this.db
                 .prepare("SELECT data FROM agent_execution WHERE agent=?")
@@ -695,8 +699,8 @@ export class Blackboard extends EventEmitter {
       "Invalid registration ID",
     );
     must(
-      ["claude", "codex"].includes(runtime),
-      "Runtime must be claude or codex",
+      typeof runtime === "string" && Object.hasOwn(runtimes, runtime),
+      `Runtime must be ${Object.keys(runtimes).join(", ")}`,
     );
     must(
       typeof name === "string" && name.trim().length > 0 && name.length <= 100,
@@ -873,6 +877,21 @@ export class Blackboard extends EventEmitter {
       }
       let result;
       switch (operation) {
+        case "runner_pair": {
+          this.human(actor);
+          must(
+            c.state !== "closed",
+            "Reopen the mission before connecting a launcher.",
+            409,
+          );
+          result = this.runners.pair(c);
+          break;
+        }
+        case "agents_resume": {
+          this.human(actor);
+          result = this.runners.resume(c, p.agent_ids);
+          break;
+        }
         case "messages_seen": {
           this.human(actor);
           const seen = this.db.prepare(
@@ -926,20 +945,84 @@ export class Blackboard extends EventEmitter {
         case "mission_update": {
           this.human(actor);
           this.version(c, p.version);
+          const existing = new Map(c.criteria.map((x) => [x.id, x]));
+          const seen = new Set();
+          const reset = [];
+          const criteria = p.criteria.map((x) => {
+            const previous = x.id ? existing.get(x.id) : null;
+            must(!x.id || previous, "Criterion not found in this mission", 404);
+            must(!seen.has(x.id), "Duplicate criterion ID");
+            if (x.id) seen.add(x.id);
+            must(
+              x.met === undefined || x.met === (previous?.met ?? false),
+              "Use criterion_update with evidence to change completion status.",
+            );
+            if (previous?.text === x.text) return previous;
+            if (previous?.met || previous?.assessment) reset.push(x.text);
+            return { id: x.id || key("cr"), text: x.text, met: false };
+          });
           result = this.update(c, {
             name: p.name,
             objective: p.objective,
             scope: p.scope,
-            criteria: p.criteria.map((x) => ({ ...x, id: x.id || key("cr") })),
+            criteria,
             ...(c.state !== "active" ? preparationChange(c) : {}),
           });
           this.update(this.get(c.defaultStreamId), { goal: p.objective });
           this.message(
             c,
             actor,
-            "Human updated the mission instructions. Read the current objective, scope, and criteria.",
+            "Human updated the mission instructions. Read the current objective, scope, and criteria." +
+              (reset.length
+                ? `\n\nProgress reset after criterion wording changed:\n${reset.map((text) => `- ${text}`).join("\n")}`
+                : ""),
             { kind: "decision" },
           );
+          break;
+        }
+        case "criterion_update": {
+          must(
+            actor.human || c.coordinatorId === actor.id,
+            "Only the current coordinator or human can update completion criteria. Publish your evidence for their review.",
+            403,
+          );
+          this.version(c, p.version);
+          const criterion = c.criteria.find((x) => x.id === p.criterion_id);
+          must(criterion, "Criterion not found in this mission", 404);
+          must(
+            actor.human || !p.met || p.refs.length > 0,
+            "Publish supporting evidence to the board and include its record ID in refs before marking a criterion met.",
+          );
+          this.references(actor, c, p.refs);
+          const refs = [...new Set(p.refs)];
+          const report = this.message(
+            c,
+            actor,
+            `Completion criterion ${p.met ? "reported complete" : "marked not yet met"}: ${criterion.text}\n\n${p.summary}`,
+            {
+              kind: "decision",
+              refs,
+              criterionId: criterion.id,
+              criterionMet: p.met,
+            },
+          );
+          result = this.update(c, {
+            criteria: c.criteria.map((x) =>
+              x.id === criterion.id
+                ? {
+                    ...x,
+                    met: p.met,
+                    assessment: {
+                      summary: p.summary,
+                      refs,
+                      updatedBy: actor.id,
+                      updatedAt: report.createdAt,
+                      messageId: report.id,
+                    },
+                  }
+                : x,
+            ),
+          });
           break;
         }
         case "mission_archive": {

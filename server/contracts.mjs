@@ -7,6 +7,18 @@ const channel = { channel_id: id },
   version = { version: z.number().int().positive() },
   refs = z.array(id).max(30).default([]);
 export const operations = {
+  runner_pair: {
+    description:
+      "Human: create a single-use, mission-scoped link to connect an execution runner. This does not start agents.",
+    schema: z.object({ ...channel }),
+  },
+  agents_resume: {
+    description:
+      "Human: ask the paired runners to resume existing agent sessions. The runner resolves saved execution references; no shell command or path is accepted. Mission start and pause rules still apply.",
+    schema: z
+      .object({ ...channel, agent_ids: z.array(id).min(1).max(1000) })
+      .strict(),
+  },
   context_read: {
     description:
       "Read the mission, startup readiness, and your participation permission before acting. Joining is not permission to execute. Includes plan, workstreams, pending assignments, tasks, human requests and conversation. Use records_read for full lists and messages_read for more history.",
@@ -88,7 +100,7 @@ export const operations = {
   },
   mission_update: {
     description:
-      "Human: update mission instructions and completion criteria. Use the current version to avoid overwriting newer instructions.",
+      "Human: update mission instructions and criterion definitions. Unchanged criteria retain their progress; changed wording resets progress. Use criterion_update to report status. Use the current mission version.",
     schema: z.object({
       ...channel,
       ...version,
@@ -100,11 +112,25 @@ export const operations = {
           z.object({
             id: id.optional(),
             text: short,
-            met: z.boolean().default(false),
+            met: z.boolean().optional(),
           }),
         )
         .max(50),
     }),
+  },
+  criterion_update: {
+    description:
+      "Current coordinator or human: report one mission completion criterion as met or not yet met. Read context_read for its criterion ID and current mission version. Always explain the evidence or remaining gap in summary. A coordinator marking met must reference at least one supporting public board record in refs; publish evidence with message_post first if needed. This records a report, not automatic verification. It cannot change the criterion wording or close the mission. Agents may report progress only during active execution.",
+    schema: z
+      .object({
+        ...channel,
+        ...version,
+        criterion_id: id,
+        met: z.boolean(),
+        summary: text,
+        refs,
+      })
+      .strict(),
   },
   mission_state: {
     description:

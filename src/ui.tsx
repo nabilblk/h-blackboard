@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import runtimes from "../shared/runtimes.json";
+import type { RuntimeId } from "./model";
 export { Text } from "./Markdown";
 export function Badge({
   children,
@@ -111,9 +113,16 @@ export function Time({ at }: { at: number }) {
   );
 }
 export function Runtime({ runtime }: { runtime?: string }) {
+  const spec =
+    runtime && Object.hasOwn(runtimes, runtime)
+      ? runtimes[runtime as RuntimeId]
+      : null;
   return (
-    <span className={`runtime ${runtime === "claude" ? "filled" : ""}`}>
-      {runtime === "claude" ? "CC" : runtime === "codex" ? "CX" : "YOU"}
+    <span
+      className={`runtime ${runtime === "claude" ? "filled" : ""}`}
+      title={spec?.label || "Human"}
+    >
+      {spec?.badge || "YOU"}
     </span>
   );
 }

@@ -14,17 +14,24 @@ import { hostname } from "node:os";
 import { pipeline } from "node:stream/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { call, request } from "../server/remote.mjs";
+import {
+  call,
+  request,
+  isRetryable,
+  reconnectDelay,
+} from "../server/remote.mjs";
 import {
   prepareWorkspace,
   prepareAgentWorkspace,
   preflightRuntime,
   runtimeArguments,
+  runtimeEvent,
   writableDirectory,
   workspaceInstructions,
   shellQuote as quote,
 } from "./runtime.mjs";
 import { runtimeLog } from "./runtime-logs.mjs";
+import runtimes from "../shared/runtimes.json" with { type: "json" };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const program = fileURLToPath(import.meta.url);
 const { values: options, positionals } = parseArgs({
@@ -40,6 +47,8 @@ const { values: options, positionals } = parseArgs({
     thread: { type: "string" },
     role: { type: "string" },
     session: { type: "string" },
+    connect: { type: "string" },
+    config: { type: "string" },
     data: { type: "string" },
     body: { type: "string" },
     to: { type: "string" },
@@ -69,8 +78,8 @@ async function register(name, execution) {
   const url = new URL(options.board);
   if (!/^\/j\/[^/]+$/.test(url.pathname))
     throw new Error("Use the full join URL from Invite agents.");
-  if (!["claude", "codex"].includes(options.runtime))
-    throw new Error("--runtime must be claude or codex");
+  if (!Object.hasOwn(runtimes, options.runtime))
+    throw new Error(`--runtime must be ${Object.keys(runtimes).join(", ")}`);
   const result = await request(url.origin, "/api/join", {
     invitation: decodeURIComponent(url.pathname.slice(3)),
     name:
@@ -143,12 +152,13 @@ async function worker(file, resume = false) {
       if (error.code !== "ESRCH") throw error;
     }
     await unlink(lock);
-    return worker(file);
+    return worker(file, resume);
   }
   let stopped = false,
     child = null,
     status = "idle",
     paused = false;
+  const shutdown = new AbortController();
   let permission = null,
     turnPermission = null,
     interrupted = false,
@@ -191,6 +201,7 @@ async function worker(file, resume = false) {
   };
   const stop = () => {
     stopped = true;
+    shutdown.abort();
     killChild();
   };
   process.once("SIGINT", stop);
@@ -258,6 +269,8 @@ async function worker(file, resume = false) {
     }
     let outputFinished;
     let logError;
+    let sessionSaved = Promise.resolve();
+    let sessionSaveError;
     const result = await new Promise((done) => {
       child = spawn(spec.command, spec.args, {
         cwd: state.cwd,
@@ -301,23 +314,21 @@ async function worker(file, resume = false) {
           const line = buffer.slice(0, newline);
           buffer = buffer.slice(newline + 1);
           try {
-            const event = JSON.parse(line);
-            if (event.type === "thread.started")
-              state.nativeSession = event.thread_id;
-            if (event.type === "system" && event.session_id)
-              state.nativeSession = event.session_id;
-            if (
-              event.type === "error" ||
-              event.type === "turn.failed" ||
-              event.is_error
-            ) {
+            const event = runtimeEvent(state.runtime, JSON.parse(line));
+            if (event.sessionId && event.sessionId !== state.nativeSession) {
+              state.nativeSession = event.sessionId;
+              // Persist the native identity before the turn finishes, so a
+              // process failure can still resume the original conversation.
+              sessionSaved = sessionSaved
+                .then(() => save(file, state))
+                .catch((error) => {
+                  sessionSaveError = error;
+                  killChild();
+                });
+            }
+            if (event.error) {
               failed = true;
-              errorText = String(
-                event.message ||
-                  event.error?.message ||
-                  event.result ||
-                  errorText,
-              ).slice(-3000);
+              errorText = event.error.slice(-3000);
             }
           } catch {}
         }
@@ -325,6 +336,7 @@ async function worker(file, resume = false) {
       child.once("close", (code) => done(code));
     });
     await outputFinished;
+    await sessionSaved;
     child = null;
     await writeFile(resolve(dirname(file), "last-turn.jsonl"), transcript, {
       mode: 0o600,
@@ -333,6 +345,10 @@ async function worker(file, resume = false) {
     child = null;
     if (logError)
       throw new Error(`Cannot write runtime logs: ${logError.message}`);
+    if (sessionSaveError)
+      throw new Error(
+        `Cannot save runtime session: ${sessionSaveError.message}`,
+      );
     if (paused || stopped || interrupted) return false;
     if (result !== 0 || failed)
       throw Object.assign(
@@ -354,6 +370,7 @@ async function worker(file, resume = false) {
       execution.runtimeVersion = await preflightRuntime(
         state.runtime,
         execution.permissions,
+        state.cwd,
       );
       if (state.execution)
         state.execution.runtimeVersion = execution.runtimeVersion;
@@ -362,7 +379,9 @@ async function worker(file, resume = false) {
     runtimeArguments(state, file, "", mcp);
     const instructions = await guide();
     let initial = true;
+    const recoveringSession = !!state.nativeSession;
     let waitingCursor = state.cursor;
+    let reconnects = 0;
     while (!stopped && (!maxTurns || turns < maxTurns)) {
       try {
         await beat();
@@ -381,20 +400,25 @@ async function worker(file, resume = false) {
               timeout: 1000,
             },
             state.token,
+            { signal: shutdown.signal },
           );
           waitingCursor = update.cursor;
+          reconnects = 0;
           continue;
         }
         if (initial) {
           const ctx = await call(state, "context_read");
           if (!canRun(ctx.participation)) continue;
+          const missed = recoveringSession
+            ? await call(state, "updates_read", { after: state.cursor })
+            : null;
           const current = ctx.agents.find((a) => a.id === state.agentId);
           const completed = await turn(
-            `${instructions}\n\nYou are ${state.name}, registered in Harakiri as ${current?.role || "agent"}. Your identity is ${state.agentId}. ${workspaceInstructions(state)} Read context_read now, follow the mission and human instructions, and publish useful findings through Harakiri MCP. ${state.boardOnly ? "This is a board-only integration run. Use Harakiri tools only." : ""} You and the other agents own execution tasks. Use task_create and task_update when concrete work benefits from ownership or progress tracking; keep reports useful to the human. Tasks are optional. Do not run a watch loop yourself: this launcher will wake your session when relevant updates arrive. Finish the turn when waiting.`,
+            `${instructions}\n\nYou are ${state.name}, registered in Harakiri as ${current?.role || "agent"}. Your identity is ${state.agentId}. ${workspaceInstructions(state)} Read context_read now, follow the mission and human instructions, and publish useful findings through Harakiri MCP. ${state.boardOnly ? "This is a board-only integration run. Use Harakiri tools only." : ""} You and the other agents own execution tasks. Use task_create and task_update when concrete work benefits from ownership or progress tracking; keep reports useful to the human. Tasks are optional. Do not run a watch loop yourself: this launcher will wake your session when relevant updates arrive. Finish the turn when waiting.${missed ? `\n\nResuming your saved conversation. Missed updates from your last acknowledged cursor follow; further pages will arrive in subsequent turns. Current mission permissions and newer human instructions take precedence over outdated requests.\n${JSON.stringify(missed.events)}` : ""}`,
             ctx,
           );
           if (completed) {
-            state.cursor = ctx.cursor;
+            state.cursor = missed ? missed.cursor : ctx.cursor;
             initial = false;
             await call(state, "updates_read", {
               after: state.cursor,
@@ -409,6 +433,7 @@ async function worker(file, resume = false) {
           "/api/watch",
           { channel_id: state.channelId, after: state.cursor, timeout: 20000 },
           state.token,
+          { signal: shutdown.signal },
         );
         if (stopped) break;
         if (page.events.length) {
@@ -426,13 +451,11 @@ async function worker(file, resume = false) {
           acknowledge: state.cursor,
         });
         await save(file, state);
+        reconnects = 0;
       } catch (e) {
         if (stopped) break;
-        if (
-          !e.runtimeFailure &&
-          /fetch failed|timed out|ECONNREFUSED|network/i.test(e.message)
-        ) {
-          await new Promise((r) => setTimeout(r, 1500));
+        if (!e.runtimeFailure && isRetryable(e)) {
+          await new Promise((r) => setTimeout(r, reconnectDelay(reconnects++)));
           continue;
         }
         throw e;
@@ -471,11 +494,13 @@ async function main() {
     console.log(
       `Harakiri Blackboard
 
-join --board URL --runtime claude|codex [--name NAME]
-launch --board URL --runtime claude|codex --count N [--role agent|coordinator] [--workstream NAME] [--capabilities TEXT]
+join --board URL --runtime ${Object.keys(runtimes).join("|")} [--name NAME]
+launch --board URL --runtime ${Object.keys(runtimes).join("|")} --count N [--role agent|coordinator] [--workstream NAME] [--capabilities TEXT]
   [--permissions default|full] [--workspace DIR] [--layout per-agent|shared]
   [--state-dir DIR] [--board-only] [--max-turns N]
 resume --session FILE
+runner --connect URL [--state-dir DIR] [--name NAME]
+runner --config FILE
 context --session FILE
 post --session FILE --body TEXT [--to everyone|human|coordinator|AGENT_ID] [--kind message|finding|question|decision] [--private | --thread MESSAGE_ID]
 act OPERATION --session FILE --data JSON
@@ -493,6 +518,11 @@ paths. Interactive agents use join and retain their existing runtime settings.
 --to addresses a public message. --private sends only to the human. --thread
 inherits the original visibility. CLI and MCP use the same board operations.`,
     );
+    return;
+  }
+  if (cmd === "runner") {
+    const { runLocalRunner } = await import("./runner.mjs");
+    await runLocalRunner(options);
     return;
   }
   if (cmd === "worker" || cmd === "resume") {
@@ -561,6 +591,7 @@ inherits the original visibility. CLI and MCP use the same board operations.`,
     config.runtimeVersion = await preflightRuntime(
       options.runtime,
       config.permissions,
+      config.workspaceRoot,
     );
     const prepared = [];
     for (let i = 0; i < count; i++) {

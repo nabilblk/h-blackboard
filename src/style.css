@@ -1478,6 +1478,24 @@ select[multiple] option {
   font-size: 14px;
   line-height: 1.55;
 }
+.criterion-report + .criterion-report {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.criterion-detail {
+  margin-left: 24px;
+  min-width: 0;
+}
+.criterion-evidence {
+  margin-top: 8px;
+}
+.criterion-evidence > summary {
+  cursor: pointer;
+  color: var(--secondary);
+}
+.criterion-evidence > .reading {
+  margin-top: 10px;
+}
 .criterion-item {
   display: flex;
   align-items: baseline;
@@ -1706,6 +1724,25 @@ select[multiple] option {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--color-surface-sunken);
+}
+.recovery-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.recovery-choice > span {
+  min-width: 0;
+}
+.recovery-choice small {
+  display: block;
+  color: var(--secondary);
+}
+.recovery-action .error {
+  max-width: 360px;
+  font-size: 12px;
 }
 .execution-path-heading {
   margin-bottom: 8px;

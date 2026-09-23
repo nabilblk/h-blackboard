@@ -5,6 +5,7 @@ import { Badge, Empty, Field, Runtime, Text, Time } from "./ui";
 import { Conversation } from "./App";
 import { TaskList, TaskStatus, taskLabels } from "./Tasks";
 import { AgentExecution } from "./Execution";
+import { AgentRecovery, connected, connectionLabel } from "./Recovery";
 import type {
   Agent,
   AgentRequest,
@@ -241,25 +242,63 @@ export function SidePanel({
                   /{m.criteria.length}
                 </h3>
                 {m.criteria.map((c) => (
-                  <label className="criterion-check" key={c.id}>
-                    <input
-                      type="checkbox"
-                      checked={c.met}
-                      disabled={busy || m.archived}
-                      onChange={() =>
-                        action("mission_update", {
-                          version: m.version,
-                          name: m.name,
-                          objective: m.objective,
-                          scope: m.scope,
-                          criteria: m.criteria.map((x) =>
-                            x.id === c.id ? { ...x, met: !x.met } : x,
-                          ),
-                        })
-                      }
-                    />
-                    <span>{c.text}</span>
-                  </label>
+                  <div className="criterion-report" key={c.id}>
+                    <label className="criterion-check">
+                      <input
+                        type="checkbox"
+                        checked={c.met}
+                        disabled={busy || m.archived}
+                        title="Update status with evidence or a reason"
+                        onChange={() =>
+                          edit({ kind: "criterion", criterion: c })
+                        }
+                      />
+                      <span>{c.text}</span>
+                    </label>
+                    <div className="criterion-detail">
+                      <p className="task-update-meta">
+                        <span>
+                          {c.met ? "Reported complete" : "Not yet met"}
+                        </span>
+                        {c.assessment ? (
+                          <>
+                            <span>
+                              By{" "}
+                              {c.assessment.updatedBy === "human"
+                                ? "you"
+                                : context.agents.find(
+                                    (a) => a.id === c.assessment!.updatedBy,
+                                  )?.name || c.assessment.updatedBy}
+                            </span>
+                            <Time at={c.assessment.updatedAt} />
+                          </>
+                        ) : null}
+                      </p>
+                      {c.assessment ? (
+                        <details className="criterion-evidence">
+                          <summary>Evidence and report</summary>
+                          <Text value={c.assessment.summary} />
+                          <div className="task-evidence">
+                            {c.assessment.refs.map((id) => (
+                              <button
+                                key={id}
+                                className="text-button"
+                                onClick={() => inspect(id)}
+                              >
+                                Open evidence · {id}
+                              </button>
+                            ))}
+                            <button
+                              className="text-button"
+                              onClick={() => inspect(c.assessment!.messageId)}
+                            >
+                              Open status report
+                            </button>
+                          </div>
+                        </details>
+                      ) : null}
+                    </div>
+                  </div>
                 ))}
                 {!m.criteria.length ? (
                   <p className="secondary">No criteria defined yet.</p>
@@ -444,6 +483,16 @@ export function SidePanel({
                   Invite agents
                 </button>
               </div>
+              {!m.archived && m.state !== "closed" ? (
+                <div className="button-row">
+                  <button
+                    className="button"
+                    onClick={() => edit({ kind: "recovery" })}
+                  >
+                    Resume offline agents
+                  </button>
+                </div>
+              ) : null}
               {!context.agents.length ? (
                 <Empty
                   title={m.archived ? "No recorded agents" : "No agents yet"}
@@ -479,18 +528,14 @@ export function SidePanel({
                     </div>
                     <Badge
                       tone={
-                        a.status === "error"
+                        connectionLabel(a) === "Failed"
                           ? "danger"
-                          : a.online
+                          : connected(a)
                             ? "success"
                             : "muted"
                       }
                     >
-                      {a.status === "error"
-                        ? "error"
-                        : a.online
-                          ? a.status
-                          : "offline"}
+                      {connectionLabel(a)}
                     </Badge>
                   </button>
                 ))
@@ -553,6 +598,7 @@ export function SidePanel({
               edit={edit}
               direct={direct}
               address={address}
+              refresh={refresh}
             />
           ) : null}
           {record?.type === "workstream" ? (
@@ -641,6 +687,7 @@ function AgentDetail({
   edit,
   direct,
   address,
+  refresh,
 }: {
   agent: Agent;
   context: Context;
@@ -649,6 +696,7 @@ function AgentDetail({
   edit: (m: Modal) => void;
   direct: (id: string) => void;
   address: (id: string) => void;
+  refresh: () => Promise<void>;
 }) {
   const pending = context.assignments.find((x) => x.agentId === a.id);
   return (
@@ -733,7 +781,15 @@ function AgentDetail({
           </p>
         ) : null}
       </section>
-      <AgentExecution agent={a} />
+      <AgentRecovery
+        agent={a}
+        context={context}
+        refresh={refresh}
+        setup={() => edit({ kind: "recovery" })}
+      />
+      {!a.recovery || a.recovery.provider.id === "local-process" ? (
+        <AgentExecution agent={a} />
+      ) : null}
       <section hidden={!!context.mission.archived}>
         <h3 className="label">Human controls</h3>
         {a.control === "pause" ? (

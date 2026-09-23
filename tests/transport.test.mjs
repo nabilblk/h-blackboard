@@ -173,6 +173,10 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
   assert.ok(!tools.some((x) => x.name === "coordination_set"));
   assert.ok(tools.some((x) => x.name === "coordinator_ready"));
   assert.ok(tools.some((x) => x.name === "agent_admit"));
+  assert.ok(tools.some((x) => x.name === "criterion_update"));
+  assert.ok(!tools.some((x) => x.name === "mission_update"));
+  assert.ok(!tools.some((x) => x.name === "runner_pair"));
+  assert.ok(!tools.some((x) => x.name === "agents_resume"));
   assert.ok(!tools.some((x) => x.name === "messages_seen"));
   assert.ok(!tools.some((x) => x.name === "mission_archive"));
   assert.ok(
@@ -275,6 +279,94 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
   assert.equal(visible.status, "done");
   assert.equal(visible.updatedBy, agent.agentId);
   assert.deepEqual(visible.refs, [record.id]);
+});
+
+test("MCP exposes criterion reporting and enforces current coordinator authority through HTTP", async (t) => {
+  const { owner, agent } = await fixture(t);
+  let mission = (await call(owner, "context_read")).mission;
+  mission = await call(owner, "mission_update", {
+    version: mission.version,
+    name: mission.name,
+    objective: mission.objective,
+    criteria: [{ text: "The experiment has independently checked evidence" }],
+  });
+  const directory = await mkdtemp(join(tmpdir(), "harakiri-criterion-mcp-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const file = join(directory, "session.json");
+  await writeFile(file, JSON.stringify(agent), { mode: 0o600 });
+  const client = new Client({ name: "criterion-check", version: "1.0" });
+  await client.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [resolve("server/mcp.mjs"), file],
+      env: { ...process.env, HARAKIRI_SESSION: file },
+    }),
+  );
+  t.after(() => client.close());
+  const tool = (name, args = {}) => client.callTool({ name, arguments: args });
+  const definition = (await client.listTools()).tools.find(
+    (x) => x.name === "criterion_update",
+  );
+  assert.ok(definition);
+  assert.equal(definition.inputSchema.properties.channel_id, undefined);
+  assert.ok(definition.inputSchema.required.includes("summary"));
+  const input = {
+    version: mission.version,
+    criterion_id: mission.criteria[0].id,
+    met: true,
+    summary: "The independent experiment passed; evidence is linked.",
+  };
+  const denied = await tool("criterion_update", input);
+  assert.equal(denied.isError, true);
+  assert.match(denied.content[0].text, /current coordinator or human/);
+  await call(owner, "coordinator_set", {
+    version: mission.version,
+    agent_id: agent.agentId,
+    reason: "Appoint the reviewer",
+  });
+  mission = (await call(owner, "context_read")).mission;
+  assert.ok(
+    !(
+      await tool("plan_update", {
+        version: mission.version,
+        plan: "Review experimental evidence",
+      })
+    ).isError,
+  );
+  mission = (await call(owner, "context_read")).mission;
+  assert.ok(
+    !(await tool("coordinator_ready", { revision: mission.startupRevision }))
+      .isError,
+  );
+  mission = await call(owner, "mission_state", {
+    version: (await call(owner, "context_read")).mission.version,
+    state: "active",
+    reason: "Start review",
+  });
+  input.version = mission.version;
+  const missingEvidence = await tool("criterion_update", input);
+  assert.equal(missingEvidence.isError, true);
+  assert.match(missingEvidence.content[0].text, /supporting evidence/);
+  const published = await tool("message_post", {
+    kind: "finding",
+    body: "Independent run: all cases passed. Reproducible results in the shared report.",
+  });
+  assert.ok(!published.isError);
+  const evidence = JSON.parse(published.content[0].text);
+  const reported = await tool("criterion_update", {
+    ...input,
+    refs: [evidence.id],
+  });
+  assert.ok(!reported.isError, reported.content[0].text);
+  const visible = (await call(owner, "context_read")).mission;
+  assert.equal(visible.criteria[0].met, true);
+  assert.equal(visible.criteria[0].assessment.updatedBy, agent.agentId);
+  assert.deepEqual(visible.criteria[0].assessment.refs, [evidence.id]);
+  assert.equal(visible.state, "active");
+  const guidance = await client.readResource({
+    uri: "harakiri://skills/coordination",
+  });
+  assert.match(guidance.contents[0].text, /criterion_update/);
 });
 
 test("An existing session joins through the CLI, then reads, posts, and watches with its private identity", async (t) => {

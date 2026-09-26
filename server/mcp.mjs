@@ -8,6 +8,8 @@ const session = JSON.parse(
 );
 const server = new McpServer({ name: "harakiri-blackboard", version: "0.3.0" });
 const excluded = new Set([
+  "budget_update",
+  "budget_reconcile",
   "runner_pair",
   "agents_resume",
   "mission_create",

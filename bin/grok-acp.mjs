@@ -264,6 +264,7 @@ export class GrokConnection {
       },
       0,
     );
+    this.onEvent({ type: "turn.usage", usage: result._meta?.usage || null });
     if (result.stopReason !== "end_turn")
       throw new Error(
         `Grok Build did not finish its turn (stop reason: ${result.stopReason || "missing"}).`,

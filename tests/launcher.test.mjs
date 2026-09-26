@@ -98,7 +98,8 @@ if(args.includes('--help')){console.log(process.env.HARAKIRI_TEST_UNSUPPORTED?'o
  console.error('stderr is live');
  if(process.env.HARAKIRI_TEST_FAIL){console.error('Managed policy blocked execution (network policy) '+state.token);process.exitCode=23;return;}
  if(process.env.HARAKIRI_TEST_HOLD){await new Promise(r=>setTimeout(r,30000));}
- console.log(JSON.stringify({type:'turn.completed'}));
+ if(process.env.HARAKIRI_TEST_DELAY){await new Promise(r=>setTimeout(r,Number(process.env.HARAKIRI_TEST_DELAY)));}
+ console.log(JSON.stringify(runtime==='claude'?{type:'result',total_cost_usd:0.02,usage:{input_tokens:100,output_tokens:20}}:{type:'turn.completed',usage:{input_tokens:100,output_tokens:20,cached_input_tokens:80}}));
 })().catch(e=>{console.error(e.message);process.exitCode=1;});
 `;
   for (const runtime of ["claude", "codex"])
@@ -383,8 +384,20 @@ for (const runtime of Object.keys(runtimes)) {
     assert.equal(
       (await readFile(record.execution.stdoutPath, "utf8")).trim().split("\n")
         .length,
-      4,
+      runtime === "grok" ? 6 : 4,
     );
+    const ledger = await call(f.owner, "budget_read");
+    const agentRuns = ledger.runs.filter((r) => r.agentId === state.agentId);
+    assert.equal(agentRuns.length, 2);
+    assert.ok(
+      agentRuns.every(
+        (r) =>
+          r.status === "settled" &&
+          r.usage.quality === "reported" &&
+          r.usage.tokens === 120,
+      ),
+    );
+    assert.equal(agentRuns[0].usage.costUsd, runtime === "codex" ? null : 0.02);
     assert.match(
       await readFile(record.execution.stderrPath, "utf8"),
       /stderr is live/,
@@ -989,4 +1002,55 @@ test("A paired local runner resumes the saved identity and survives a temporary 
     );
     await provider.saving;
   }
+});
+
+test("A mission budget prevents model execution until extended and serializes a bulk launcher through one slot", async (t) => {
+  const f = await fixture(t);
+  await call(f.owner, "budget_update", {
+    version: 0,
+    limits: { tokens: 0, concurrency: 1 },
+    per_turn: { tokens: 300, costUsd: 1 },
+    finalization_percent: 0,
+    reason: "Wait for allowance",
+  });
+  const child = spawn(process.execPath, f.args("codex", "--count", "3"), {
+    env: { ...f.env, HARAKIRI_TEST_DELAY: "300" },
+    stdio: "ignore",
+  });
+  const exited = once(child, "exit");
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGTERM");
+    await exited;
+  });
+  await until(
+    () =>
+      f.board.list(f.mission.id, "agent").filter((a) => a.status === "paused")
+        .length === 3,
+    "all agents wait for budget",
+  );
+  assert.equal(
+    (await call(f.owner, "budget_read")).totalRuns,
+    0,
+    "Registration must not consume a native turn",
+  );
+  await call(f.owner, "budget_update", {
+    version: 1,
+    limits: { tokens: 1000, turns: 3, concurrency: 1 },
+    per_turn: { tokens: 300, costUsd: 1 },
+    finalization_percent: 0,
+    reason: "Authorize bounded work",
+  });
+  const [code] = await exited;
+  assert.equal(code, 0);
+  const ledger = await call(f.owner, "budget_read");
+  assert.equal(ledger.totalRuns, 3);
+  assert.equal(ledger.consumed.tokens, 360);
+  const runs = [...ledger.runs].sort((a, b) => a.startedAt - b.startedAt);
+  assert.equal(new Set(runs.map((r) => r.agentId)).size, 3);
+  for (let i = 1; i < runs.length; i++)
+    assert.ok(
+      runs[i].startedAt >= runs[i - 1].finishedAt,
+      "The next runtime waits until the previous execution settles",
+    );
 });

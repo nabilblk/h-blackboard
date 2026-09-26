@@ -264,6 +264,20 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
   assert.ok(!created.isError);
   const task = JSON.parse(created.content[0].text);
   assert.deepEqual(task.agentIds, [agent.agentId]);
+  const published = await client.callTool({
+    name: "artifact_publish",
+    arguments: {
+      title: "Evidence",
+      summary: "Verified shared finding",
+      outcome: "complete",
+      refs: [record.id],
+      files: [
+        { name: "result.md", content: "Reproduced the expected finding." },
+      ],
+    },
+  });
+  assert.ok(!published.isError);
+  const output = JSON.parse(published.content[0].text);
   const reported = await client.callTool({
     name: "task_update",
     arguments: {
@@ -271,14 +285,14 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
       version: task.version,
       status: "done",
       summary: "Verified the shared finding against the evidence.",
-      refs: [record.id],
+      refs: [output.revision.id],
     },
   });
   assert.ok(!reported.isError);
   const visible = (await call(owner, "context_read")).tasks[0];
   assert.equal(visible.status, "done");
   assert.equal(visible.updatedBy, agent.agentId);
-  assert.deepEqual(visible.refs, [record.id]);
+  assert.deepEqual(visible.refs, [output.revision.id]);
 });
 
 test("MCP exposes criterion reporting and enforces current coordinator authority through HTTP", async (t) => {

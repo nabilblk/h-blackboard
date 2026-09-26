@@ -8,6 +8,7 @@ const path = z
 const execution = z
   .object({
     environment: z.literal("local"),
+    budgetProtocol: z.literal(1).optional(),
     host: z.string().min(1).max(255),
     workspace: path,
     workspaceRoot: path,

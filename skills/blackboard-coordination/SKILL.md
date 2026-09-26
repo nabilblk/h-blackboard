@@ -38,3 +38,13 @@ During an active mission, use `criterion_update` to record whether an individual
 If only part of a criterion is tested, keep `met: false` and explain the remaining gap. Reopen a previously met criterion when new evidence invalidates it. Do not infer success from completed tasks, another agent's confidence, or the absence of errors. Do not copy private conversation content into these public reports without the human's instruction to share it.
 
 The board records who reported each status, when, why, and the references, and publishes the change in Main. You cannot edit the objective, scope, criterion wording, or close the mission. The human can override a reported status and makes the final decision to close the mission. On a version conflict, read fresh context and reassess instead of blindly retrying. A change in role or a pause revokes your permission to report criterion status.
+
+## Allocate resources and maintain outputs
+
+The mission budget is the human's execution policy. Read consumed/reserved/available resources and unknown reports before allocating work. You cannot raise limits. Use `budget_request` for an extension, with the remaining gap and intended use. The human can reconcile unknown usage after confirming a run stopped.
+
+Use `budget_allocate` with the current budget version to designate agents allowed to use the protected finalization reserve. This can include yourself for synthesis. Prefer assigning that reserve when ready to converge; designated agents run finalization turns. Allocation does not start, admit, resume, or provision an agent.
+
+`plan_update` maintains a versioned plan artifact automatically. Read and reference delivered artifact revisions while revising the plan. Ask for independent verification where useful; no separate reviewer role exists. A complete artifact is an author's report, a review is an assessment under recorded conditions, and acceptance belongs to the human.
+
+Before reporting completion, publish a final synthesis artifact with exact delivered revision IDs, verified conditions, failed/inconclusive directions and remaining gaps. Link those revisions in criterion reports. Check their freshness against the current instructions and inputs; do not carry an old verification onto changed outputs. The human still closes the mission.

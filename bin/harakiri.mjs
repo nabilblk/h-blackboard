@@ -31,6 +31,8 @@ import {
   shellQuote as quote,
 } from "./runtime.mjs";
 import { runtimeLog } from "./runtime-logs.mjs";
+import { TurnBudget } from "./budget-client.mjs";
+import { runtimeUsage, unknownUsage } from "./usage.mjs";
 import runtimes from "../shared/runtimes.json" with { type: "json" };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const program = fileURLToPath(import.meta.url);
@@ -38,6 +40,14 @@ const { values: options, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     board: { type: "string" },
+    file: { type: "string", multiple: true },
+    manifest: { type: "string" },
+    title: { type: "string" },
+    artifact: { type: "string" },
+    version: { type: "string" },
+    outcome: { type: "string" },
+    limitations: { type: "string" },
+    ref: { type: "string", multiple: true },
     runtime: { type: "string" },
     count: { type: "string" },
     name: { type: "string" },
@@ -171,6 +181,7 @@ async function worker(file, resume = false) {
     p && (p.state === "planning" ? "planning" : `${p.state}:${p.revision}`);
   const execution = {
     environment: "local",
+    budgetProtocol: 1,
     host: hostname(),
     workspace: state.cwd,
     workspaceRoot: state.execution?.workspaceRoot || state.cwd,
@@ -188,6 +199,7 @@ async function worker(file, resume = false) {
   };
   const redact = (message) =>
     String(message).replaceAll(state.token, "[redacted]").slice(-2000);
+  const budget = new TurnBudget(state, () => save(file, state));
   const maxTurns = Number(options["max-turns"] || 0);
   let turns = 0;
   const killChild = () => {
@@ -249,12 +261,32 @@ async function worker(file, resume = false) {
     if (controlError) throw controlError;
     if (paused || stopped || permissionKey(permission) !== turnPermission)
       return false;
+    const reservation = await budget.reserve(context);
+    if (!reservation.granted) {
+      status = "waiting";
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return false;
+    }
+    await beat();
+    if (paused || stopped || permissionKey(permission) !== turnPermission) {
+      await budget.settle(
+        {
+          tokens: 0,
+          costUsd: 0,
+          quality: "reported",
+          source: "Authorization changed before process start",
+        },
+        "interrupted",
+      );
+      return false;
+    }
     const phase =
       context.participation.state === "planning"
         ? "PREPARATION ONLY. Read the mission, publish an initial shared plan with plan_update, then read its current startupRevision and call coordinator_ready. You may organize planned work, but do not implement the mission or start execution. Finish this turn while waiting for the human to start."
         : "Execution is authorized under the current mission and direction. Read pending assignments and human instructions before acting. Tasks and additional workstreams remain optional.";
-    prompt = `${phase}\n${workspaceInstructions(state)}\nCurrent mission and authorization: ${JSON.stringify({ mission: context.mission, participation: context.participation, role: context.mission.coordinatorId === state.agentId ? "coordinator" : "agent" })}\n\n${prompt}`;
+    prompt = `${phase}\n${workspaceInstructions(state)}\nCurrent budget and reserved allowance: ${JSON.stringify({ budget: context.budget, run: reservation.run })}. Preserve partial results as artifacts. ${reservation.run.purpose === "finalization" ? "Use this turn for verification, synthesis and final handoff within the remaining budget." : ""}\nCurrent mission and authorization: ${JSON.stringify({ mission: context.mission, participation: context.participation, role: context.mission.coordinatorId === state.agentId ? "coordinator" : "agent" })}\n\n${prompt}`;
     const spec = runtimeArguments(state, file, prompt, mcp);
+    let usage = unknownUsage();
     let buffer = "",
       errorText = "",
       transcript = "",
@@ -271,12 +303,17 @@ async function worker(file, resume = false) {
     let logError;
     let sessionSaved = Promise.resolve();
     let sessionSaveError;
+    await budget.starting();
     const result = await new Promise((done) => {
       child = spawn(spec.command, spec.args, {
         cwd: state.cwd,
         env: process.env,
         detached: true,
         stdio: ["pipe", "pipe", "pipe"],
+      });
+      sessionSaved = budget.process(child.pid).catch((error) => {
+        sessionSaveError = error;
+        killChild();
       });
       child.once("error", (error) => {
         errorText = `${state.runtime} could not start: ${error.message}`;
@@ -314,7 +351,9 @@ async function worker(file, resume = false) {
           const line = buffer.slice(0, newline);
           buffer = buffer.slice(newline + 1);
           try {
-            const event = runtimeEvent(state.runtime, JSON.parse(line));
+            const rawEvent = JSON.parse(line);
+            usage = runtimeUsage(state.runtime, rawEvent) || usage;
+            const event = runtimeEvent(state.runtime, rawEvent);
             if (event.sessionId && event.sessionId !== state.nativeSession) {
               state.nativeSession = event.sessionId;
               // Persist the native identity before the turn finishes, so a
@@ -338,6 +377,14 @@ async function worker(file, resume = false) {
     await outputFinished;
     await sessionSaved;
     child = null;
+    await budget.settle(
+      usage,
+      interrupted || stopped || paused
+        ? "interrupted"
+        : result === 0 && !failed
+          ? "completed"
+          : "failed",
+    );
     await writeFile(resolve(dirname(file), "last-turn.jsonl"), transcript, {
       mode: 0o600,
     });
@@ -361,6 +408,7 @@ async function worker(file, resume = false) {
     return true;
   }
   try {
+    await budget.recover();
     await beat();
     if (controlError) throw controlError;
     await writableDirectory(state.cwd, { create: false });
@@ -384,6 +432,7 @@ async function worker(file, resume = false) {
     let reconnects = 0;
     while (!stopped && (!maxTurns || turns < maxTurns)) {
       try {
+        await budget.recover();
         await beat();
         if (controlError) throw controlError;
         if (paused) {
@@ -493,6 +542,11 @@ async function main() {
   if (options.help || !cmd) {
     console.log(
       `Harakiri Blackboard
+
+publish --session FILE --title TITLE --body SUMMARY --file PATH [--file PATH ...]
+  [--kind report|plan|code|data|application|validation|other] [--outcome draft|complete|inconclusive]
+  [--limitations TEXT] [--artifact ID --version N] [--ref REVISION_ID] [--private]
+publish --session FILE --manifest PATH
 
 join --board URL --runtime ${Object.keys(runtimes).join("|")} [--name NAME]
 launch --board URL --runtime ${Object.keys(runtimes).join("|")} --count N [--role agent|coordinator] [--workstream NAME] [--capabilities TEXT]
@@ -656,7 +710,21 @@ inherits the original visibility. CLI and MCP use the same board operations.`,
   await request(s.url, "/api/heartbeat", { status: "idle" }, s.token);
   if (cmd === "context")
     console.log(JSON.stringify(await call(s, "context_read"), null, 2));
-  else if (cmd === "post")
+  else if (cmd === "publish") {
+    const { artifactInput } = await import("./artifact-files.mjs");
+    const input = await artifactInput(options);
+    console.log(
+      JSON.stringify(
+        await call(s, "artifact_publish", {
+          ...input,
+          ...(options.private ? { direct_agent_id: s.agentId } : {}),
+          ...(s.pendingBudget?.id ? { run_id: s.pendingBudget.id } : {}),
+        }),
+        null,
+        2,
+      ),
+    );
+  } else if (cmd === "post")
     console.log(
       JSON.stringify(
         await call(s, "message_post", {

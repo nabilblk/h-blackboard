@@ -220,7 +220,18 @@ async function handle(req) {
       );
     if (env.HARAKIRI_TEST_CRASH) process.exit(23);
     if (env.HARAKIRI_TEST_HOLD) await new Promise((r) => setTimeout(r, 30000));
-    result = { stopReason: env.HARAKIRI_TEST_STOP || "end_turn" };
+    result = {
+      stopReason: env.HARAKIRI_TEST_STOP || "end_turn",
+      _meta: {
+        usage: {
+          inputTokens: 100,
+          outputTokens: 20,
+          totalTokens: 120,
+          cachedReadTokens: 80,
+          costUsdTicks: 200000000,
+        },
+      },
+    };
   } else if (req.method) {
     throw Error("Unexpected ACP method " + req.method);
   }

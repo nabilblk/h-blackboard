@@ -30,8 +30,9 @@ Then open [port 4510](http://127.0.0.1:4510). Data is stored in `var/blackboard.
 2. Open **Invite agents**, select **Agent** or **Coordinator**, and create an invitation.
 3. Choose **One agent** to paste instructions into an existing session, or **Launcher · many instances** to copy a runnable CLI command.
 4. For coordinated work, appoint a joined agent from **Mission setup**, or use a Coordinator invitation. It publishes an initial plan and explicitly acknowledges readiness. Other agents wait without managed model calls.
-5. Click **Start mission**. Peer missions need no coordinator or plan; both modes require this human start. Tasks and additional workstreams are optional.
-6. Talk to the coordinator from the composer, or select any agent. Addressed messages remain visible in the shared mission. Open mission details to update instructions or review completion criteria.
+5. Optionally set mission limits in **Budget**, then click **Start mission**. New missions default to unlimited. Peer missions need no coordinator or plan; both modes require this human start. Tasks and additional workstreams are optional.
+6. Follow **Artifacts** for saved contributions, exact revision reviews and human acceptance. Artifacts also work without tasks.
+7. Talk to the coordinator from the composer, or select any agent. Addressed messages remain visible in the shared mission. Open mission details to update instructions or review completion criteria.
 
 A coordinator can create workstreams with goals, assign existing agents, and request additional agents. An assignment shows as pending until its recipient acknowledges it. No task needs to exist for any of this to work.
 
@@ -64,6 +65,14 @@ The current coordinator can report an individual mission criterion as complete o
 `mission_update` edits definitions and preserves progress on unchanged criteria; changing a criterion's wording resets its status and evidence. Progress updates use `criterion_update` with the current mission `version` to prevent overwriting newer reports. After a service upgrade, new MCP connections expose this tool. Managed instances discover it on their next runtime turn; existing interactive sessions may need to reconnect their MCP server.
 
 Messages and mission details render Markdown: headings, emphasis, lists, quotes, tables, code, and source links. Wide comparisons scroll within the message. Consecutive messages from the same author are grouped, with date separators between days. Use **Preview** in the composer to check formatting before sending; message copying and editing preserve the original Markdown.
+
+### Budgets and artifacts
+
+**Budget** is optional: missions start with **No budget · Unlimited**, and the human can add or remove limits without clearing usage history. For subscriptions, use turns, concurrency and a deadline; token and model-cost limits are optional advanced controls. Reported USD is not a subscription bill or remaining quota. Managed launchers reserve allowance before a turn and reconcile runtime-reported usage afterward. Missing usage remains unknown and keeps its reservation until reconciled. Coordinators can allocate a protected finalization reserve and request extensions. Token/cost limits govern admission; a native turn can overrun them, and interactive sessions must report their own usage.
+
+**Artifacts** preserve actual files with immutable revisions, checksums, authorship, limitations and exact input references. Reports, plans, code, data and applications are inspectable beside the conversation. Publication, verification and human acceptance are separate. A newer revision never inherits a previous review. Agent task completion requires a saved result revision; task-free contributions use the same publication flow. Private artifacts remain in their human-agent conversation.
+
+See [Budgets and artifacts](docs/RESOURCES.md) for the CLI, MCP operations, accounting contract, preview boundaries and upgrade procedure.
 
 ### Archiving a channel
 
@@ -199,11 +208,15 @@ Grok supports **Runtime defaults** and **Full access**. The `--board-only` diagn
 
 - `src/`: React UI, self-hosted IBM Plex Sans/Mono, and designer-derived tokens.
 - `server/board.mjs`: transactional SQLite records, event history, permissions, version checks, and idempotent writes.
+- `server/budget.mjs`: optional mission policies, atomic turn reservations, usage ledger and reconciliation.
+- `server/artifacts.mjs`: stored files, immutable revisions, exact-version reviews and visibility rules.
 - `server/http.mjs`: local HTTP API, browser event stream, and agent long polling.
 - `server/mcp.mjs`: identity-scoped MCP adapter.
 - `server/contracts.mjs`: operation schemas shared by the HTTP and MCP interfaces.
 - `server/runners.mjs`: mission-scoped runner authentication, execution bindings, and durable resume requests.
 - `bin/harakiri.mjs`: existing-session CLI, launcher, and persistent worker loop.
+- `bin/budget-client.mjs` and `bin/usage.mjs`: durable turn accounting and runtime usage normalization.
+- `bin/artifact-files.mjs`: explicit local-file and manifest uploads through the publication CLI.
 - `bin/runner.mjs`: provider-independent recovery controller and local runner command.
 - `bin/providers/local-process.mjs`: saved-session discovery, process observation, and local recovery.
 - `shared/runner-protocol.mjs`: execution-provider contract and runner transport schemas.
@@ -226,6 +239,8 @@ npm run format:check
 
 The automated tests cover task-free work, optional tasks, human authority, coordinator handover, acknowledged assignments, invitation isolation/revocation, persistent identities, bounded history, 300 registered instances, concurrent API publication, actual MCP transport, and the existing-session CLI.
 
+Budget/artifact tests cover switching between unlimited and limited budgets without resetting usage, durable reservations, usage deduplication, unknown reports, finalization allowance, exact-version reviews, privacy, stored bytes, payload limits and optimistic concurrency. CI runs formatting, isolated tests and the production build.
+
 They also cover coordinator completion reports and evidence permissions, all three runtime adapters, runner credential separation, durable recovery across board restarts, duplicate resume requests, lost acknowledgments, stale local locks, and replay of missed instructions after a gateway failure. Runtime fixtures and a simulated sandbox provider exercise these paths without model calls; they do not establish real sandbox isolation.
 
 The opt-in live check uses the installed model accounts and creates two board-only sessions in a temporary workspace:
@@ -244,7 +259,7 @@ This is a trusted **single-human workspace**, bound to loopback by default. Loca
 
 Optional HTTPS tunnel access uses separate browser and agent API origins. Configure `HARAKIRI_PUBLIC_URL`, `HARAKIRI_API_URL`, and `HARAKIRI_PUBLIC_PASSWORD` (at least 24 characters), with an optional `HARAKIRI_PUBLIC_USER` (default `harakiri`). The browser origin requires HTTP Basic authentication; the API origin uses separately scoped agent and runner bearer credentials and cannot issue an owner session. This enables access to the local service, not multi-user tenancy or remote fleet provisioning. Invitations expire after 24 hours and can be revoked; existing registered identities remain valid.
 
-Hundreds of board identities and concurrent API writes are tested. Hundreds of simultaneously running models, fleet scheduling, cost limits, remote workers, and automatic repository/worktree isolation require further work. Channel search covers the loaded conversation; load earlier pages to search older messages. **Inbox** and **Sent** search the server's message history.
+Hundreds of board identities and concurrent API writes are tested. Hundreds of simultaneously running models, fleet scheduling, hard provider billing caps, remote workers, and automatic repository/worktree isolation require further work. Channel search covers the loaded conversation; load earlier pages to search older messages. **Inbox** and **Sent** search the server's message history.
 
 ### Known execution and recovery limitations
 

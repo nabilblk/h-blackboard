@@ -1,5 +1,7 @@
 import {
   Fragment,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -28,12 +30,21 @@ import {
   Send,
   ListChecks,
   Archive,
+  Files,
+  Wallet,
 } from "lucide-react";
 import { get, rpc } from "./client";
 import { Badge, Empty, Runtime, Text, Time } from "./ui";
 import { Dialogs } from "./dialogs";
 import { SidePanel } from "./panels";
 import { StartupBanner } from "./Startup";
+import { BudgetSummary } from "./BudgetSummary";
+const BudgetPanel = lazy(() =>
+  import("./Budget").then((m) => ({ default: m.BudgetPanel })),
+);
+const ArtifactsPanel = lazy(() =>
+  import("./Artifacts").then((m) => ({ default: m.ArtifactsPanel })),
+);
 import { Presence, ResumeAgent, connectionLabel } from "./Recovery";
 import {
   DirectDirectory,
@@ -205,13 +216,33 @@ export default function App() {
   };
   const inspect = async (id: string) => {
     try {
-      setPanel({
-        kind: "record",
-        record: await rpc<SharedRecord>("record_read", {
-          channel_id: selected,
-          id,
-        }),
+      const record = await rpc<SharedRecord>("record_read", {
+        channel_id: selected,
+        id,
       });
+      if (
+        ["artifact", "artifact_revision", "artifact_review"].includes(
+          record.type,
+        )
+      ) {
+        const artifactId =
+          "artifactId" in record ? record.artifactId : record.id;
+        const revisionId =
+          record.type === "artifact_revision"
+            ? record.id
+            : "revisionId" in record
+              ? record.revisionId
+              : undefined;
+        setPanel({
+          kind: "artifacts",
+          artifactId,
+          revisionId,
+          directAgentId:
+            "directAgentId" in record
+              ? record.directAgentId || undefined
+              : undefined,
+        });
+      } else setPanel({ kind: "record", record });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -332,6 +363,32 @@ export default function App() {
             <span>Tasks</span>
             <b className="count">{context.tasks.length}</b>
           </button>
+          {context.artifacts ? (
+            <button
+              className={
+                panel?.kind === "artifacts"
+                  ? "active mission-tasks-link"
+                  : "mission-tasks-link"
+              }
+              onClick={() => setPanel({ kind: "artifacts" })}
+            >
+              <Files size={14} />
+              <span>Artifacts</span>
+            </button>
+          ) : null}
+          {context.budget ? (
+            <button
+              className={
+                panel?.kind === "budget"
+                  ? "active mission-tasks-link"
+                  : "mission-tasks-link"
+              }
+              onClick={() => setPanel({ kind: "budget" })}
+            >
+              <Wallet size={14} />
+              <span>Budget</span>
+            </button>
+          ) : null}
           <button
             className="add-stream"
             hidden={!!m.archived}
@@ -398,6 +455,12 @@ export default function App() {
           <i />
           {online ? "Live" : "Reconnecting"}
         </span>
+        {context?.budget ? (
+          <BudgetSummary
+            budget={context.budget}
+            open={() => setPanel({ kind: "budget" })}
+          />
+        ) : null}
         {context && !context.mission.archived ? (
           <>
             <button
@@ -707,6 +770,20 @@ export default function App() {
                     Tasks <span className="count">{context.tasks.length}</span>
                   </button>
                 ) : null}
+                {context.artifacts && view === "dm" && directAgent ? (
+                  <button
+                    className="button compact"
+                    onClick={() =>
+                      setPanel({
+                        kind: "artifacts",
+                        directAgentId: directAgent.id,
+                      })
+                    }
+                  >
+                    <Files size={14} />
+                    Private artifacts
+                  </button>
+                ) : null}
                 {view === "dm" && directAgent ? (
                   <ResumeAgent
                     agent={directAgent}
@@ -866,7 +943,41 @@ export default function App() {
           </>
         )}
       </main>
-      {panel && context ? (
+      {panel && context && ["artifacts", "budget"].includes(panel.kind) ? (
+        <Suspense
+          fallback={
+            <aside className="details">
+              <p className="details-body">Loading…</p>
+            </aside>
+          }
+        >
+          {panel.kind === "budget" ? (
+            <BudgetPanel
+              key={selected}
+              context={context}
+              close={() => setPanel(null)}
+              refresh={reload}
+            />
+          ) : (
+            <ArtifactsPanel
+              key={
+                selected +
+                (panel.artifactId || "") +
+                (panel.revisionId || "") +
+                (panel.directAgentId || "")
+              }
+              context={context}
+              artifactId={panel.artifactId}
+              revisionId={panel.revisionId}
+              directAgentId={panel.directAgentId}
+              close={() => setPanel(null)}
+              refresh={reload}
+              inspect={inspect}
+            />
+          )}
+        </Suspense>
+      ) : null}
+      {panel && context && !["artifacts", "budget"].includes(panel.kind) ? (
         <SidePanel
           key={panel.kind + panel.record?.id}
           panel={panel}
@@ -1190,6 +1301,9 @@ export function Conversation({
   );
 }
 function labelFor(context: Context, id: string) {
+  const artifact = context.artifacts?.find((a) => a.headId === id);
+  if (artifact)
+    return `${artifact.title} · revision ${artifact.revision.number}`;
   const records: any[] = [
     ...context.messages,
     ...context.tasks,
@@ -1555,6 +1669,11 @@ function Composer({
         >
           <option value="">↗ Reference</option>
           {[
+            ...(context.artifacts || [])
+              .filter(
+                (a) => !a.directAgentId || a.directAgentId === directAgentId,
+              )
+              .map((a) => a.revision),
             ...context.tasks,
             ...context.messages.filter((m) => m.kind !== "system").slice(-20),
             ...context.workstreams,

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { artifactOperations } from "./artifacts.mjs";
+import { budgetOperations } from "./budget.mjs";
 const id = z.string().min(1).max(100),
   text = z.string().trim().min(1).max(16000),
   short = z.string().trim().min(1).max(180),
@@ -7,6 +9,8 @@ const channel = { channel_id: id },
   version = { version: z.number().int().positive() },
   refs = z.array(id).max(30).default([]);
 export const operations = {
+  ...artifactOperations,
+  ...budgetOperations,
   runner_pair: {
     description:
       "Human: create a single-use, mission-scoped link to connect an execution runner. This does not start agents.",
@@ -299,7 +303,7 @@ export const operations = {
   },
   task_update: {
     description:
-      "Keep an owned task's status, progress summary and result evidence current so the human can follow the plan's execution. Assigned agents report their work; the coordinator manages ownership across agents. Use the current version. A done task does not automatically complete the mission. Human overrides remain available.",
+      "Keep an owned task's status, progress summary and result evidence current so the human can follow the plan's execution. Assigned agents report their work; the coordinator manages ownership across agents. Use the current version. To mark done, publish a complete or inconclusive artifact revision and include its revision ID in refs. A done task does not automatically complete the mission. Human overrides remain available.",
     schema: z.object({
       ...channel,
       ...version,

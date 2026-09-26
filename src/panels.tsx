@@ -278,6 +278,12 @@ export function SidePanel({
                         <details className="criterion-evidence">
                           <summary>Evidence and report</summary>
                           <Text value={c.assessment.summary} />
+                          {c.evidence?.some((e) => e.stale || e.superseded) ? (
+                            <p className="warning">
+                              Supporting artifacts changed or were superseded.
+                              This criterion needs reassessment.
+                            </p>
+                          ) : null}
                           <div className="task-evidence">
                             {c.assessment.refs.map((id) => (
                               <button
@@ -1139,6 +1145,13 @@ function TaskDetail({
           <Field label="Reference">
             <select value={ref} onChange={(e) => setRef(e.target.value)}>
               <option value="">Keep current references</option>
+              {(context.artifacts || [])
+                .filter((a) => !a.directAgentId)
+                .map((a) => (
+                  <option key={a.headId} value={a.headId}>
+                    {a.title} · revision {a.revision.number}
+                  </option>
+                ))}
               {context.messages
                 .filter((m) => m.kind !== "system")
                 .map((m) => (

@@ -97,6 +97,10 @@ export function startupStatus(mission, agents) {
 }
 
 export const planningOperations = new Set([
+  "artifact_publish",
+  "artifact_review",
+  "budget_reserve",
+  "budget_allocate",
   "plan_update",
   "coordinator_ready",
   "agent_admit",

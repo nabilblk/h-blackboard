@@ -177,9 +177,17 @@ export function Dialogs({
                     placeholder="What supports this status?"
                   />
                 </Field>
-                <Field label="Supporting message · optional">
+                <Field label="Supporting artifact or message · optional">
                   <select name="ref" defaultValue="">
-                    <option value="">No message reference</option>
+                    <option value="">No reference</option>
+                    {(context!.artifacts || [])
+                      .filter((a) => !a.directAgentId)
+                      .map((a) => (
+                        <option key={a.headId} value={a.headId}>
+                          {a.title} · revision {a.revision.number}
+                          {a.stale ? " · inputs changed" : ""}
+                        </option>
+                      ))}
                     {context!.messages
                       .filter(
                         (message) => !message.directAgentId && !message.removed,
@@ -280,6 +288,12 @@ export function Dialogs({
                       <option value="peer">Peer collaboration</option>
                     </select>
                   </Field>
+                ) : null}
+                {modal.kind === "mission" ? (
+                  <p className="secondary">
+                    Budget: Unlimited. You can add optional limits from Budget
+                    after creating the mission.
+                  </p>
                 ) : null}
               </>
             ) : null}

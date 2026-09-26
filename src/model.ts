@@ -1,3 +1,9 @@
+import type {
+  Budget,
+  Artifact,
+  ArtifactRevision,
+  ArtifactReview,
+} from "./resources";
 import runtimes from "../shared/runtimes.json";
 export type RuntimeId = keyof typeof runtimes;
 export type Role = "agent" | "coordinator";
@@ -12,6 +18,13 @@ export interface Criterion {
   id: string;
   text: string;
   met: boolean;
+  evidence?: {
+    id: string;
+    artifactId: string;
+    revision: number;
+    superseded: boolean;
+    stale: boolean;
+  }[];
   assessment?: {
     summary: string;
     refs: string[];
@@ -36,6 +49,7 @@ export interface Mission extends Base {
   startedAt: number | null;
   defaultStreamId: string;
   plan: string;
+  planArtifactId?: string;
   state: "preparing" | "active" | "paused" | "closed";
   archived?: boolean;
   archivedAt?: number | null;
@@ -80,6 +94,7 @@ export interface Startup {
   waiting: number;
 }
 export interface ExecutionInfo {
+  budgetProtocol?: 1;
   environment: "local";
   host: string;
   workspace: string;
@@ -171,6 +186,8 @@ export interface Task extends Base {
 }
 export interface Context {
   mission: Mission;
+  budget: Budget;
+  artifacts: Artifact[];
   startup: Startup;
   workstreams: Stream[];
   agents: Agent[];
@@ -191,7 +208,15 @@ export interface Session {
   node: string;
 }
 export type SharedRecord =
-  Message | Stream | Agent | Task | Assignment | AgentRequest;
+  | Message
+  | Stream
+  | Agent
+  | Task
+  | Assignment
+  | AgentRequest
+  | Artifact
+  | ArtifactRevision
+  | ArtifactReview;
 export type Modal = {
   kind:
     | "mission"
@@ -209,6 +234,16 @@ export type Modal = {
   criterion?: Criterion;
 };
 export type Panel = {
-  kind: "mission" | "agents" | "requests" | "tasks" | "record";
+  kind:
+    | "mission"
+    | "agents"
+    | "requests"
+    | "tasks"
+    | "record"
+    | "budget"
+    | "artifacts";
+  artifactId?: string;
+  revisionId?: string;
+  directAgentId?: string;
   record?: SharedRecord;
 };

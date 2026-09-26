@@ -7,6 +7,8 @@ import runtimes from "../shared/runtimes.json" with { type: "json" };
 import { operations, validate } from "./contracts.mjs";
 import { validateExecution } from "./execution.mjs";
 import { Runners } from "./runners.mjs";
+import { Artifacts, artifactOperations } from "./artifacts.mjs";
+import { Budgets } from "./budget.mjs";
 import {
   migrateStartup,
   participation,
@@ -63,6 +65,8 @@ export class Blackboard extends EventEmitter {
     }
     migrateStartup(this);
     this.runners = new Runners(this);
+    this.budgets = new Budgets(this);
+    this.artifacts = new Artifacts(this);
     if (file !== ":memory:")
       for (const path of [file, file + "-wal", file + "-shm"])
         if (existsSync(path)) chmodSync(path, 0o600);
@@ -235,7 +239,15 @@ export class Blackboard extends EventEmitter {
     this.put(m);
     return m;
   }
-  actorView(a, channel, viewer) {
+  permission(channel, agent, budget) {
+    const permission = participation(channel, agent);
+    if (["planning", "authorized"].includes(permission.state)) {
+      const reason = this.budgets.stopReason(channel, agent, budget);
+      if (reason) return { ...permission, state: "paused", reason };
+    }
+    return permission;
+  }
+  actorView(a, channel, viewer, budget) {
     return {
       ...a,
       ...(viewer?.human
@@ -250,13 +262,14 @@ export class Blackboard extends EventEmitter {
         : {}),
       role: channel.coordinatorId === a.id ? "coordinator" : "agent",
       online: Date.now() - a.lastSeen < 45000,
-      participation: participation(channel, a),
+      participation: this.permission(channel, a, budget),
     };
   }
   context(actor, id) {
     const channel = this.access(actor, id);
+    const budget = this.budgets.snapshot(channel);
     const agents = this.list(id, "agent").map((a) =>
-      this.actorView(a, channel, actor),
+      this.actorView(a, channel, actor, budget),
     );
     const cursor = Number(
       this.db
@@ -278,7 +291,7 @@ export class Blackboard extends EventEmitter {
               ...agents,
             ]
               .filter(Boolean)
-              .map((a) => [a.id, this.actorView(a, channel, actor)]),
+              .map((a) => [a.id, this.actorView(a, channel, actor, budget)]),
           ).values(),
         ].slice(0, limit);
     const workstreams = this.list(id, "workstream");
@@ -288,11 +301,26 @@ export class Blackboard extends EventEmitter {
       (a) => a.status === "pending",
     );
     return {
-      mission: channel,
+      mission: {
+        ...channel,
+        criteria: channel.criteria.map((criterion) => {
+          const evidence = this.artifacts.evidence(
+            actor,
+            channel,
+            criterion.assessment?.refs || [],
+          );
+          return evidence.length ? { ...criterion, evidence } : criterion;
+        }),
+      },
+      budget: { ...budget, history: budget.history.slice(-10) },
+      artifacts: this.artifacts
+        .visible(actor, channel)
+        .slice(-30)
+        .map((a) => this.artifacts.summary(a, channel)),
       startup: startupStatus(channel, agents),
       participation: actor.human
         ? null
-        : participation(channel, this.get(actor.id)),
+        : this.permission(channel, this.get(actor.id), budget),
       workstreams: actor.human
         ? workstreams
         : [
@@ -655,7 +683,7 @@ export class Blackboard extends EventEmitter {
       control: a.control,
       missionState: c.archived ? "archived" : c.state,
       role: c.coordinatorId === a.id ? "coordinator" : "agent",
-      participation: participation(c, a),
+      participation: this.permission(c, a),
     };
   }
   invitation(token) {
@@ -807,6 +835,11 @@ export class Blackboard extends EventEmitter {
       if (operation === "records_read") return this.records(actor, p);
       if (operation === "messages_search") return this.searchMessages(actor, p);
       const channel = this.access(actor, p.channel_id);
+      if (artifactOperations[operation])
+        return this.artifacts.read(actor, channel, operation, p);
+      if (operation === "budget_read") return this.budgets.read(channel, p);
+      if (operation === "budget_run_read")
+        return this.budgets.run(channel, p.run_id);
       const record = this.readable(actor, channel, p.id);
       return record.type === "agent"
         ? this.actorView(record, channel, actor)
@@ -830,6 +863,20 @@ export class Blackboard extends EventEmitter {
         "Idempotency key was reused for a different change",
         409,
       );
+      if (operation === "budget_reserve") {
+        const run = this.budgets.run(
+          this.access(actor, p.channel_id),
+          p.run_id,
+        );
+        return {
+          granted: run.status === "reserved",
+          run,
+          reason:
+            run.status === "reserved"
+              ? null
+              : "This execution was already settled; use a new run ID.",
+        };
+      }
       return JSON.parse(previous.output);
     }
     this.db.exec("BEGIN IMMEDIATE");
@@ -839,14 +886,21 @@ export class Blackboard extends EventEmitter {
       const me = !actor.human ? this.get(actor.id) : null;
       must(
         !c?.archived ||
-          ["mission_archive", "messages_seen", "invitation_revoke"].includes(
-            operation,
-          ),
+          [
+            "mission_archive",
+            "messages_seen",
+            "invitation_revoke",
+            "budget_settle",
+            "budget_reconcile",
+          ].includes(operation),
         "Channel is archived and read-only. Restore it before making changes.",
         409,
       );
       if (me) {
-        const permission = participation(c, me);
+        const permission =
+          operation === "budget_reserve"
+            ? participation(c, me)
+            : this.permission(c, me);
         const setupMessage =
           operation === "message_post" &&
           ["preparing", "active"].includes(c.state) &&
@@ -855,6 +909,10 @@ export class Blackboard extends EventEmitter {
           permission.state === "planning" && planningOperations.has(operation);
         must(
           permission.state === "authorized" ||
+            ["budget_settle", "budget_request"].includes(operation) ||
+            (["artifact_publish", "artifact_review"].includes(operation) &&
+              (permission.state === "paused" ||
+                permission.state === "planning")) ||
             planning ||
             setupMessage ||
             (operation === "message_post" &&
@@ -877,6 +935,18 @@ export class Blackboard extends EventEmitter {
       }
       let result;
       switch (operation) {
+        case "artifact_publish":
+        case "artifact_review":
+          result = this.artifacts.execute(actor, c, operation, p);
+          break;
+        case "budget_update":
+        case "budget_allocate":
+        case "budget_request":
+        case "budget_reserve":
+        case "budget_settle":
+        case "budget_reconcile":
+          result = this.budgets.execute(actor, c, operation, p);
+          break;
         case "runner_pair": {
           this.human(actor);
           must(
@@ -1218,11 +1288,52 @@ export class Blackboard extends EventEmitter {
           );
           this.version(c, p.version);
           this.references(actor, c, p.refs);
+          const existingPlan = c.planArtifactId
+            ? this.get(c.planArtifactId)
+            : null;
+          let planRevision = existingPlan
+            ? this.get(existingPlan.headId)
+            : null;
+          if (
+            !existingPlan ||
+            c.plan !== p.plan ||
+            JSON.stringify(planRevision.refs) !== JSON.stringify(p.refs)
+          ) {
+            const published = this.artifacts.publish(
+              actor,
+              c,
+              {
+                artifact_id: existingPlan?.id,
+                version: existingPlan?.version,
+                title: "Shared plan",
+                stream_id: c.defaultStreamId,
+                kind: "plan",
+                summary: "Current coordination plan",
+                limitations: "A plan is not evidence of execution.",
+                outcome: "draft",
+                refs: p.refs,
+                files: [
+                  {
+                    name: "plan.md",
+                    media_type: "text/markdown",
+                    encoding: "utf8",
+                    content: p.plan,
+                  },
+                ],
+              },
+              { announce: false },
+            );
+            planRevision = published.revision;
+          }
           result = this.update(c, {
+            planArtifactId: planRevision.artifactId,
             plan: p.plan,
             ...(c.state !== "active" ? preparationChange(c) : {}),
           });
-          this.message(c, actor, p.plan, { kind: "decision", refs: p.refs });
+          this.message(c, actor, p.plan, {
+            kind: "decision",
+            refs: [...p.refs, planRevision.id],
+          });
           break;
         }
         case "stream_create": {
@@ -1281,7 +1392,10 @@ export class Blackboard extends EventEmitter {
           );
           const w = this.record(c, p.stream_id, "workstream");
           must(!w.archived, "Workstream is archived");
-          result = this.update(me, { streamId: w.id, direction: p.direction });
+          result = this.update(me, {
+            streamId: w.id,
+            direction: p.direction,
+          });
           this.message(c, actor, p.direction, {
             kind: "finding",
             streamId: w.id,
@@ -1552,6 +1666,19 @@ export class Blackboard extends EventEmitter {
             );
           }
           this.references(actor, c, p.refs);
+          if (!actor.human && p.status === "done") {
+            must(
+              p.refs.some((id) => {
+                const r = this.get(id);
+                return (
+                  r.type === "artifact_revision" &&
+                  r.outcome !== "draft" &&
+                  this.get(r.artifactId).headId === r.id
+                );
+              }),
+              "Publish a complete or inconclusive artifact revision and include its revision ID before completing a task.",
+            );
+          }
           result = this.update(t, {
             status: p.status,
             summary: p.summary,
@@ -1617,11 +1744,16 @@ export class Blackboard extends EventEmitter {
         default:
           throw new Error("Unknown operation");
       }
-      this.db
-        .prepare("INSERT INTO retries VALUES(?,?,?,?)")
-        .run(actor.id, retryKey, input, JSON.stringify(result));
+      if (!(operation === "budget_reserve" && !result.granted))
+        this.db
+          .prepare("INSERT INTO retries VALUES(?,?,?,?)")
+          .run(actor.id, retryKey, input, JSON.stringify(result));
       this.db.exec("COMMIT");
-      if (operation !== "messages_seen") this.emit("change", changed);
+      if (
+        operation !== "messages_seen" &&
+        !(operation === "budget_reserve" && !result.granted)
+      )
+        this.emit("change", changed);
       return result;
     } catch (e) {
       this.db.exec("ROLLBACK");

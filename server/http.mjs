@@ -31,14 +31,19 @@ const send = (res, status, data, type = "application/json") => {
   res.end(type === "application/json" ? JSON.stringify(data) : data);
 };
 const body = async (req) => {
-  let content = "";
+  const chunks = [];
+  let length = 0;
+  const limit =
+    req.url.split("?")[0] === "/api/rpc" ? 12 * 1024 * 1024 : 150000;
   for await (const chunk of req) {
-    content += chunk;
-    if (content.length > 150000)
+    length += chunk.length;
+    if (length > limit)
       throw Object.assign(new Error("Request is too large"), { status: 413 });
+    chunks.push(chunk);
   }
-  return content ? JSON.parse(content) : {};
+  return length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
 };
+
 export function createServer({
   database = resolve(root, "var/blackboard.sqlite"),
   publicUrl,

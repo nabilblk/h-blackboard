@@ -485,12 +485,19 @@ test("Optional individual and parallel tasks coexist with task-free participatio
     body: "Independent evidence.",
     kind: "finding",
   });
+  const output = act(a.actor, "artifact_publish", {
+    title: "Comparison",
+    summary: "Comparison delivered",
+    outcome: "complete",
+    files: [{ name: "report.md", content: finding.body }],
+    refs: [finding.id],
+  });
   act(a.actor, "task_update", {
     task_id: single.id,
     version: single.version,
     status: "done",
     summary: "Comparison delivered.",
-    refs: [finding.id],
+    refs: [output.revision.id],
   });
   assert.throws(
     () =>
@@ -551,12 +558,19 @@ test("An agent owns and reports its execution task while a coordinator exists", 
     body: "Both costs include the same items.",
     kind: "finding",
   });
+  const output = act(worker.actor, "artifact_publish", {
+    title: "Cost comparison",
+    summary: "Comparable estimates",
+    outcome: "complete",
+    files: [{ name: "report.md", content: finding.body }],
+    refs: [finding.id],
+  });
   act(worker.actor, "task_update", {
     task_id: task.id,
     version: working.version,
     status: "done",
     summary: "Comparable estimates published.",
-    refs: [finding.id],
+    refs: [output.revision.id],
   });
   const visible = act(human, "context_read").tasks.find(
     (t) => t.id === task.id,
@@ -564,7 +578,7 @@ test("An agent owns and reports its execution task while a coordinator exists", 
   assert.equal(visible.status, "done");
   assert.equal(visible.updatedBy, worker.agent.id);
   assert.ok(visible.updatedAt >= visible.createdAt);
-  assert.deepEqual(visible.refs, [finding.id]);
+  assert.deepEqual(visible.refs, [output.revision.id]);
   assert.equal(board.get(mission.id).criteria[0].met, false);
 });
 

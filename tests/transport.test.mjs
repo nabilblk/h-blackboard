@@ -221,7 +221,51 @@ test("MCP discovers agent operations and skills, and writes authenticated findin
     ).messages.some((m) => m.id === privateRecord.id),
   );
   const resources = await client.listResources();
-  assert.equal(resources.resources.length, 2);
+  assert.deepEqual(resources.resources.map((r) => r.uri).sort(), [
+    "harakiri://skills/artifacts",
+    "harakiri://skills/coordination",
+    "harakiri://skills/participation",
+  ]);
+  const artifactSkill = await client.readResource({
+    uri: "harakiri://skills/artifacts",
+  });
+  assert.ok(artifactSkill.contents[0].text.length > 0);
+  assert.ok(tools.some((x) => x.name === "artifact_highlight"));
+  const previewOutput = await client.callTool({
+    name: "artifact_publish",
+    arguments: {
+      title: "MCP deliverable",
+      description: "A browser-readable result",
+      entrypoint: "index.html",
+      kind: "application",
+      summary: "MCP packaging check",
+      files: [
+        {
+          name: "index.html",
+          media_type: "text/html",
+          content: "<h1>Delivered</h1>",
+        },
+      ],
+    },
+  });
+  assert.ok(!previewOutput.isError);
+  const artifact = JSON.parse(previewOutput.content[0].text).artifact;
+  const found = await client.callTool({
+    name: "artifacts_read",
+    arguments: { query: "browser-readable", kind: "application" },
+  });
+  const outputs = JSON.parse(found.content[0].text);
+  assert.equal(outputs.items[0].id, artifact.id);
+  assert.equal(outputs.items[0].revision.entrypoint, "index.html");
+  const deniedHighlight = await client.callTool({
+    name: "artifact_highlight",
+    arguments: {
+      artifact_id: artifact.id,
+      version: artifact.version,
+      highlighted: true,
+    },
+  });
+  assert.equal(deniedHighlight.isError, true);
   const skill = await client.readResource({
     uri: "harakiri://skills/participation",
   });

@@ -1,15 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, Download, Lock, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Lock, X } from "lucide-react";
+import { ArtifactList } from "./ArtifactList";
+import { ArtifactFiles } from "./ArtifactFiles";
+import { ArtifactStatus } from "./ArtifactStatus";
+import { artifactAction, artifactHref } from "./artifact-links";
 import { rpc } from "./client";
 import { usePanelEscape } from "./usePanelEscape";
-import { Badge, Empty, Field, ModalFrame, Text, Time } from "./ui";
+import { Badge, Field, ModalFrame, Text, Time } from "./ui";
 import type { Context } from "./model";
-import type {
-  Artifact,
-  ArtifactDetail,
-  ArtifactFile,
-  ArtifactRevision,
-} from "./resources";
+import type { Artifact, ArtifactDetail, ArtifactRevision } from "./resources";
 
 export function ArtifactsPanel({
   context,
@@ -19,6 +18,7 @@ export function ArtifactsPanel({
   close,
   inspect,
   refresh,
+  showFiles = true,
 }: {
   context: Context;
   artifactId?: string;
@@ -27,41 +27,29 @@ export function ArtifactsPanel({
   close: () => void;
   inspect: (id: string) => void;
   refresh: () => Promise<void>;
+  showFiles?: boolean;
 }) {
   usePanelEscape(close);
-  const [items, setItems] = useState<Artifact[]>([]),
-    [detail, setDetail] = useState<ArtifactDetail | null>(null);
+  const [detail, setDetail] = useState<ArtifactDetail | null>(null);
   const [selected, setSelected] = useState(artifactId || ""),
     [revision, setRevision] = useState(revisionId || "");
   const [error, setError] = useState(""),
-    [loading, setLoading] = useState(false),
-    [nextOffset, setNextOffset] = useState<number | null>(null),
-    [query, setQuery] = useState("");
+    [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false),
     [reviewing, setReviewing] = useState(false),
     [generation, setGeneration] = useState(0);
   useEffect(() => {
+    if (!selected) return;
     let active = true;
     setLoading(true);
     setError("");
-    const load = selected
-      ? rpc<ArtifactDetail>("artifact_read", {
-          channel_id: context.mission.id,
-          artifact_id: selected,
-          revision_id: revision || undefined,
-        })
-      : rpc<{ items: Artifact[]; nextOffset: number | null }>(
-          "artifacts_read",
-          { channel_id: context.mission.id, direct_agent_id: directAgentId },
-        );
-    load
+    rpc<ArtifactDetail>("artifact_read", {
+      channel_id: context.mission.id,
+      artifact_id: selected,
+      revision_id: revision || undefined,
+    })
       .then((result) => {
-        if (!active) return;
-        if ("artifact" in result) setDetail(result);
-        else {
-          setItems(result.items);
-          setNextOffset(result.nextOffset);
-        }
+        if (active) setDetail(result);
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -186,93 +174,16 @@ export function ArtifactsPanel({
           </p>
         ) : null}
         {!selected ? (
-          <>
-            <div className="section-heading">
-              <h2>Shared work, saved</h2>
-              <button
-                className="button"
-                disabled={context.mission.archived}
-                onClick={() => setPublishing(true)}
-              >
-                <Plus size={14} />
-                Publish
-              </button>
-            </div>
-            <p className="secondary">
-              Plans, evidence and deliverables with revision history.
-              Publication, verification and acceptance stay distinct.
-            </p>
-            <input
-              type="search"
-              aria-label="Filter loaded artifacts"
-              placeholder="Filter loaded artifacts"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {!loading && !items.length ? (
-              <Empty title="No artifacts yet">
-                Agents publish useful work here as they progress. Tasks are
-                optional.
-              </Empty>
-            ) : null}
-            {items
-              .filter((a) =>
-                `${a.title} ${a.kind} ${a.revision.summary}`
-                  .toLowerCase()
-                  .includes(query.toLowerCase()),
-              )
-              .map((a) => (
-                <button
-                  className="artifact-card"
-                  key={a.id}
-                  onClick={() => {
-                    setSelected(a.id);
-                    setRevision("");
-                  }}
-                >
-                  <span className="section-heading">
-                    <strong>{a.title}</strong>
-                    <span className="mono secondary">v{a.revision.number}</span>
-                  </span>
-                  <span className="secondary">{a.revision.summary}</span>
-                  <span className="button-row">
-                    <Badge tone={a.stale ? "warning" : ""}>
-                      {a.stale ? "Inputs changed" : a.revision.outcome}
-                    </Badge>
-                    <span className="mono secondary">
-                      {a.kind} · {a.revision.files.length} files
-                    </span>
-                  </span>
-                </button>
-              ))}
-            {nextOffset !== null ? (
-              <button
-                className="button"
-                disabled={loading}
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    const next = await rpc<{
-                      items: Artifact[];
-                      nextOffset: number | null;
-                    }>("artifacts_read", {
-                      channel_id: context.mission.id,
-                      direct_agent_id: directAgentId,
-                      offset: nextOffset,
-                    });
-                    setItems((old) => [...old, ...next.items]);
-                    setNextOffset(next.nextOffset);
-                  } catch (e) {
-                    setError((e as Error).message);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              >
-                Load more artifacts
-              </button>
-            ) : null}
-          </>
+          <ArtifactList
+            context={context}
+            directAgentId={directAgentId}
+            select={(id) => {
+              setSelected(id);
+              setRevision("");
+            }}
+            publish={() => setPublishing(true)}
+            refresh={refresh}
+          />
         ) : detail && current ? (
           <>
             <section>
@@ -293,6 +204,20 @@ export function ArtifactsPanel({
                   {author(detail.artifact.directAgentId)}
                 </p>
               ) : null}
+              <ArtifactStatus revision={current} />
+              <a
+                className="button primary artifact-open"
+                href={artifactHref(
+                  context.mission.id,
+                  detail.artifact.id,
+                  current.id,
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {artifactAction(current)}
+                <ArrowUpRight size={15} />
+              </a>
               <Text value={current.summary} />
               <Field label="Revision">
                 <select
@@ -355,7 +280,7 @@ export function ArtifactsPanel({
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(
-                        `${location.origin}/#${context.mission.id}?message=${current.id}`,
+                        `${location.origin}${artifactHref(context.mission.id, detail.artifact.id, current.id)}`,
                       );
                     } catch {
                       setError("Could not copy the revision link.");
@@ -366,11 +291,13 @@ export function ArtifactsPanel({
                 </button>
               </div>
             </section>
-            <FilePreview
-              key={current.id}
-              revision={current}
-              channelId={context.mission.id}
-            />
+            {showFiles ? (
+              <ArtifactFiles
+                key={current.id}
+                revision={current}
+                channelId={context.mission.id}
+              />
+            ) : null}
             <section>
               <h3 className="label">Limitations</h3>
               <Text
@@ -490,132 +417,6 @@ export function ArtifactsPanel({
     </aside>
   );
 }
-const bytesFromBase64 = (value: string) =>
-  Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
-function FilePreview({
-  revision,
-  channelId,
-}: {
-  revision: ArtifactRevision;
-  channelId: string;
-}) {
-  const [fileName, setFileName] = useState(revision.files[0].name),
-    [data, setData] = useState<{
-      file: ArtifactFile;
-      bytes: Uint8Array<ArrayBuffer>;
-    } | null>(null);
-  const [error, setError] = useState(""),
-    [preview, setPreview] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setData(null);
-    setError("");
-    setPreview(false);
-    rpc<ArtifactFile & { content: string }>("artifact_file", {
-      channel_id: channelId,
-      revision_id: revision.id,
-      name: fileName,
-    })
-      .then((result) => {
-        if (active)
-          setData({ file: result, bytes: bytesFromBase64(result.content) });
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [channelId, revision.id, fileName]);
-  const isText =
-    data &&
-    (data.file.mediaType.startsWith("text/") ||
-      /json|javascript|xml|yaml/.test(data.file.mediaType));
-  const source = isText && data ? new TextDecoder().decode(data.bytes) : "";
-  return (
-    <section>
-      <div className="section-heading">
-        <h3 className="label">Files</h3>
-        {data ? (
-          <button
-            className="text-button"
-            onClick={() => {
-              const url = URL.createObjectURL(
-                new Blob([data.bytes], { type: "application/octet-stream" }),
-              );
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = data.file.name.split("/").at(-1)!;
-              a.click();
-              setTimeout(() => URL.revokeObjectURL(url), 10000);
-            }}
-          >
-            <Download size={14} />
-            Download file
-          </button>
-        ) : null}
-      </div>
-      <select
-        aria-label="Artifact file"
-        value={fileName}
-        onChange={(e) => setFileName(e.target.value)}
-      >
-        {revision.files.map((f) => (
-          <option key={f.name} value={f.name}>
-            {f.name} · {(f.size / 1024).toFixed(1)} KiB
-          </option>
-        ))}
-      </select>
-      {error ? (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {data ? (
-        <>
-          <p className="mono secondary artifact-checksum">
-            SHA-256 · {data.file.sha256}
-          </p>
-          {data.file.mediaType === "text/html" ? (
-            <div className="button-row">
-              <button className="button" onClick={() => setPreview((v) => !v)}>
-                {preview ? "Stop preview" : "Run isolated preview"}
-              </button>
-              <small className="secondary">No network or board access.</small>
-            </div>
-          ) : null}
-          {preview ? (
-            <iframe
-              title={`Isolated preview: ${fileName}`}
-              className="artifact-preview"
-              sandbox="allow-scripts"
-              referrerPolicy="no-referrer"
-              srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">${source}`}
-            />
-          ) : data.file.mediaType === "text/markdown" &&
-            data.bytes.length < 150000 ? (
-            <div className="artifact-content">
-              <Text value={source} />
-            </div>
-          ) : isText ? (
-            <pre className="artifact-source">
-              {source.slice(0, 150000)}
-              {source.length > 150000
-                ? "\n… Preview truncated. Download the complete file."
-                : ""}
-            </pre>
-          ) : (
-            <p className="secondary">Binary file · download to inspect.</p>
-          )}
-        </>
-      ) : (
-        <p className="secondary" role="status">
-          Loading file…
-        </p>
-      )}
-    </section>
-  );
-}
 function PublishArtifact({
   context,
   artifact,
@@ -685,6 +486,8 @@ function PublishArtifact({
         direct_agent_id: artifact?.directAgentId || directAgentId,
         title: form.get("title"),
         kind: form.get("kind"),
+        description: form.get("description"),
+        entrypoint: String(form.get("entrypoint") || "") || undefined,
         summary: form.get("summary"),
         limitations: form.get("limitations"),
         outcome: form.get("outcome"),
@@ -746,6 +549,26 @@ function PublishArtifact({
               </select>
             </Field>
           </div>
+          <Field
+            label="Short description"
+            hint="One sentence explaining what the human can use this for."
+          >
+            <input
+              name="description"
+              maxLength={240}
+              defaultValue={artifact?.revision?.description}
+            />
+          </Field>
+          <Field
+            label="Main file"
+            hint="Optional filename to open first, for example index.html. HTML should include its assets."
+          >
+            <input
+              name="entrypoint"
+              maxLength={240}
+              defaultValue={artifact?.revision?.entrypoint}
+            />
+          </Field>
           <Field label="Summary">
             <textarea name="summary" required rows={2} maxLength={16000} />
           </Field>

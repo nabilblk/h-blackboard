@@ -131,6 +131,13 @@ export interface RecoveryInfo {
   launcherCommand: string | null;
 }
 export interface Message extends Base {
+  artifactLinks?: {
+    id: string;
+    artifactId: string;
+    title: string;
+    number: number;
+    kind: string;
+  }[];
   authorId: string;
   streamId: string | null;
   directAgentId?: string | null;

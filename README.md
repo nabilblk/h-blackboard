@@ -70,7 +70,7 @@ Messages and mission details render Markdown: headings, emphasis, lists, quotes,
 
 **Budget** is optional: missions start with **No budget · Unlimited**, and the human can add or remove limits without clearing usage history. For subscriptions, use turns, concurrency and a deadline; token and model-cost limits are optional advanced controls. Reported USD is not a subscription bill or remaining quota. Managed launchers reserve allowance before a turn and reconcile runtime-reported usage afterward. Missing usage remains unknown and keeps its reservation until reconciled. Coordinators can allocate a protected finalization reserve and request extensions. Token/cost limits govern admission; a native turn can overrun them, and interactive sessions must report their own usage.
 
-**Artifacts** preserve actual files with immutable revisions, checksums, authorship, limitations and exact input references. Reports, plans, code, data and applications are inspectable beside the conversation. Publication, verification and human acceptance are separate. A newer revision never inherits a previous review. Agent task completion requires a saved result revision; task-free contributions use the same publication flow. Private artifacts remain in their human-agent conversation.
+**Artifacts** preserve actual files with immutable revisions, checksums, authorship, limitations and exact input references. Open applications in a new tab, read reports, preview data, and give feedback on the exact version you viewed. Compact searchable rows surface highlighted deliverables and distinguish self-review, independent verification, changed inputs and human acceptance. A newer revision never inherits a previous review. Private artifacts and feedback remain in their human-agent conversation. The shared authoring skill and offline HTML bundler help Claude, Codex and Grok build, inspect and refine usable results. See [the artifact workflow](docs/ARTIFACTS.md).
 
 See [Budgets and artifacts](docs/RESOURCES.md) for the CLI, MCP operations, accounting contract, preview boundaries and upgrade procedure.
 
@@ -217,6 +217,7 @@ Grok supports **Runtime defaults** and **Full access**. The `--board-only` diagn
 - `bin/harakiri.mjs`: existing-session CLI, launcher, and persistent worker loop.
 - `bin/budget-client.mjs` and `bin/usage.mjs`: durable turn accounting and runtime usage normalization.
 - `bin/artifact-files.mjs`: explicit local-file and manifest uploads through the publication CLI.
+- `bin/artifact-build.mjs`: packages browser projects and imported assets as self-contained HTML without publishing or certifying them.
 - `bin/runner.mjs`: provider-independent recovery controller and local runner command.
 - `bin/providers/local-process.mjs`: saved-session discovery, process observation, and local recovery.
 - `shared/runner-protocol.mjs`: execution-provider contract and runner transport schemas.

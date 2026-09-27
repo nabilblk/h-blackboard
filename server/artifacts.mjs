@@ -5,6 +5,23 @@ const id = z.string().min(1).max(100);
 const summary = z.string().trim().min(1).max(16000);
 const refs = z.array(id).max(30).default([]);
 const channel = { channel_id: id };
+const kind = z.enum([
+  "plan",
+  "report",
+  "code",
+  "data",
+  "application",
+  "validation",
+  "other",
+]);
+const reviewStatus = z.enum([
+  "unreviewed",
+  "self_reviewed",
+  "verified",
+  "changes_requested",
+  "inconclusive",
+  "needs_recheck",
+]);
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_TOTAL = 8 * 1024 * 1024;
 const hash = (data) => createHash("sha256").update(data).digest("hex");
@@ -15,13 +32,19 @@ export const artifactOperations = {
   artifacts_read: {
     read: true,
     description:
-      "List accessible artifact summaries. Private outputs remain in their human-agent conversation. Use artifact_read for revision history and artifact_file for stored content.",
+      "Search all accessible artifacts before pagination, with kind, review status, author, workstream and highlight filters. Highlights appear first. Reviews describe the current revision; completion, independent verification and human acceptance remain separate. Private outputs remain in their human-agent conversation.",
     schema: z
       .object({
         ...channel,
         offset: z.number().int().min(0).default(0),
         limit: z.number().int().min(1).max(100).default(50),
         direct_agent_id: id.optional(),
+        query: z.string().trim().max(200).default(""),
+        kind: kind.optional(),
+        review_status: reviewStatus.optional(),
+        author_id: id.optional(),
+        stream_id: id.optional(),
+        highlighted: z.boolean().optional(),
       })
       .strict(),
   },
@@ -49,24 +72,16 @@ export const artifactOperations = {
   },
   artifact_publish: {
     description:
-      "Publish a durable contribution or revise an existing artifact with its current version. Supply actual files (UTF-8 or base64), summary and limitations. Maximum 32 files, 2 MiB each, 8 MiB total. refs may include exact input artifact_revision IDs, tasks or public evidence. A private artifact uses direct_agent_id and cannot later change visibility. No task is required. Publication is not verification or human acceptance.",
+      "Publish a durable contribution or revise an existing artifact with its current version. Supply actual files, a short human-facing description, summary and limitations. Set entrypoint to the primary file; HTML must be self-contained (no network, external assets or board access). Follow the artifacts authoring skill: build, inspect the published output, refine and record checks. Maximum 32 files, 2 MiB each, 8 MiB total. refs are current dependencies on exact input revisions, not revision history. Private outputs use direct_agent_id. No task is required. Publication is not verification or acceptance.",
     schema: z
       .object({
         ...channel,
         artifact_id: id.optional(),
         version: z.number().int().positive().optional(),
         title: z.string().trim().min(1).max(180),
-        kind: z
-          .enum([
-            "plan",
-            "report",
-            "code",
-            "data",
-            "application",
-            "validation",
-            "other",
-          ])
-          .default("report"),
+        kind: kind.default("report"),
+        description: z.string().trim().max(240).optional(),
+        entrypoint: z.string().min(1).max(240).optional(),
         summary,
         limitations: z.string().trim().max(16000).default(""),
         outcome: z.enum(["draft", "complete", "inconclusive"]).default("draft"),
@@ -87,6 +102,18 @@ export const artifactOperations = {
           )
           .min(1)
           .max(32),
+      })
+      .strict(),
+  },
+  artifact_highlight: {
+    description:
+      "Current coordinator or human: highlight a mission deliverable for the human, or remove its highlight. Use the current artifact version. This does not verify or accept it, change its visibility, or create a revision.",
+    schema: z
+      .object({
+        ...channel,
+        artifact_id: id,
+        version: z.number().int().positive(),
+        highlighted: z.boolean(),
       })
       .strict(),
   },
@@ -154,25 +181,140 @@ export class Artifacts {
         stale: this.stale(r, c),
       }));
   }
-  summary(a, c) {
+  reviewStale(review, c) {
+    return (
+      review.missionFingerprint !== missionFingerprint(c) ||
+      this.stale(this.board.get(review.revisionId), c) ||
+      this.evidenceForRefsChanged(review.refs, c)
+    );
+  }
+  evidenceForRefsChanged(ids, c) {
+    return ids.some((id) => {
+      const input = this.board.get(id);
+      return (
+        input?.type === "artifact_revision" &&
+        (this.board.get(input.artifactId)?.headId !== input.id ||
+          this.stale(input, c))
+      );
+    });
+  }
+  assessment(revision, c, reviews) {
+    reviews ||= this.board.db
+      .prepare(
+        "SELECT data FROM records WHERE channel=? AND type='artifact_review' AND json_extract(data,'$.artifactId')=? ORDER BY rowid DESC",
+      )
+      .all(c.id, revision.artifactId)
+      .map((row) => JSON.parse(row.data));
+    const relevant = reviews.filter((r) => r.revisionId === revision.id);
+    const latest = new Map();
+    for (const review of relevant) {
+      // Acceptance is a separate human decision, not a verification verdict.
+      const key = `${review.authorId}:${review.verdict === "accepted" ? "acceptance" : "review"}`;
+      if (!latest.has(key)) latest.set(key, review);
+    }
+    const current = [...latest.values()];
+    const stale = this.stale(revision, c);
+    const assessments = current.filter((r) => r.verdict !== "accepted");
+    const accepted =
+      !stale &&
+      current.some((r) => r.verdict === "accepted" && !this.reviewStale(r, c));
+    const independent = assessments.filter((r) => !r.selfReview);
+    const status =
+      stale || current.some((r) => this.reviewStale(r, c))
+        ? "needs_recheck"
+        : assessments.some((r) => r.verdict === "rejected")
+          ? "changes_requested"
+          : assessments.some((r) => r.verdict === "inconclusive")
+            ? "inconclusive"
+            : independent.some((r) => r.verdict === "verified")
+              ? "verified"
+              : assessments.some((r) => r.verdict === "verified")
+                ? "self_reviewed"
+                : "unreviewed";
+    return {
+      status,
+      accepted,
+      reviewCount: relevant.length,
+      independentCount: independent.length,
+      lastReviewedAt: relevant[0]?.createdAt || null,
+    };
+  }
+  presentRevision(revision, c, reviews) {
+    const html = revision.files.filter((f) => f.mediaType === "text/html");
+    const entrypoint =
+      revision.entrypoint ||
+      html.find((f) => f.name === "index.html")?.name ||
+      (html.length === 1 ? html[0].name : null) ||
+      revision.files.find((f) => f.mediaType === "text/markdown")?.name ||
+      revision.files[0].name;
+    return {
+      ...revision,
+      description: revision.description || "",
+      entrypoint,
+      stale: this.stale(revision, c),
+      assessment: this.assessment(revision, c, reviews),
+    };
+  }
+  summary(a, c, reviews) {
     const revision = this.board.get(a.headId);
-    return { ...a, revision, stale: this.stale(revision, c) };
+    return {
+      ...a,
+      highlighted: !!a.highlighted,
+      revision: this.presentRevision(revision, c, reviews),
+      stale: this.stale(revision, c),
+    };
   }
   read(actor, c, op, p) {
     const b = this.board;
     if (op === "artifacts_read") {
       if (p.direct_agent_id) b.directAgent(actor, c, p.direct_agent_id);
+      const reviews = b.list(c.id, "artifact_review").reverse();
+      const reviewsByArtifact = new Map();
+      for (const review of reviews) {
+        const group = reviewsByArtifact.get(review.artifactId) || [];
+        group.push(review);
+        reviewsByArtifact.set(review.artifactId, group);
+      }
+      const query = p.query.toLocaleLowerCase();
       const all = this.visible(actor, c)
         .filter((a) =>
           p.direct_agent_id
             ? a.directAgentId === p.direct_agent_id
             : !a.directAgentId,
         )
-        .reverse();
+        .filter(
+          (a) =>
+            (!p.kind || a.kind === p.kind) &&
+            (!p.stream_id || a.streamId === p.stream_id) &&
+            (p.highlighted === undefined || !!a.highlighted === p.highlighted),
+        )
+        .map((a) => this.summary(a, c, reviewsByArtifact.get(a.id) || []))
+        .filter(
+          (a) =>
+            (!p.author_id || a.revision.authorId === p.author_id) &&
+            (!p.review_status ||
+              a.revision.assessment.status === p.review_status) &&
+            (!query ||
+              [
+                a.title,
+                a.kind,
+                a.revision.description,
+                a.revision.summary,
+                b.get(a.revision.authorId)?.name || "You",
+                ...a.revision.files.map((f) => f.name),
+              ]
+                .join(" ")
+                .toLocaleLowerCase()
+                .includes(query)),
+        )
+        .sort(
+          (a, b) =>
+            Number(b.highlighted) - Number(a.highlighted) ||
+            (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt) ||
+            b.id.localeCompare(a.id),
+        );
       return {
-        items: all
-          .slice(p.offset, p.offset + p.limit)
-          .map((a) => this.summary(a, c)),
+        items: all.slice(p.offset, p.offset + p.limit),
         total: all.length,
         nextOffset: p.offset + p.limit < all.length ? p.offset + p.limit : null,
       };
@@ -218,13 +360,10 @@ export class Artifacts {
       artifact: this.summary(a, c),
       revisions: revisions
         .sort((a, b) => a.number - b.number)
-        .map((r) => ({ ...r, stale: this.stale(r, c) })),
+        .map((r) => this.presentRevision(r, c)),
       reviews: reviews.map((r) => ({
         ...r,
-        stale:
-          r.revisionId !== a.headId ||
-          r.missionFingerprint !== missionFingerprint(c) ||
-          this.stale(b.get(r.revisionId), c),
+        stale: r.revisionId !== a.headId || this.reviewStale(r, c),
       })),
       nextRevisionOffset,
       nextReviewOffset,
@@ -331,6 +470,17 @@ export class Artifacts {
     const manifestHash = hash(
       JSON.stringify(files.map(({ bytes: _, ...f }) => f)),
     );
+    const previous = a ? b.get(a.headId) : null;
+    const description = p.description ?? previous?.description ?? "";
+    const entrypoint =
+      p.entrypoint ||
+      (previous?.entrypoint && names.has(previous.entrypoint)
+        ? previous.entrypoint
+        : null);
+    requireValue(
+      !entrypoint || names.has(entrypoint),
+      "The entrypoint must name a file in this revision.",
+    );
     if (a) {
       const prev = b.get(a.headId);
       requireValue(
@@ -338,6 +488,10 @@ export class Artifacts {
           prev.summary !== p.summary ||
           prev.limitations !== p.limitations ||
           prev.outcome !== p.outcome ||
+          prev.title !== p.title ||
+          prev.kind !== p.kind ||
+          (prev.description || "") !== description ||
+          (prev.entrypoint || null) !== entrypoint ||
           JSON.stringify(prev.refs) !== JSON.stringify(p.refs),
         "No substantive change. Reuse the existing revision.",
         409,
@@ -358,6 +512,8 @@ export class Artifacts {
       authorId: actor.id,
       title: p.title,
       kind: p.kind,
+      description,
+      entrypoint,
       summary: p.summary,
       limitations: p.limitations,
       outcome: p.outcome,
@@ -396,6 +552,22 @@ export class Artifacts {
   execute(actor, c, op, p) {
     if (op === "artifact_publish") return this.publish(actor, c, p);
     const b = this.board;
+    if (op === "artifact_highlight") {
+      requireValue(
+        actor.human || c.coordinatorId === actor.id,
+        "Only the human or current coordinator can highlight deliverables.",
+        403,
+      );
+      const artifact = b.readable(actor, c, p.artifact_id, "artifact");
+      b.version(artifact, p.version);
+      const updated = b.update(artifact, {
+        highlighted: p.highlighted,
+        highlightedBy: actor.id,
+        highlightedAt: Date.now(),
+      });
+      b.event(c.id, actor.id, "artifact_highlight", updated);
+      return updated;
+    }
     const revision = b.readable(actor, c, p.revision_id, "artifact_revision");
     if (p.verdict === "accepted") b.human(actor);
     b.references(actor, c, p.refs, revision.directAgentId);

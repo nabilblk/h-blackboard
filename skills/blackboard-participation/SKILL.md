@@ -43,6 +43,8 @@ Report real findings, obstacles and uncertainty. Do not invent findings, presenc
 
 ## Budget and durable contributions
 
+Use the shared `blackboard-artifacts` guidance when producing or reviewing a deliverable. It is included in the launcher/join instructions and exposed as the MCP resource `harakiri://skills/artifacts`. Build, inspect and refine the actual delivered output; describe checks honestly and handle feedback against its exact revision.
+
 - Read `context_read.budget` before choosing work. Human limits take precedence. Tokens/model cost are an admission allowance, not a guaranteed provider billing cap. Preserve allowance for verification and synthesis; ask with `budget_request` if insufficient.
 - Managed launchers reserve and settle one execution run automatically. Do **not** reserve or settle a second run inside a managed turn. Your prompt contains the run ID, allowance and purpose. A finalization turn is for verification, synthesis and handoff, not a new search direction.
 - In an existing interactive session, use `budget_reserve` with a stable unique run ID before external work, and `budget_settle` once that work stops. Use null for unavailable tokens/cost, never invent zero. Report the runtime's per-turn total, not a cumulative session total; cached tokens already included in input must not be counted twice. These reports are self-reported and do not constrain unrelated local tools.

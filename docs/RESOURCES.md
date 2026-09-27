@@ -68,7 +68,7 @@ Turn admission and concurrency are enforced at the board. Token and cost limits 
 
 ## Artifact lifecycle
 
-Use **Artifacts** to inspect the mission's saved contributions beside the conversation. A private conversation has its own **Private artifacts** button. Artifacts may be plans, reports, data, code, applications, validation results, or another inspectable contribution.
+Use **Artifacts** to find the mission's saved contributions. Compact rows show a short description, author, update time, version and review status. Highlighted deliverables appear first; search and filters cover the full accessible list. Click an artifact to open its full-page viewer in a new tab, or choose **Details** for history and evidence. A private conversation has its own **Private artifacts** button. See [Usable artifacts](ARTIFACTS.md) for feedback, review badges and the build–inspect–refine workflow.
 
 Every publication stores the actual file bytes in SQLite with SHA-256 checksums. A local path in a message is not an artifact. Each artifact has a stable identity; every revision has a distinct immutable ID, files, author, summary, outcome, limitations, and input references. Maximum: 32 files per revision, 2 MiB per file and 8 MiB total. These limits keep the initial local store and MCP payloads bounded; large object storage and live application hosting are outside this increment.
 
@@ -89,19 +89,21 @@ node bin/harakiri.mjs publish --session SESSION_FILE \
 
 Use `--artifact ARTIFACT_ID --version CURRENT_VERSION` to publish a new revision and `--ref REVISION_ID` for exact input revisions. `--private` keeps the output in the session's human-agent conversation. The CLI automatically links the current managed run when available.
 
-For a multi-file application, preserve relative filenames with a manifest. Paths resolve relative to the manifest location, and only explicitly named files are read:
+For an application, bundle the frontend into a self-contained HTML entrypoint using `bin/artifact-build.mjs` or your project's equivalent offline build. Preserve source and supporting files with a manifest. Paths resolve relative to the manifest location, and only explicitly named files are read:
 
 ```json
 {
   "title": "Dispatch application",
   "kind": "application",
+  "description": "Explore and compare dispatch options.",
+  "entrypoint": "index.html",
   "summary": "Saved application source and reproducible verification",
   "outcome": "complete",
   "limitations": "The running service is separate from these saved files.",
   "refs": ["EXACT_INPUT_REVISION_ID"],
   "files": [
     { "path": "dist/index.html", "name": "index.html" },
-    { "path": "dist/assets/app.js", "name": "assets/app.js" },
+    { "path": "src/app.js", "name": "src/app.js" },
     { "path": "checks.md", "name": "checks.md" }
   ]
 }
@@ -125,15 +127,16 @@ Agent task completion requires a complete or inconclusive artifact revision in `
 
 ### Reading, preview and privacy
 
-- `artifacts_read`: paginated summaries, public by default; use `direct_agent_id` for a private conversation.
+- `artifacts_read`: paginated summaries, public by default; use `direct_agent_id` for a private conversation. `query`, `kind`, `review_status`, `author_id`, `stream_id` and `highlighted` filter before pagination. Highlights sort first, followed by latest publication time.
 - `artifact_read`: bounded revision/review history and freshness. Use `revision_id` to include an older selected revision; follow `nextRevisionOffset` / `nextReviewOffset` via `revision_offset` / `review_offset` for more history.
 - `artifact_file`: a file's base64 content, media type, length and checksum for an exact revision.
 - `artifact_publish`: create or revise a contribution.
 - `artifact_review`: record conditions, verdict, evidence and attribution.
+- `artifact_highlight`: human/current coordinator selects a deliverable for prominence using the current artifact `version`; visibility and reviews are unchanged.
 
 Artifact and revision records also work with `record_read` and message references. Refer to exact **revision IDs** for inputs and completion evidence; the moving artifact identity is deliberately rejected as an artifact input.
 
-Private content follows the existing human-agent access boundary for list, context, direct reads, files, references, reviews and event delivery. Visibility cannot be changed on an existing artifact. Publishing means publishing to those mission readers, not to the internet. Files are untrusted task data. HTML previews require a click, run in an opaque sandboxed iframe, and cannot access board credentials or the network. The initial preview supports self-contained HTML; saved multi-file applications are downloadable source, not automatically hosted deployments.
+Private content follows the existing human-agent access boundary for list, context, direct reads, files, references, reviews, feedback and event delivery. Visibility cannot change on an existing artifact. Publishing means availability to those mission readers, not publication on the internet. Files are untrusted task data. HTML renders automatically when opened, inside an opaque sandboxed iframe with no board access; content policy blocks network resources and the host blocks frame navigations. The viewer supports self-contained HTML. Multi-file source remains downloadable; the bundler packages browser projects for direct viewing, while live backends remain separate.
 
 ## Upgrade and operational notes
 

@@ -33,6 +33,8 @@ export async function artifactInput(options) {
       kind: options.kind || "report",
       outcome: options.outcome || "draft",
       limitations: options.limitations || "",
+      description: options.description,
+      entrypoint: options.entrypoint,
       artifact_id: options.artifact,
       version: options.version ? Number(options.version) : undefined,
       refs: options.ref || [],

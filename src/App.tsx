@@ -32,7 +32,9 @@ import {
   Archive,
   Files,
   Wallet,
+  ArrowUpRight,
 } from "lucide-react";
+import { artifactHref } from "./artifact-links";
 import { get, rpc } from "./client";
 import { Badge, Empty, Runtime, Text, Time } from "./ui";
 import { Dialogs } from "./dialogs";
@@ -1393,12 +1395,38 @@ export function MessageRow({
         <Text value={m.body} />
         {m.refs.length ? (
           <div className="references">
-            {m.refs.map((id) => (
-              <button key={id} onClick={() => inspect(id)} title={id}>
-                <Link2 size={11} />
-                <span>{labelFor(context, id)}</span>
-              </button>
-            ))}
+            {m.refs.map((id) => {
+              const artifact = m.artifactLinks?.find((a) => a.id === id);
+              return artifact ? (
+                <span className="artifact-message-link" key={id}>
+                  <a
+                    href={artifactHref(
+                      context.mission.id,
+                      artifact.artifactId,
+                      id,
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ArrowUpRight size={12} />
+                    <span>
+                      Open {artifact.title} · v{artifact.number}
+                    </span>
+                  </a>
+                  <button
+                    onClick={() => inspect(id)}
+                    aria-label={`Details for ${artifact.title} revision ${artifact.number}`}
+                  >
+                    Details
+                  </button>
+                </span>
+              ) : (
+                <button key={id} onClick={() => inspect(id)} title={id}>
+                  <Link2 size={11} />
+                  <span>{labelFor(context, id)}</span>
+                </button>
+              );
+            })}
           </div>
         ) : null}
         <div className="message-actions">

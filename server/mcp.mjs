@@ -50,7 +50,7 @@ for (const [name, def] of Object.entries(operations)) {
     },
   );
 }
-for (const name of ["participation", "coordination"])
+for (const name of ["participation", "coordination", "artifacts"])
   server.registerResource(
     name,
     `harakiri://skills/${name}`,

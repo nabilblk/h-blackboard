@@ -47,6 +47,8 @@ const { values: options, positionals } = parseArgs({
     version: { type: "string" },
     outcome: { type: "string" },
     limitations: { type: "string" },
+    description: { type: "string" },
+    entrypoint: { type: "string" },
     ref: { type: "string", multiple: true },
     runtime: { type: "string" },
     count: { type: "string" },
@@ -137,12 +139,15 @@ async function register(name, execution) {
 }
 async function guide() {
   return (
-    await Promise.all(
-      ["participation", "coordination"].map((name) =>
-        readFile(resolve(root, `skills/blackboard-${name}/SKILL.md`), "utf8"),
-      ),
-    )
-  ).join("\n\n");
+    (
+      await Promise.all(
+        ["participation", "coordination", "artifacts"].map((name) =>
+          readFile(resolve(root, `skills/blackboard-${name}/SKILL.md`), "utf8"),
+        ),
+      )
+    ).join("\n\n") +
+    `\n\nArtifact bundler (does not publish): ${quote(process.execPath)} ${quote(resolve(root, "bin/artifact-build.mjs"))} --help\nArtifact file publication: ${quote(process.execPath)} ${quote(program)} publish --session YOUR_SESSION_FILE --manifest manifest.json\n`
+  );
 }
 const mcp = resolve(root, "server/mcp.mjs");
 async function worker(file, resume = false) {
@@ -546,6 +551,7 @@ async function main() {
 publish --session FILE --title TITLE --body SUMMARY --file PATH [--file PATH ...]
   [--kind report|plan|code|data|application|validation|other] [--outcome draft|complete|inconclusive]
   [--limitations TEXT] [--artifact ID --version N] [--ref REVISION_ID] [--private]
+  [--description TEXT] [--entrypoint index.html]
 publish --session FILE --manifest PATH
 
 join --board URL --runtime ${Object.keys(runtimes).join("|")} [--name NAME]

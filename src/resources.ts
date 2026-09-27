@@ -57,6 +57,8 @@ export interface ArtifactRevision extends Base {
   number: number;
   authorId: string;
   title: string;
+  description?: string;
+  entrypoint?: string;
   kind: string;
   summary: string;
   limitations: string;
@@ -66,6 +68,20 @@ export interface ArtifactRevision extends Base {
   directAgentId: string | null;
   files: ArtifactFile[];
   stale?: boolean;
+  assessment?: ArtifactAssessment;
+}
+export interface ArtifactAssessment {
+  status:
+    | "unreviewed"
+    | "self_reviewed"
+    | "verified"
+    | "changes_requested"
+    | "inconclusive"
+    | "needs_recheck";
+  accepted: boolean;
+  reviewCount: number;
+  independentCount: number;
+  lastReviewedAt: number | null;
 }
 export interface Artifact extends Base {
   title: string;
@@ -77,6 +93,8 @@ export interface Artifact extends Base {
   revisionCount: number;
   revision: ArtifactRevision;
   stale: boolean;
+  highlighted?: boolean;
+  updatedAt?: number;
 }
 export interface ArtifactReview extends Base {
   artifactId: string;

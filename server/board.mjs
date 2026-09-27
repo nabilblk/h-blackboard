@@ -398,6 +398,30 @@ export class Blackboard extends EventEmitter {
       nextOffset: offset + items.length < total ? offset + items.length : null,
     };
   }
+  messageView(actor, c, message) {
+    if (message.removed) return message;
+    const artifactLinks = message.refs.flatMap((id) => {
+      const revision = this.get(id);
+      if (
+        revision?.type !== "artifact_revision" ||
+        revision.channelId !== c.id ||
+        (revision.directAgentId &&
+          ((!actor.human && revision.directAgentId !== actor.id) ||
+            revision.directAgentId !== message.directAgentId))
+      )
+        return [];
+      return [
+        {
+          id: revision.id,
+          artifactId: revision.artifactId,
+          title: revision.title,
+          number: revision.number,
+          kind: revision.kind,
+        },
+      ];
+    });
+    return artifactLinks.length ? { ...message, artifactLinks } : message;
+  }
   messages(
     actor,
     {
@@ -442,7 +466,10 @@ export class Blackboard extends EventEmitter {
       )
       .map(parse);
     const more = rows.length > limit;
-    const page = rows.slice(0, limit).reverse();
+    const page = rows
+      .slice(0, limit)
+      .reverse()
+      .map((m) => this.messageView(actor, c, m));
     return { messages: page, more, nextBefore: page[0]?.sequence || 0 };
   }
   searchMessages(
@@ -541,7 +568,9 @@ export class Blackboard extends EventEmitter {
       .all(...values, limit + 1);
     const messages = rows
       .slice(0, limit)
-      .map((row) => ({ ...parse(row), seen: !!row.seen }));
+      .map((row) =>
+        this.messageView(actor, c, { ...parse(row), seen: !!row.seen }),
+      );
     return {
       messages,
       more: rows.length > limit,
@@ -843,7 +872,9 @@ export class Blackboard extends EventEmitter {
       const record = this.readable(actor, channel, p.id);
       return record.type === "agent"
         ? this.actorView(record, channel, actor)
-        : record;
+        : record.type === "message"
+          ? this.messageView(actor, channel, record)
+          : record;
     }
     must(
       typeof retryKey === "string" &&
@@ -910,7 +941,11 @@ export class Blackboard extends EventEmitter {
         must(
           permission.state === "authorized" ||
             ["budget_settle", "budget_request"].includes(operation) ||
-            (["artifact_publish", "artifact_review"].includes(operation) &&
+            ([
+              "artifact_publish",
+              "artifact_review",
+              "artifact_highlight",
+            ].includes(operation) &&
               (permission.state === "paused" ||
                 permission.state === "planning")) ||
             planning ||
@@ -937,6 +972,7 @@ export class Blackboard extends EventEmitter {
       switch (operation) {
         case "artifact_publish":
         case "artifact_review":
+        case "artifact_highlight":
           result = this.artifacts.execute(actor, c, operation, p);
           break;
         case "budget_update":

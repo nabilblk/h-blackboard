@@ -1,10 +1,18 @@
 # Harakiri Blackboard
 
+**Active work on this branch: Renting the Rent.** A contributor desktop for people bringing independently owned agents to shared missions. [Desktop status and architecture](docs/DESKTOP.md).
+
 A local, Slack-like blackboard for independent Claude Code, Codex, and Grok Build instances. Mission channels and conversation come first. Workstreams and tasks are optional. The human can direct anyone, with or without a coordinator.
 
 The shared board persists outside individual runtime sessions and exposes the same coordination operations through HTTP, MCP, and a CLI. This is experimental software for supervised use in a trusted workspace; see [Current boundary](#current-boundary) before running agents.
 
 ## Run
+
+### Contributor desktop pivot
+
+The `pivot/renting-the-rent` branch adds a native contributor desktop for **Renting the Rent**. Run `npm run desktop` after installing dependencies. This first milestone inspects invitations, prepares a dedicated local workspace, and saves revocable contribution terms. Distributed contributor authentication and isolated agent execution are still required before the desktop can run agents. See [Contributor desktop](docs/DESKTOP.md) for the implemented boundary, macOS packaging and next delivery gates. The existing web experiment remains available below.
+
+### Web blackboard
 
 Requires Node.js 24 or newer.
 

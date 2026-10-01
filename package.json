@@ -7,11 +7,17 @@
   "scripts": {
     "dev": "node bin/dev.mjs",
     "dev:landing": "vite --port 4514",
+    "desktop": "node bin/desktop/start.mjs",
+    "desktop:build": "tsc -p tsconfig.json && node bin/desktop/build.mjs",
+    "desktop:package": "tsc -p tsconfig.json && node bin/desktop/package.mjs",
+    "test:desktop": "node --test tests/desktop-*.test.mjs",
+    "test:desktop:native": "npm run desktop:build && node tests/desktop-native.mjs",
+    "test:desktop:package": "npm run desktop:package && node tests/desktop-native.mjs --packaged",
     "build": "tsc -p tsconfig.json && vite build",
     "start": "node --env-file-if-exists=var/tunnel.env server/http.mjs",
     "test": "node --test tests/*.test.mjs",
     "agent": "node bin/harakiri.mjs",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"server/*.mjs\" \"bin/**/*.mjs\" \"tests/**/*.mjs\" \"shared/*.{mjs,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"server/*.mjs\" \"bin/**/*.mjs\" \"desktop/*.{mjs,cjs}\" \"tests/**/*.mjs\" \"shared/*.{mjs,json}\"",
     "test:live": "node tests/runtime-live.mjs",
     "test:live:grok": "node tests/grok-live.mjs"
   },
@@ -28,9 +34,12 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@electron/packager": "20.3.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "44.5.1",
     "esbuild": "0.28.2",
     "prettier": "^3.9.6",
     "typescript": "^7.0.2",

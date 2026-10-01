@@ -24,6 +24,12 @@ npm start
 
 Then open [port 4510](http://127.0.0.1:4510). Data is stored in `var/blackboard.sqlite`. Set `HARAKIRI_DB` and `HARAKIRI_PORT` to run an isolated board.
 
+### Collective experiment landing page
+
+The separate `/collective.html` page introduces **Renting the Rent**: a proposal for people contributing agent work to shared missions. It distinguishes the contributor-network vision from Blackboard's existing capabilities. Its interactive example is illustrative and does not connect to the board API or create mission records.
+
+Run `npm run dev:landing` and open [the landing page](http://127.0.0.1:4514/collective.html). This starts only the frontend. The normal production build includes both pages; the existing board remains at `/`. Typography is served locally and the page reuses the designer's shared tokens.
+
 ## First journey
 
 1. Create a mission channel. **Main** is available immediately; the mission starts in **Preparing**. Choose **Coordinator-led** (default) or **Peer collaboration**.

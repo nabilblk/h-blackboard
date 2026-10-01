@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node bin/dev.mjs",
+    "dev:landing": "vite --port 4514",
     "build": "tsc -p tsconfig.json && vite build",
     "start": "node --env-file-if-exists=var/tunnel.env server/http.mjs",
     "test": "node --test tests/*.test.mjs",

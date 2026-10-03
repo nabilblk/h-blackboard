@@ -13,7 +13,7 @@ import {
 } from "./artifact-contract.mjs";
 import { NodeIdentity } from "./node-identity.mjs";
 import { Limits, Runtime, Id } from "./model.mjs";
-import { POLICY_DIGEST } from "./execution/contract.mjs";
+import { policyDigest } from "./execution/contract.mjs";
 
 export function executionBinding(contribution) {
   return createHash("sha256")
@@ -24,7 +24,7 @@ export function executionBinding(contribution) {
         runtime: contribution.runtime,
         limits: contribution.limits,
         terms: contribution.nodeBinding,
-        policy: POLICY_DIGEST,
+        policy: policyDigest(contribution.runtime),
       }),
     )
     .digest("hex");
@@ -917,8 +917,8 @@ export class NodeService {
     const local = this.contributors?.store
       .read()
       .contributions.find((c) => c.id === contributionId);
-    if (!local?.sharedAgent || local.runtime !== "grok")
-      throw new Error("Prepare and share a Grok contribution first.");
+    if (!local?.sharedAgent)
+      throw new Error("Prepare and share a contribution first.");
     const mission = local.mission.missionId;
     const review = await bridge.request({
       type: "review_contribution",

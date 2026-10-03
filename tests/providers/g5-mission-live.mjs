@@ -14,15 +14,31 @@ import { LimaProvider } from "../../desktop/execution/lima.mjs";
 import { exportWorkspace } from "../../desktop/execution/files.mjs";
 import { secureStorage } from "../helpers/secure-storage.mjs";
 
-const root = resolve(`var/node/g5/mission-${randomUUID()}`);
+const runtime = process.argv[2] || "grok";
+if (!["grok", "claude", "codex"].includes(runtime))
+  throw new Error("Unsupported runtime");
+const root = resolve(`var/node/g5/mission-${runtime}-${randomUUID()}`);
 mkdirSync(join(root, "workspace"), { recursive: true, mode: 0o700 });
-const proof = JSON.parse(
-  readFileSync("var/node/feasibility/vm-profile.json", "utf8"),
-);
-assert.match(proof.lima_home, /^(\/private)?\/tmp\/hb-lima-[a-zA-Z0-9_-]+$/);
-assert.equal(proof.instance, "proof");
-const provider = new LimaProvider({ directory: proof.lima_home });
-provider.instance = () => "proof";
+let provider;
+if (runtime === "grok") {
+  const proof = JSON.parse(
+    readFileSync("var/node/feasibility/vm-profile.json", "utf8"),
+  );
+  assert.match(proof.lima_home, /^(\/private)?\/tmp\/hb-lima-[a-zA-Z0-9_-]+$/);
+  assert.equal(proof.instance, "proof");
+  provider = new LimaProvider({ directory: proof.lima_home });
+  provider.instance = () => "proof";
+} else {
+  const proof = JSON.parse(
+    readFileSync(`var/node/g5-runtimes/${runtime}-conformance.json`, "utf8"),
+  );
+  assert.equal(proof.contribution.runtime, runtime);
+  assert.match(proof.directory, /^\/tmp\/hb-g5-[a-zA-Z0-9_-]+$/);
+  provider = new LimaProvider({ directory: proof.directory });
+  const instance = provider.instance(proof.contribution.id);
+  // Test-only reuse of this runtime's guest-native login, inside the SAME VM.
+  provider.instance = () => instance;
+}
 const n = new NodeService({
   directory: join(root, "node"),
   binary: resolve("var/node/target/debug/harakiri-node"),
@@ -123,7 +139,7 @@ try {
   const result = await n.handle("prepareContribution", {
     reviewId: review.reviewId,
     workspaceChoiceId: choice.id,
-    runtime: "grok",
+    runtime,
     limits: { mode: "unlimited", concurrency: 1 },
   });
   contribution = result.contributions[0];
@@ -209,7 +225,7 @@ try {
 } finally {
   await n.close();
   writeFileSync(
-    "var/node/g5/last-mission.json",
+    `var/node/g5/last-mission-${runtime}.json`,
     JSON.stringify({ root, mission, checks }, null, 2),
     { mode: 0o600 },
   );

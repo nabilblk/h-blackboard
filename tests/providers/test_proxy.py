@@ -13,6 +13,8 @@ spec.loader.exec_module(proxy)
 
 class ProxyTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        self.previous_hosts = proxy.HOSTS
+        proxy.HOSTS = frozenset({"cli-chat-proxy.grok.com", "auth.x.ai"})
         self.server = await asyncio.start_server(proxy.proxy, "127.0.0.1", 0)
         self.port = self.server.sockets[0].getsockname()[1]
         self.original_connect = asyncio.open_connection
@@ -20,6 +22,7 @@ class ProxyTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.server.close()
         await self.server.wait_closed()
+        proxy.HOSTS = self.previous_hosts
 
     async def request(self, destination):
         reader, writer = await self.original_connect("127.0.0.1", self.port)
@@ -35,6 +38,14 @@ class ProxyTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(loop, "getaddrinfo", side_effect=AssertionError("unexpected DNS")):
             for target in ["example.com:443", "127.0.0.1:443", "169.254.169.254:443", "auth.x.ai:80", "auth.x.ai.evil.test:443"]:
                 self.assertIn(b"403 Forbidden", await self.request(target))
+
+    async def test_unconfigured_or_other_runtime_hosts_are_denied(self):
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", side_effect=AssertionError("unexpected DNS")):
+            for host in ["api.anthropic.com", "api.openai.com"]:
+                self.assertIn(b"403 Forbidden", await self.request(host + ":443"))
+            with patch.object(proxy, "HOSTS", frozenset()):
+                self.assertIn(b"403 Forbidden", await self.request("auth.x.ai:443"))
 
     async def test_allowlisted_dns_cannot_rebind_into_private_network(self):
         loop = asyncio.get_running_loop()

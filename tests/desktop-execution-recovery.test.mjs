@@ -7,7 +7,11 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { ExecutionStore } from "../desktop/execution/store.mjs";
 import { ExecutionManager } from "../desktop/execution/manager.mjs";
-import { newRecord, POLICY_DIGEST } from "../desktop/execution/contract.mjs";
+import {
+  newRecord,
+  POLICY_DIGEST,
+  POLICY_DIGESTS,
+} from "../desktop/execution/contract.mjs";
 
 const deferred = () => {
   let resolve, reject;
@@ -25,13 +29,13 @@ const waitFor = async (fn) => {
     await delay(5);
   }
 };
-function fixture(t) {
+function fixture(t, runtime = "grok") {
   const directory = mkdtempSync(join(tmpdir(), "hb-recovery-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const id = randomUUID();
   const contribution = {
     id,
-    runtime: "grok",
+    runtime,
     sharedAgent: { registration: "a".repeat(64) },
     mission: { missionId: "b".repeat(64) },
   };
@@ -139,10 +143,28 @@ function fixture(t) {
     importFiles() {},
   };
   const store = new ExecutionStore(directory);
-  store.write({ ...newRecord(id), status: "ready" });
+  provider.policies = POLICY_DIGESTS;
+  store.write({ ...newRecord(id, Date.now(), runtime), status: "ready" });
   const manager = new ExecutionManager({ store, provider, node, pollMs: 10 });
   return { id, manager, store, flags, grant, reservations, provider, node };
 }
+
+for (const runtime of ["claude", "codex"])
+  test(`${runtime} uses its own policy; changed consent cannot reserve or launch`, async (t) => {
+    const f = fixture(t, runtime);
+    const correct = f.store.read(f.id).policy;
+    assert.equal(correct, POLICY_DIGESTS[runtime]);
+    f.store.update(f.id, { policy: POLICY_DIGEST });
+    await assert.rejects(f.manager.start(f.id, f.grant.id), /policy changed/);
+    assert.equal(f.reservations.length, 0);
+    assert.equal(f.flags.launches, 0);
+    f.store.update(f.id, { policy: correct });
+    await f.manager.start(f.id, f.grant.id);
+    await waitFor(() => f.flags.running);
+    await f.manager.stop(f.id);
+    assert.equal(f.store.read(f.id).policy, correct);
+    assert.equal(f.grant.charged, 1);
+  });
 
 test("a lost reservation response is recovered by durable nonce without a free turn", async (t) => {
   const f = fixture(t);

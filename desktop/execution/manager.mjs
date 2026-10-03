@@ -13,7 +13,8 @@ import {
   newRecord,
   permissionLease,
   validateProvider,
-  POLICY,
+  runtimePolicy,
+  policyDigest,
 } from "./contract.mjs";
 
 const inflight = new Set([
@@ -114,7 +115,7 @@ export class ExecutionManager {
             status: current.authenticated ? "ready" : "login_required",
             reason: current.authenticated
               ? "Guest login is present. Choose a current permission to run."
-              : "Sign in to Grok inside this isolated environment.",
+              : "Sign in to the selected runtime inside this isolated environment.",
           });
       } catch {
         /* A stopped VM can be checked during explicit start/login. */
@@ -135,7 +136,7 @@ export class ExecutionManager {
     }
     return {
       record,
-      policy: POLICY,
+      policy: runtimePolicy(contribution.runtime),
       capacity: this.provider.maximum ?? 1,
       busy: this.busy.has(id),
       events,
@@ -159,6 +160,8 @@ export class ExecutionManager {
     return this.exclusive(id, async () => {
       const { contribution } = await this.node.executionContext(id);
       const old = this.store.read(id);
+      if (old && old.policy !== policyDigest(contribution.runtime))
+        throw new Error("Runtime policy changed; create a new contribution.");
       if (old && inflight.has(old.status))
         throw new Error("Recover and stop the previous execution first.");
       this.store.write(
@@ -168,7 +171,7 @@ export class ExecutionManager {
               status: "preparing",
               reason: "Preparing isolated environment.",
             }
-          : newRecord(id),
+          : newRecord(id, Date.now(), contribution.runtime),
       );
       try {
         const result = await this.provider.prepare({ contribution });
@@ -176,7 +179,7 @@ export class ExecutionManager {
           status: result.authenticated ? "ready" : "login_required",
           reason: result.authenticated
             ? "Isolated environment prepared."
-            : "Sign in to Grok inside this guest.",
+            : "Sign in to the selected runtime inside this guest.",
         });
         this.log(
           id,
@@ -208,6 +211,14 @@ export class ExecutionManager {
           "Prepare, sign in and recover any previous execution first.",
         );
       const current = await this.node.executionContext(id, grantId);
+      if (
+        old.policy !== policyDigest(current.contribution.runtime) ||
+        (this.provider.policies?.[current.contribution.runtime] ??
+          this.provider.policy) !== old.policy
+      )
+        throw new Error(
+          "Runtime policy changed; prepare a new contribution and consent again.",
+        );
       if (old.grant === grantId)
         throw new Error(
           "Request a fresh permission generation before resuming stopped work.",
@@ -377,7 +388,7 @@ export class ExecutionManager {
             this.store.update(id, {
               session,
               status: "running",
-              reason: "Grok is working inside the isolated VM.",
+              reason: "The agent is working inside the isolated VM.",
             });
           },
           onEvent: (event) => {

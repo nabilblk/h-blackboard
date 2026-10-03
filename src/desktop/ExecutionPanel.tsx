@@ -109,7 +109,12 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
       setBusy(false);
     }
   };
-  const supported = item.runtime === "grok" && !!item.nodeBinding;
+  const runtimeLabel = {
+    grok: "Grok Build",
+    claude: "Claude Code",
+    codex: "Codex",
+  }[item.runtime];
+  const supported = !!runtimeLabel && !!item.nodeBinding;
   const status = state?.record?.status;
   const working = !!status && active.has(status);
   const available = item.status === "prepared" && !item.sharedAgent?.withdrawn;
@@ -127,8 +132,8 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
       <p>
         {state?.record?.reason ||
           (supported
-            ? "Prepare an isolated environment for this contribution, then sign in to Grok inside it."
-            : "The enforcing desktop adapter currently supports Grok Build on Apple Silicon. Other runtimes remain unavailable until validated.")}
+            ? `Prepare an isolated environment for this contribution, then sign in to ${runtimeLabel} inside it.`
+            : "Prepare a contribution to a peer mission to use isolated execution on Apple Silicon with Lima.")}
       </p>
       <dl className="d-facts">
         <div>
@@ -144,8 +149,8 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
         <div>
           <dt>Access</dt>
           <dd>
-            Workspace tools have no network or credential access. Grok connects
-            to its provider.
+            Workspace tools have no network or credential access. {runtimeLabel}{" "}
+            connects to its provider.
           </dd>
         </div>
         {state?.record?.generation ? (
@@ -189,7 +194,7 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
                   })
                 }
               >
-                Sign in to Grok…
+                Sign in to {runtimeLabel}…
               </button>
             ) : null}
           </div>
@@ -208,7 +213,10 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
               />
               <p className="d-field-help">
                 This signs in inside the VM. Your host login and configuration
-                are not copied.
+                are not copied.{" "}
+                {item.runtime === "claude"
+                  ? "Open the link shown in Terminal, sign in with your Claude subscription, and paste the code back there."
+                  : "Follow the device login link and code shown in Terminal."}
               </p>
             </div>
           ) : null}

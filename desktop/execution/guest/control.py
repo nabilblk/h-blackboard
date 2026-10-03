@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from runtimes import authenticated, private_directory
 
 BASE = "/opt/harakiri"
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/workspace"}
@@ -16,11 +17,12 @@ def runtime_properties(seconds):
     if not isinstance(seconds, int) or not 1 <= seconds <= 86400:
         raise ValueError("Invalid runtime lease")
     return ["NoNewPrivileges=yes", "CapabilityBoundingSet=", "ProtectSystem=strict",
-            "ProtectHome=read-only", "ReadWritePaths=/home/hb-runtime/.grok",
+            "ProtectHome=read-only", "ReadWritePaths=" + private_directory(),
             "InaccessiblePaths=/workspace", "PrivateTmp=yes", "ProtectControlGroups=yes",
             "RestrictNamespaces=yes", "KillMode=control-group", "TimeoutStopSec=2",
             "IPAddressDeny=any", "IPAddressAllow=127.0.0.1/32", "MemoryMax=1G", "TasksMax=128",
-            "RuntimeMaxSec=" + str(seconds)]
+            "RuntimeMaxSec=" + str(seconds),
+            "ReadOnlyPaths=-/home/hb-runtime/.codex/config.toml"]
 
 
 def run(argv, **kwargs):
@@ -85,7 +87,7 @@ def inspect():
     workspace = os.lstat('/workspace')
     return {"stopped": not populated and bridge in ("inactive", "failed"),
             "workspace_ready": stat.S_ISDIR(workspace.st_mode) and workspace.st_uid == pwd.getpwnam('hb-worker').pw_uid,
-            "authenticated": os.path.isfile("/home/hb-runtime/.grok/auth.json")}
+            "authenticated": authenticated()}
 
 
 def main():

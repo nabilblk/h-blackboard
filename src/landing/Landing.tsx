@@ -420,14 +420,14 @@ const features = [
   {
     icon: ShieldCheck,
     title: "Local authority comes first",
-    body: "Choose your contribution and allowance. Grok Build runs in a dedicated Lima VM on Apple Silicon, with a separate guest login and scoped workspace tools. Approve each execution permission locally, stop it, or withdraw. Independent security review remains a public release gate.",
+    body: "Choose your contribution and allowance. Claude Code, Codex and Grok Build run in dedicated Lima VMs on Apple Silicon, with a separate guest login and scoped workspace tools. Approve each execution permission locally, stop it, or withdraw. Independent security review remains a public release gate.",
   },
 ];
 
 const questions = [
   {
     title: "Can I run the decentralized product today?",
-    body: "It is a developer preview. Local missions, approved peer exchange, discovery, workstreams, tasks, artifacts and budgets are implemented. Grok Build has an isolated execution path on Apple Silicon; Claude and Codex require their own validation. The original trusted-local Blackboard experiment remains available in the repository.",
+    body: "It is a developer preview. Local missions, approved peer exchange, discovery, workstreams, tasks, artifacts and budgets are implemented. Claude Code, Codex and Grok Build have isolated execution paths on Apple Silicon, verified locally with guest logins and real mission artifacts. The original trusted-local Blackboard experiment remains available in the repository.",
   },
   {
     title: "Do I need a server or a central account?",
@@ -662,13 +662,13 @@ export default function Landing() {
             <div>
               <h3>Local consent. Isolated execution.</h3>
               <p>
-                Grok Build runs inside a dedicated Lima VM. The contributor
+                Each agent runs inside a dedicated Lima VM. The contributor
                 signs in inside the guest and approves a bounded permission.
                 Coordinators can prepare a plan; the human starts the mission.
                 Joining never starts an agent automatically.
               </p>
             </div>
-            <span className="mini-badge mono">Grok · Apple Silicon</span>
+            <span className="mini-badge mono">3 runtimes · Apple Silicon</span>
           </div>
         </section>
 

@@ -2,14 +2,25 @@
 // calls, host/guest login stores or production desktop profiles are used.
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { LimaProvider } from "../../desktop/execution/lima.mjs";
+import { runtimePolicy } from "../../desktop/execution/contract.mjs";
 
 // macOS' default temporary path is itself too long for Lima UNIX sockets.
 const directory = await mkdtemp("/tmp/hb-g5-");
 const provider = new LimaProvider({ directory });
-const contribution = { id: randomUUID(), runtime: "grok" };
+const runtime = process.argv[2] || "grok";
+runtimePolicy(runtime);
+const contribution = { id: randomUUID(), runtime };
+const evidence =
+  runtime === "grok"
+    ? "var/node/g5/provider-conformance.json"
+    : `var/node/g5-runtimes/${runtime}-conformance.json`;
+await mkdir(dirname(evidence), { recursive: true, mode: 0o700 });
+await writeFile(evidence, JSON.stringify({ directory, contribution }), {
+  mode: 0o600,
+});
 const checks = [];
 const check = (name) => {
   checks.push(name);
@@ -22,7 +33,7 @@ try {
   const state = await provider.prepare({ contribution });
   assert.equal(state.authenticated, false);
   assert.equal(state.stopped, true);
-  check("fresh pinned Ubuntu/Grok provisioning without inherited login");
+  check(`fresh pinned Ubuntu/${runtime} provisioning without inherited login`);
   const runtimeProbe = `import sys,subprocess,socket
 sys.path.insert(0,'/opt/harakiri')
 from control import runtime_properties,ENV
@@ -49,7 +60,7 @@ print(result.stdout.decode());print(result.stderr.decode(),file=sys.stderr);sys.
       `import sys,subprocess,json,os,time
 sys.path.insert(0,'/opt/harakiri');from control import worker,inspect
 code=${JSON.stringify(`import os,signal,time
-for path in ['/home/hb-runtime/.grok','/run/harakiri','/Users','/proc/1/root/home']:
+for path in ['/home/hb-runtime/.grok','/home/hb-runtime/.claude','/home/hb-runtime/.codex','/run/harakiri','/Users','/proc/1/root/home']:
  try: os.listdir(path)
  except OSError: pass
  else: raise AssertionError(path)
@@ -113,7 +124,7 @@ print('PASS')`,
   check("VM stop confirmed by hypervisor state");
   await mkdir("var/node/g5", { recursive: true, mode: 0o700 });
   await writeFile(
-    "var/node/g5/provider-conformance.json",
+    evidence,
     JSON.stringify(
       { at: new Date().toISOString(), directory, contribution, checks },
       null,

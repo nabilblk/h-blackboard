@@ -6,15 +6,18 @@ import { access, mkdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cpus, totalmem } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Id } from "../model.mjs";
 import {
   EXECUTION_PROVIDER_VERSION,
   POLICY_DIGEST,
   POLICY,
   Session,
+  POLICY_DIGESTS,
+  policyDigest,
 } from "./contract.mjs";
-import { GrokConnection } from "../../bin/grok-acp.mjs";
+import { runtimeConnection } from "./runtime-connection.mjs";
+import { runtimeSpec, RUNTIME_LABELS } from "./runtime-specs.mjs";
 import { guestTools } from "./tools.mjs";
 
 const exec = promisify(execFile);
@@ -23,12 +26,18 @@ const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 const MAX_LINE = 2 * 1024 * 1024;
 const image = `https://cloud-images.ubuntu.com/releases/24.04/release-${POLICY.imageRelease}/ubuntu-24.04-server-cloudimg-arm64.img`;
 const imageDigest = `sha256:${POLICY.imageSha256}`;
+const STORAGE_MARKER = "harakiri-lima:2";
+// G5 initially used its Grok policy digest as a directory marker. Accept that
+// historical value, but new storage is independent of any runtime version.
+const LEGACY_STORAGE_MARKER =
+  "501d452e8cabdc2e41d5896db32de466bac48cc4c2c9a30ea8d9a14adb05a433";
 
 // The peer and renderer never supply executable paths, YAML, network policy,
 // image URLs, environment variables or arbitrary host commands.
 export class LimaProvider {
   version = EXECUTION_PROVIDER_VERSION;
   policy = POLICY_DIGEST;
+  policies = POLICY_DIGESTS;
   handles = new Map();
   bootQueue = Promise.resolve();
   constructor({
@@ -190,10 +199,8 @@ export class LimaProvider {
   }
   async prepare({ contribution }) {
     const id = contribution.id;
-    if (contribution.runtime !== "grok")
-      throw new Error(
-        "Only Grok Build has an enforcing runtime adapter. Claude and Codex are unavailable here.",
-      );
+    const spec = runtimeSpec(contribution.runtime);
+    const digest = policyDigest(contribution.runtime);
     await this.binary();
     if (
       Buffer.byteLength(
@@ -211,10 +218,10 @@ export class LimaProvider {
       if (e.code === "ENOENT") return null;
       throw e;
     });
-    if (existing && existing !== POLICY_DIGEST)
+    if (existing && ![STORAGE_MARKER, LEGACY_STORAGE_MARKER].includes(existing))
       throw new Error("VM policy changed; explicit migration is required.");
     if (!existing)
-      await writeFile(marker, POLICY_DIGEST, { mode: 0o600, flag: "wx" });
+      await writeFile(marker, STORAGE_MARKER, { mode: 0o600, flag: "wx" });
     if (!(await this.vm(id)).exists) {
       const path = join(this.directory, `${this.instance(id)}.yaml`);
       await writeFile(
@@ -228,6 +235,29 @@ export class LimaProvider {
       );
     }
     await this.boot(id);
+    const prior = await this.guest(id, [
+      "sh",
+      "-c",
+      "if [ -f /opt/harakiri/policy ]; then cat /opt/harakiri/policy; fi",
+    ]);
+    if (prior && prior.trim() !== digest)
+      throw new Error(
+        "This VM belongs to a different runtime policy. Create a new contribution.",
+      );
+    if (prior && !(await this.inspect({ contribution })).stopped)
+      throw new Error(
+        "Confirm the existing runtime and workers stopped before preparation.",
+      );
+    const active = await this.guest(id, [
+      "systemctl",
+      "show",
+      "hb-session.service",
+      "-p",
+      "ActiveState",
+      "--value",
+    ]);
+    if (!["inactive", "failed"].includes(active.trim()))
+      throw new Error("Stop the existing execution before preparing its VM.");
     await this.guest(id, ["install", "-d", "-m", "0755", "/opt/harakiri"]);
     for (const file of [
       "agent.md",
@@ -237,6 +267,8 @@ export class LimaProvider {
       "files.py",
       "proxy.py",
       "setup.sh",
+      "runtimes.py",
+      "install-runtime.py",
     ]) {
       await this.guest(id, ["tee", `/opt/harakiri/${file}`], {
         input: await readFile(join(this.resources, file)),
@@ -248,9 +280,12 @@ export class LimaProvider {
       input: JSON.stringify(guestTools()),
       maxBuffer: 256 * 1024,
     });
-    await this.guest(id, ["sh", "/opt/harakiri/setup.sh"], { timeout: 240000 });
+    await this.guest(id, ["tee", "/opt/harakiri/runtime.json"], {
+      input: JSON.stringify(spec),
+    });
+    await this.guest(id, ["sh", "/opt/harakiri/setup.sh"], { timeout: 420000 });
     await this.guest(id, ["tee", "/opt/harakiri/policy"], {
-      input: POLICY_DIGEST,
+      input: digest,
     });
     return this.inspect({ contribution });
   }
@@ -261,7 +296,7 @@ export class LimaProvider {
     const policy = (
       await this.guest(contribution.id, ["cat", "/opt/harakiri/policy"])
     ).trim();
-    if (policy !== POLICY_DIGEST)
+    if (policy !== policyDigest(contribution.runtime))
       throw new Error("VM policy verification failed.");
     const detail = JSON.parse(
       await this.guest(contribution.id, [
@@ -293,10 +328,20 @@ export class LimaProvider {
       "-u",
       "hb-runtime",
       "--",
-      "/opt/harakiri/grok",
-      "--no-auto-update",
-      "login",
-      "--device-auth",
+      "env",
+      "CODEX_HOME=/home/hb-runtime/.codex",
+      "CLAUDE_CONFIG_DIR=/home/hb-runtime/.claude",
+      "DISABLE_AUTOUPDATER=1",
+      ...{
+        grok: [
+          "/opt/harakiri/grok",
+          "--no-auto-update",
+          "login",
+          "--device-auth",
+        ],
+        claude: ["/opt/harakiri/claude", "auth", "login", "--claudeai"],
+        codex: ["/opt/harakiri/codex", "login", "--device-auth"],
+      }[contribution.runtime],
     ];
     return {
       command: `LIMA_HOME=${quote(this.directory)} ${args.map(quote).join(" ")}`,
@@ -326,7 +371,7 @@ export class LimaProvider {
     const state = await this.inspect({ contribution });
     if (!state.stopped || !state.authenticated)
       throw new Error(
-        "Sign in to Grok in this guest and confirm prior execution has stopped.",
+        `Sign in to ${RUNTIME_LABELS[contribution.runtime]} in this guest and confirm prior execution has stopped.`,
       );
     if (!state.workspace_ready)
       throw new Error(
@@ -334,6 +379,8 @@ export class LimaProvider {
       );
     if (remaining) seconds = Math.floor(remaining() / 1000) - 2;
     if (seconds < 1) throw new Error("Permission expired during VM startup.");
+    const sessionId =
+      session || (contribution.runtime === "claude" ? randomUUID() : null);
     const child = spawn(
       await this.binary(),
       [
@@ -355,6 +402,9 @@ export class LimaProvider {
         "python3",
         "/opt/harakiri/bridge.py",
         String(seconds),
+        ...(contribution.runtime === "claude"
+          ? [session ? "resume" : "new", sessionId]
+          : []),
       ],
       { env: this.env(), stdio: ["pipe", "pipe", "pipe"] },
     );
@@ -434,47 +484,26 @@ export class LimaProvider {
         done();
       },
     });
-    const connection = new GrokConnection({ transport, diagnostics, onEvent });
+    const connection = runtimeConnection(contribution.runtime, {
+      transport,
+      diagnostics,
+      onEvent,
+      sessionId,
+    });
     this.handles.set(id, connection);
     const done = (async () => {
       try {
-        await connection.initialize();
-        connection.sessionId = session;
-        const opened = await connection.request(
-          session ? "session/load" : "session/new",
-          {
-            cwd: "/home/hb-runtime/control",
-            mcpServers: [
-              {
-                name: "harakiri",
-                command: "/usr/bin/python3",
-                args: ["/opt/harakiri/mcp.py"],
-                env: [],
-              },
-            ],
-            _meta: {
-              sessionKind: "headless",
-              yoloMode: false,
-              ...(session
-                ? { noReplay: true, "x.ai/restore_code": false }
-                : {}),
-            },
-            ...(session ? { sessionId: session } : {}),
-          },
+        const profile = await readFile(
+          join(this.resources, "agent.md"),
+          "utf8",
         );
-        const actual = Session.parse(session || opened.sessionId);
-        if (opened.sessionId && opened.sessionId !== actual)
-          throw new Error("Runtime resumed another session.");
-        connection.sessionId = actual;
-        await onSession(actual);
-        const result = await connection.request(
-          "session/prompt",
-          { sessionId: actual, prompt: [{ type: "text", text: prompt }] },
-          seconds * 1000,
-        );
-        if (result.stopReason !== "end_turn")
-          throw new Error(`Grok stopped: ${result.stopReason || "unknown"}.`);
-        return { session: actual, usage: result._meta?.usage || null };
+        return await connection.run({
+          session,
+          prompt,
+          seconds,
+          onSession,
+          instructions: profile.split("---").slice(2).join("---").trim(),
+        });
       } finally {
         await connection.close();
         if (this.handles.get(id) === connection) this.handles.delete(id);
@@ -488,14 +517,7 @@ export class LimaProvider {
   }
   async interrupt({ contribution }) {
     const connection = this.handles.get(contribution.id);
-    if (connection?.sessionId)
-      connection.child.stdin.write(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          method: "session/cancel",
-          params: { sessionId: connection.sessionId },
-        }) + "\n",
-      );
+    connection?.interrupt();
   }
   async terminate({ contribution }) {
     const id = contribution.id;

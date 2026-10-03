@@ -4,7 +4,7 @@ import ipaddress
 import socket
 import time
 
-HOSTS = frozenset({"cli-chat-proxy.grok.com", "api.x.ai", "auth.x.ai", "accounts.x.ai", "grok.com"})
+HOSTS = frozenset()  # Deny everything until the root-owned runtime policy loads.
 IDLE_SECONDS = 900
 IDLE_POLL = 30
 
@@ -61,6 +61,9 @@ async def proxy(reader, writer):
 
 
 async def main():
+    global HOSTS
+    from runtimes import spec
+    HOSTS = frozenset(spec()["hosts"])
     server = await asyncio.start_server(proxy, "127.0.0.1", 18080, limit=8192)
     async with server:
         await server.serve_forever()

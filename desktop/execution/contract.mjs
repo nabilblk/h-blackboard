@@ -37,6 +37,51 @@ export const POLICY = Object.freeze({
 export const POLICY_DIGEST = createHash("sha256")
   .update(JSON.stringify(POLICY))
   .digest("hex");
+// Keep the original Grok policy byte-for-byte stable: existing consent and
+// journals remain valid. Each additional runtime has its own consent digest.
+export const POLICIES = Object.freeze({
+  grok: POLICY,
+  claude: Object.freeze({
+    ...POLICY,
+    runtime: "claude",
+    runtimeVersion: "2.1.284",
+    runtimeSha256:
+      "3dd0f96d7ada463152d20300186f6cfc6ab94b57e218f49e3ac86db42ac695a6",
+    runtimeHosts: Object.freeze([
+      "api.anthropic.com",
+      "claude.ai",
+      "platform.claude.com",
+    ]),
+  }),
+  codex: Object.freeze({
+    ...POLICY,
+    runtime: "codex",
+    runtimeVersion: "0.155.1",
+    runtimeSha256:
+      "d6c7e62fbd688d52ee04f3929d0613705d32a920a42db7a139e366eaf1f4a2d7",
+    runtimeDistribution: "tar.gz",
+    runtimeHosts: Object.freeze([
+      "chatgpt.com",
+      "api.openai.com",
+      "auth.openai.com",
+    ]),
+  }),
+});
+export function runtimePolicy(runtime) {
+  if (!Object.hasOwn(POLICIES, runtime))
+    throw new Error("Unsupported isolated runtime.");
+  return POLICIES[runtime];
+}
+export function policyDigest(runtime) {
+  return createHash("sha256")
+    .update(JSON.stringify(runtimePolicy(runtime)))
+    .digest("hex");
+}
+export const POLICY_DIGESTS = Object.freeze(
+  Object.fromEntries(
+    Object.keys(POLICIES).map((runtime) => [runtime, policyDigest(runtime)]),
+  ),
+);
 export const Hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const Session = z
   .string()
@@ -57,7 +102,7 @@ export const Record = z
   .object({
     schema: z.literal(1),
     contribution: Id,
-    policy: z.literal(POLICY_DIGEST),
+    policy: z.enum(Object.values(POLICY_DIGESTS)),
     status: z.enum([
       "preparing",
       "login_required",
@@ -86,11 +131,11 @@ export const Record = z
   })
   .strict();
 
-export function newRecord(contribution, now = Date.now()) {
+export function newRecord(contribution, now = Date.now(), runtime = "grok") {
   return Record.parse({
     schema: 1,
     contribution,
-    policy: POLICY_DIGEST,
+    policy: policyDigest(runtime),
     status: "preparing",
     grant: null,
     execution: null,
@@ -113,6 +158,17 @@ export function validateProvider(provider) {
   )
     throw new Error(
       "An enforcing provider with the reviewed policy is required.",
+    );
+  if (
+    provider.policies &&
+    Object.entries(provider.policies).some(
+      ([runtime, digest]) =>
+        !Object.hasOwn(POLICY_DIGESTS, runtime) ||
+        POLICY_DIGESTS[runtime] !== digest,
+    )
+  )
+    throw new Error(
+      "Execution provider declares an unreviewed runtime policy.",
     );
   for (const method of [
     "prepare",

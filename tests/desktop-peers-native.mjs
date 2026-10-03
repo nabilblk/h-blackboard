@@ -17,6 +17,14 @@ const workMode = process.argv.includes("--work");
 const communicationMode = process.argv.includes("--communication") || workMode;
 const rosterMode = process.argv.includes("--roster") || communicationMode;
 const lifecycleMode = process.argv.includes("--lifecycle") || rosterMode;
+const runtime =
+  process.argv.find((arg) => arg.startsWith("--runtime="))?.slice(10) || "grok";
+const runtimeLabel = {
+  grok: "Grok Build",
+  claude: "Claude Code",
+  codex: "Codex",
+}[runtime];
+assert.ok(runtimeLabel, "Unsupported test runtime");
 const executable = packaged
   ? resolve(
       `var/desktop/packages/Harakiri Desktop-darwin-${process.arch}/Harakiri Desktop.app/Contents/MacOS/Harakiri Desktop`,
@@ -199,7 +207,7 @@ async function rosterProof(a, b) {
     {
       reviewId: review.reviewId,
       workspaceChoiceId: choice.id,
-      runtime: "grok",
+      runtime,
       limits: { mode: "unlimited", concurrency: 1 },
     },
     { nodeRevision: m.lifecycle.terms_revision },
@@ -237,6 +245,11 @@ async function rosterProof(a, b) {
   assert.match(
     b.evaluate("document.querySelector('.n-execution').textContent"),
     /Prepare isolated environment/,
+  );
+  assert.ok(
+    b
+      .evaluate("document.querySelector('.n-execution').textContent")
+      .includes(`sign in to ${runtimeLabel} inside it`),
   );
   assert.equal(
     b.evaluate(
@@ -303,7 +316,7 @@ async function rosterProof(a, b) {
     "document.querySelector('.n-agents')?.textContent.includes('Accessibility researcher')",
     "Remote roster missing",
   );
-  a.browser("fill", ".n-agent-filter input", "Grok Build");
+  a.browser("fill", ".n-agent-filter input", runtimeLabel);
   assert.equal(
     a.evaluate("document.querySelectorAll('.n-agent-summary').length"),
     1,

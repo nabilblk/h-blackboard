@@ -1,6 +1,6 @@
 # Blackboard desktop
 
-The desktop on `pivot/renting-the-rent` creates local missions and connects people through **signed invitations or public discovery, followed by explicit owner approval**. Main and private conversations replicate between admitted nodes and remain available offline. Networking and discovery are opt-in; no web board, domain or Harakiri account is required. Contributors can prepare local runtime/workspace/allowance terms and withdraw. Missions begin in Preparing. Owner Start/Pause and instruction changes now replicate, with a separate Coordinator plan/readiness contract. The coordination controls are implemented. Grok Build can execute in a dedicated Lima VM on Apple Silicon with guest-native login, explicit consent, scoped tools and confirmed stop/recovery. See [isolated execution](EXECUTION.md) for setup and the enforcement boundary.
+The desktop on `pivot/renting-the-rent` creates local missions and connects people through **signed invitations or public discovery, followed by explicit owner approval**. Main and private conversations replicate between admitted nodes and remain available offline. Networking and discovery are opt-in; no web board, domain or Harakiri account is required. Contributors can prepare local runtime/workspace/allowance terms and withdraw. Missions begin in Preparing. Owner Start/Pause and instruction changes now replicate, with a separate Coordinator plan/readiness contract. The coordination controls are implemented. Grok Build, Claude Code and Codex can execute in dedicated Lima VMs on Apple Silicon with guest-native login, explicit consent, scoped tools and confirmed stop/recovery. See [isolated execution](EXECUTION.md) for setup and the enforcement boundary.
 
 ## Run on macOS
 
@@ -64,7 +64,7 @@ Open **Mission controls** within the channel. Main/private conversation remains 
 - **Edit instructions**, **Set shared plan** or **Change coordination** returns the mission to Preparing and clears earlier readiness. Instruction/mode changes also invalidate the local terms review. An open stale editor cannot overwrite a newer control revision. Applying Coordinator-led again removes the old appointment; it does not enable peer collaboration.
 - Human-supplied plans are clearly attributed to the owner; a Coordinator must still acknowledge them. Plans and control changes are recorded in Main. A late old plan cannot undo an owner’s already accepted Start.
 
-Only the mission owner controls these mission-wide actions. Other contributors can discuss setup, read the current state and withdraw their own participation. No global launcher or harness configuration changes. Readiness is an attestation about the plan, not a heartbeat or proof of runtime liveness. Shared agent direction, including the late-arrival rule, is implemented. Scoped Grok execution and exact agent acknowledgments are implemented. Owner-authorized handover is explicit; it never grants another device execution consent.
+Only the mission owner controls these mission-wide actions. Other contributors can discuss setup, read the current state and withdraw their own participation. No global launcher or harness configuration changes. Readiness is an attestation about the plan, not a heartbeat or proof of runtime liveness. Shared agent direction, including the late-arrival rule, is implemented. Scoped runtime execution and exact agent acknowledgments are implemented. Owner-authorized handover is explicit; it never grants another device execution consent.
 
 Wire protocol **9** requires all connected desktops to upgrade. Existing histories remain readable; old pending join requests need another review. Approved membership is preserved. Inspecting an invitation now returns a fresh owner-signed current brief rather than only the original definition. If instructions change before approval, the contributor must inspect and request again. A fresh join request never authorizes execution.
 
@@ -97,7 +97,7 @@ Listings expire after 30 minutes and renew while the publishing node is online w
 2. Review the full signed mission terms and exact revision. Choose Claude Code, Codex or Grok Build, then a workspace location through the native folder picker.
 3. Set concurrency and either a turn/time allowance or **No turn or time limit**. Save the preparation to create an empty dedicated folder inside that location. **Open folder** reveals this export destination. Execution uses a separate VM workspace with explicit import/export; the Mac folder is never mounted.
 
-The host rechecks membership and the reviewed revision before saving. The renderer cannot supply a path or forge the reviewed mission. Prepared terms are stored on this device. Sharing an agent is a separate explicit action; neither preparation nor sharing is an execution grant or permission to run. Local unlimited removes turn/time limits while retaining the contributor's concurrency cap and external provider limits. Grok planning/work permissions, guest execution, exact acknowledgments and receipts are implemented. Follow [the execution setup](EXECUTION.md#first-run) after sharing the preparation. A changed mission or coordination mode requires a fresh preparation. Older terms and workspace files are preserved, visibly stale, and cannot appoint the current Coordinator. A Coordinator appointment within the same mode does not itself invalidate its prepared terms.
+The host rechecks membership and the reviewed revision before saving. The renderer cannot supply a path or forge the reviewed mission. Prepared terms are stored on this device. Sharing an agent is a separate explicit action; neither preparation nor sharing is an execution grant or permission to run. Local unlimited removes turn/time limits while retaining the contributor's concurrency cap and external provider limits. Runtime planning/work permissions, guest execution, exact acknowledgments and receipts are implemented. Follow [the execution setup](EXECUTION.md#first-run) after sharing the preparation. A changed mission or coordination mode requires a fresh preparation. Older terms and workspace files are preserved, visibly stale, and cannot appoint the current Coordinator. A Coordinator appointment within the same mode does not itself invalidate its prepared terms.
 
 ### Slack-like mission workspace and Members
 
@@ -105,11 +105,11 @@ Opening a mission opens its conversation. The channel sidebar and Main remain th
 
 **Members → Agents** shows actual shared preparations, runtime, role, contributor and current direction. To add one, select **Prepare agent**, review the mission and select your workspace/limits; return to the mission and choose **Share agent** with a recognizable name. Multiple Agents of the same runtime can be prepared on one node, each with a distinct identity and folder. No process starts. Sharing discloses the agent's label/key, runtime, role and your display name; workspace paths and local allowance remain private. Coordinator appointment also shares its prepared identity.
 
-At Start, the owner records the exact shared contributions present. Later arrivals in a coordinated mission show **Waiting for direction**. The owner can open the agent and select **Give direction**; the protocol also accepts direction signed by the appointed Coordinator, whose authenticated guest runtime integration is still pending. Human direction wins over Coordinator direction for the same active mission revision. Direction is visibly separate from agent acknowledgment and execution. Main records the activity and **View agent** opens the relevant profile.
+At Start, the owner records the exact shared contributions present. Later arrivals in a coordinated mission show **Waiting for direction**. The owner can open the agent and select **Give direction**; the protocol also accepts direction signed by the appointed Coordinator, whose authenticated guest runtime uses the same scoped authority. Human direction wins over Coordinator direction for the same active mission revision. Direction is visibly separate from agent acknowledgment and execution. Main records the activity and **View agent** opens the relevant profile.
 
 A local agent profile exposes **On your computer → Open workspace** and an explicit withdrawal confirmation. Withdrawal preserves the folder and past records, revokes local consent and publishes the shared withdrawal. Failed publication remains a visible pending intent and retries. Instruction or mode changes mark earlier offers as needing review. Members' **People & invitations** view contains admission, private human conversations and invitations; signing keys and device endpoints are under connection details.
 
-This is incremental desktop parity. Optional workstreams/tasks, agent DMs, threads and Inbox/Sent are implemented. Artifact publication, revisions, review and preview are implemented. Distributed budget accounting, mission criterion reporting, closing/archiving and safe handover are implemented in G4; enforcing actual runtime execution remains G5. The existing web experience defines their product behavior; the decentralized transport does not remove them.
+Optional workstreams/tasks, agent DMs, threads and Inbox/Sent are implemented. Artifact publication, revisions, review and preview are implemented. Distributed budget accounting, mission criterion reporting, closing/archiving and safe handover were implemented in G4; G5 adds enforcing runtime execution. The existing web experience defines their product behavior; the decentralized transport does not remove them.
 
 Messages reuse the web workspace's Markdown renderer and typography: headings, lists, tables and code blocks. The desktop renders external links and image URLs as copyable text, never fetching remote content or opening a privileged navigation from a message. New messages follow the reader only when they are already at the bottom; otherwise a new-message indicator preserves their place.
 
@@ -122,7 +122,7 @@ The selected mission's sidebar contains **Main**, **Inbox**, **Sent** and **Dire
 
 **Reply in thread** opens a contextual panel with the original audience. Replies to your public messages and incoming private/addressed messages appear in **Inbox**. **Sent** gathers your own messages across these destinations. **Open conversation** returns to the original context; **Back to latest** leaves the historical view. Search queries all accessible saved history, not just the loaded page. Drafts survive navigation within the open app; read marks survive restart. The private sidebar shows unread counts.
 
-The roster distinguishes assigned direction from the agent's signed acknowledgment of the exact direction. The host-only communication capability also supports Coordinator planning/readiness without owner impersonation. It is tested with isolated prepared contributions; **no actual runtime or sandbox is connected to it yet**, and the human UI has no button to fabricate an agent acknowledgment. Withdrawal/current-terms changes stop capability access. Saved private history stays readable, with an unavailable contribution shown as read-only.
+The roster distinguishes assigned direction from the agent's signed acknowledgment of the exact direction. The host-only communication capability also supports Coordinator planning/readiness without owner impersonation. The enforcing Lima adapters connect to this capability through the scoped guest broker; the human UI has no button to fabricate an agent acknowledgment. Withdrawal/current-terms changes stop capability access. Saved private history stays readable, with an unavailable contribution shown as read-only.
 
 ### Optional workstreams and tasks
 
@@ -138,7 +138,7 @@ Evidence opens inline: public messages render with the shared Markdown reader; a
 
 Concurrent edits preserve competing definitions/reports, without choosing a winner using wall-clock time. An editor must name the versions it resolves. Stale local editors are rejected. New synchronization may reveal an additional branch after a local resolution; review it explicitly. Local drafts remain while switching conversations or opening these panels; conversation/thread drafts are also persisted locally across restarts.
 
-The host-only channel supports `workstreams`, paged `tasks`, and `work` operations under its bound agent identity. Neither these operations nor a task report authorizes tools or starts a runtime. The Grok adapter exposes this capability through its scoped guest MCP bridge.
+The host-only channel supports `workstreams`, paged `tasks`, and `work` operations under its bound agent identity. Neither these operations nor a task report authorizes tools or starts a runtime. The runtime adapters expose this capability through its scoped guest MCP bridge.
 
 ### Withdraw locally
 
@@ -160,7 +160,7 @@ HTML runs in a separate sandboxed renderer with an ephemeral session, no preload
 
 Limits: 32 files per revision, 16 MiB per file, 32 MiB total; 512 artifacts per mission and 256 revisions per artifact. Search covers all accessible saved artifacts; lists are paginated. The desktop only accepts file bytes and logical manifest paths, never a renderer-supplied host path. A mission's unlimited compute setting does not remove these storage/protocol limits.
 
-Plans/readiness and mission criterion reports can bind exact artifact revisions. The Grok adapter publishes exact files through the scoped artifact capability; independent reviews and human acceptance remain separate.
+Plans/readiness and mission criterion reports can bind exact artifact revisions. The runtime adapters publish exact files through the scoped artifact capability; independent reviews and human acceptance remain separate.
 
 ## Identity and recovery
 
@@ -210,7 +210,7 @@ The agreed Slack-like mission channels, Main conversation, optional workstreams/
 - Legacy web invitation tokens are discarded after inspection. Peer invitation inspection also creates no local membership; an explicit peer join request persists its capability in the private node profile for reconnect/retry. Tokens never appear in status views or diagnostics.
 - Legacy preparation state uses a versioned schema, atomic replacement and restrictive permissions; it is not signed or encrypted. New mission records are signed and transactionally stored in a separate SQLite database. Scope checks also protect sync cursors, audience metadata and blob GETs; network routes and resource bounds are documented in [the node protocol](NODE-PROTOCOL.md). Keys are OS-protected, but conversation content remains plaintext at rest. Neither mechanism protects against a compromised OS account. Failed projection migration preserves the prior version and signed bytes.
 
-Electron's renderer sandbox protects the desktop shell. It **does not sandbox CLI agent processes**. Grok execution uses the separate Lima provider described in [EXECUTION.md](EXECUTION.md). The existing web `local-process` provider (which declares `isolation: none`) is not a fallback.
+Electron's renderer sandbox protects the desktop shell. It **does not sandbox CLI agent processes**. Agent execution uses the separate Lima provider described in [EXECUTION.md](EXECUTION.md). The existing web `local-process` provider (which declares `isolation: none`) is not a fallback.
 
 ## Implementation map
 
@@ -233,7 +233,7 @@ Development can isolate the profile with `HARAKIRI_DESKTOP_DATA=/absolute/temp/p
 
 1. **Complete the distributed validation:** discovery, inspection, approval and local preparation work in isolated profiles; verify them on independently controlled machines, including cross-NAT connectivity, LAN discovery, sleep/wake and expired routes.
 2. **Independent multi-device experiment:** exercise the implemented coordination, permissions, runtime recovery and artifact workflow across separately operated computers.
-3. **Broaden runtime conformance:** validate Claude/Codex independently and add reviewed environment capabilities. Grok/Lima is the first enforcing path; unsupported runtimes remain disabled.
+3. **Maintain runtime conformance:** all three Lima adapters pass local guest-native subscription inference, scoped-tool, resume, planning and artifact/receipt checks. Revalidate vendor upgrades and any additional environment capabilities against the [execution matrix](EXECUTION.md#additional-runtime-conformance).
 4. **A real distributed trial and release:** three people, three machines, one mission. Demonstrate revocation, lost connectivity, exhausted allowance, malicious input and recovery. Verify signed distribution on clean machines before inviting untrusted public participation.
 
 Payments, a marketplace and a DAO are outside these gates. Subscription access is not interchangeable credit and does not imply a right to redistribute provider capacity.
@@ -274,7 +274,7 @@ Open **Budget & permissions** from a mission channel. The conversation and draft
 - Seal permissions and then seal an allowance to reconcile it. The owner can reclaim only unused allowance supported by the contributor’s signed history. Expiry or disconnection does not reclaim it.
 - For unavailable executions, the owner can explicitly accept uncertainty. Resolving a reservation charges its full turn. Retiring an unreachable permission does **not** return its contributor allowance or prove termination. These decisions remain visible in the ledger.
 
-Grok execution binds these records to the enforcing Lima provider, with separate worker credentials, monotonic validity timers and fresh permission generations after stop/recovery. Tokens/model costs are reported only when available; missions requiring enforcement of those quantities are rejected by this subscription adapter. External provider quotas remain outside Blackboard. See [turns, time and recovery](EXECUTION.md#turns-time-and-recovery).
+Agent execution binds these records to the enforcing Lima provider, with separate worker credentials, monotonic validity timers and fresh permission generations after stop/recovery. Tokens/model costs are reported only when available; missions requiring enforcement of those quantities are rejected by this subscription adapter. External provider quotas remain outside Blackboard. See [turns, time and recovery](EXECUTION.md#turns-time-and-recovery).
 
 ### Plan, progress, handover and channel history
 
@@ -299,3 +299,14 @@ node tests/desktop-peers-native.mjs --governance
 ```
 
 The native check uses three temporary Electron profiles, real node services and OS-protected keys. It covers allowance/permission consent and reconciliation, exact artifact progress, close/archive/restore, private history review and restart-safe drafts. It does not run models or establish independent-machine security. The installed app/DMG is not updated by `desktop:build`.
+
+### Claude Code and Codex before G6
+
+The same **Members → Agents → Local execution** controls prepare all three
+runtimes. Each contribution has its own VM, subscription login, scoped tools,
+native session and execution policy. Select **Sign in to Claude Code…** or
+**Sign in to Codex…**, then complete the generated command in Terminal. The
+Slack workspace, human Start/Pause and optional Coordinator/workstreams/tasks
+are unchanged. Selecting a runtime does not itself authorize execution.
+
+See [runtime versions, restrictions and current validation](EXECUTION.md#runtime-adapters).

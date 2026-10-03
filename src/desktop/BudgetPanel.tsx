@@ -75,8 +75,8 @@ export function BudgetPanel({
       </dl>
       <p className="d-field-help">
         Contributors approve and run their own agents from agent details. The
-        Grok subscription adapter enforces turns, time and concurrency; missions
-        with token or dollar limits require a metered adapter.
+        Subscription adapters enforce turns, time and concurrency; missions with
+        token or dollar limits require a metered adapter.
       </p>
       <div className="n-action-row">
         {own ? (

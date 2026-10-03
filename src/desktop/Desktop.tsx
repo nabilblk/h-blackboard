@@ -312,7 +312,8 @@ export default function Desktop() {
             {nodeState?.network === "enabled"
               ? "Peer networking enabled"
               : "Offline · local workspace"}{" "}
-            · Isolated Grok execution is available on Apple Silicon with Lima.
+            · Claude Code, Codex and Grok Build run in isolated Lima VMs on
+            Apple Silicon.
           </span>
         </div>
         {error ? (

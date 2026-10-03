@@ -78,6 +78,8 @@ export async function buildDesktop() {
     "mcp.py",
     "proxy.py",
     "setup.sh",
+    "runtimes.py",
+    "install-runtime.py",
   ])
     await copyFile(
       join(root, "desktop/execution/guest", name),

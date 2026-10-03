@@ -1,27 +1,29 @@
 # Isolated desktop execution
 
 The decentralized desktop uses **provider contract v2**, implemented with Lima
-and Apple's Virtualization Framework on Apple Silicon macOS. Grok Build is the
-first supported runtime. Claude Code and Codex preparations remain readable,
-but cannot execute through this provider. The trusted-local web launcher is a
+and Apple's Virtualization Framework on Apple Silicon macOS. Adapters are implemented for Grok Build, Claude Code and Codex. Each has
+a separately pinned binary, network policy, guest login and saved session.
+The validation matrix below distinguishes live subscription evidence from
+account-free conformance. The trusted-local web launcher is a
 separate experiment and is never an execution fallback.
 
 ## First run
 
 1. Install Lima (`brew install lima`). Lima 2.1.1 is the validated version. The
    desktop package includes its own application runtime and native node service.
-2. Create or join a mission, review its terms and prepare a Grok contribution.
+2. Create or join a mission, review its terms and prepare a Claude Code, Codex or Grok Build contribution.
    Share it from **Members → Agents**. A coordinated mission's owner appoints
    its Coordinator from **Mission controls**.
 3. Expand your agent in **Members → Agents**, or open **Your contribution**.
    Select **Prepare isolated environment**. This downloads checksum-pinned
-   Ubuntu and Grok components into an app-owned VM. No agent starts yet.
-4. Select **Sign in to Grok…**, copy the displayed command into Terminal and
-   complete Grok's device login. This is a new login **inside this VM**. The app
+   Ubuntu and selected runtime components into an app-owned VM. No agent starts yet.
+4. Select **Sign in to [runtime]…**, copy the displayed command into Terminal and
+   complete the provider login. Claude opens a subscription authorization link
+   and asks for the returned code. Codex and Grok use device login. This is a new login **inside this VM**. The app
    does not copy your Mac's Grok/Claude/Codex credentials or change their config.
    Each contribution has its own guest account and login. Return to the app;
    it detects the guest login file. Actual provider authorization is checked
-   when Grok connects, so a present login can still be expired or quota-limited.
+   when the runtime connects, so a present login can still be expired or quota-limited.
 5. In **Budget & permissions**, the owner allocates turns/slots to the
    contributor and issues a permission for that specific shared agent. During
    Preparing, only the appointed Coordinator can receive a **planning**
@@ -68,23 +70,61 @@ self-contained assets and open through Blackboard's separate isolated viewer.
 
 ## Enforcement boundary
 
-| Boundary            | Implementation                                                                                                                                                                                                                                                    |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mac filesystem      | No host mounts, host SSH agent forwarding or host credential imports.                                                                                                                                                                                             |
-| Runtime credentials | Grok's guest-native login stays in a private `hb-runtime` account. Commands run as a different `hb-worker` user in a restricted filesystem namespace.                                                                                                             |
-| Agent tools         | A pinned Grok profile exposes tool discovery/dispatch only. Native shell/file/subagent tools and skill discovery are disabled. Scoped MCP supplies board and jailed workspace tools.                                                                              |
-| Worker access       | `/workspace` is writable; system tools are read-only. No network, capabilities, privilege escalation, mounts or namespace creation. Process, memory, output and time limits apply.                                                                                |
-| Runtime network     | A systemd cgroup denies direct IP traffic except loopback. A CONNECT proxy permits HTTPS to `cli-chat-proxy.grok.com`, `api.x.ai`, `auth.x.ai`, `accounts.x.ai`, and `grok.com`; DNS results must be globally routable and connections use the vetted numeric IP. |
-| Board authority     | A host-owned SSH transport and UID-authenticated guest Unix socket bind each request to one actual contribution. No owner/agent signing key, bearer token or host path enters the guest. The host rechecks consent and current mission authority for tool calls.  |
-| Stop                | Native cancellation, whole-slice termination, then VM shutdown. **Stopped** requires confirmed VM termination and accounting settlement. Disconnection alone is insufficient.                                                                                     |
+| Boundary            | Implementation                                                                                                                                                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mac filesystem      | No host mounts, host SSH agent forwarding or host credential imports.                                                                                                                                                                                            |
+| Runtime credentials | The selected runtime's guest-native login stays in a private `hb-runtime` account. Commands run as a different `hb-worker` user in a restricted filesystem namespace.                                                                                            |
+| Agent tools         | Pinned adapters disable native execution/file tools and subagents. Scoped MCP supplies board and jailed workspace tools. Vendor metadata tools may remain; see the runtime table.                                                                                |
+| Worker access       | `/workspace` is writable; system tools are read-only. No network, capabilities, privilege escalation, mounts or namespace creation. Process, memory, output and time limits apply.                                                                               |
+| Runtime network     | A systemd cgroup denies direct IP traffic except loopback. A CONNECT proxy permits only the selected runtime’s reviewed provider hosts (below); DNS results must be globally routable and connections use the vetted numeric IP.                                 |
+| Board authority     | A host-owned SSH transport and UID-authenticated guest Unix socket bind each request to one actual contribution. No owner/agent signing key, bearer token or host path enters the guest. The host rechecks consent and current mission authority for tool calls. |
+| Stop                | Native cancellation, whole-slice termination, then VM shutdown. **Stopped** requires confirmed VM termination and accounting settlement. Disconnection alone is insufficient.                                                                                    |
 
-The Grok binary is pinned to **1.0.46** with auto-update disabled. Ubuntu uses
-the **20260926** image; both downloads have checked SHA-256 digests. The reviewed
-policy includes these pins and the network allowlist. A changed policy cannot
-silently reuse old consent or execution records.
+## Runtime adapters
+
+| Runtime     | Pinned version | Integration and native tool policy                                                                                                                | Guest login                    |
+| ----------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Grok Build  | 1.0.46         | ACP with a restricted agent profile; scoped MCP                                                                                                   | `grok login --device-auth`     |
+| Claude Code | 2.1.284        | Restricted headless JSON stream; empty native tool list; strict MCP configuration; hooks and automatic memory disabled                            | `claude auth login --claudeai` |
+| Codex       | 0.155.1        | App-server; empty environments on **every** turn, including resume; no native shell/file tools, plugins, subagents or automatic goal continuation | `codex login --device-auth`    |
+
+Use the **complete command from the desktop**, not these abbreviated commands:
+it selects the correct VM and private guest account. Subscription authentication
+happens through the vendor CLI. No API key, shared account or host credential
+export is required. A provider can still impose its own subscription limits.
+
+Codex's reviewed inert tools include MCP resource metadata, input requests (the
+adapter declines interactive runtime requests), and skill catalog lookup. Its
+bundled skills, host skill discovery, plugins and executor capability discovery
+are disabled; no workspace roots or native execution environments are attached.
+Codex turns declare `externalSandbox`: the Lima broker enforces the writable
+workspace and network limits. Its five exact MCP tools are preapproved by the
+root-owned configuration; every operation still rechecks contributor consent,
+mission authority and lease. Native execution environments remain empty.
+Workspace side effects use only the scoped broker. Claude validates the runtime’s
+reported tool list and refuses unexpected native tools. Vendor upgrades require
+fresh conformance; these policies are not a promise about arbitrary CLI versions.
+
+| Runtime     | HTTPS destinations during agent execution                                       |
+| ----------- | ------------------------------------------------------------------------------- |
+| Grok Build  | `cli-chat-proxy.grok.com`, `api.x.ai`, `auth.x.ai`, `accounts.x.ai`, `grok.com` |
+| Claude Code | `api.anthropic.com`, `claude.ai`, `platform.claude.com`                         |
+| Codex       | `chatgpt.com`, `api.openai.com`, `auth.openai.com`                              |
+
+The lists are separate, never combined across providers. Login is an explicit
+human-operated guest CLI process; the execution proxy governs agent runs.
+All binaries have auto-update disabled or no automatic updater. Ubuntu uses the
+**20260926** image. Distributions have checked SHA-256 digests, and the installer
+rechecks installed binary integrity on preparation. The reviewed policy binds
+each runtime's pin and network allowlist. Changing runtime cannot reuse consent
+or a saved native session. Existing Grok consent digests remain unchanged.
+
+References: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
+[Codex app-server](https://developers.openai.com/codex/app-server/), and
+[the pinned Codex source](https://github.com/openai/codex/tree/rust-v0.155.1).
 
 The trusted computing base includes macOS/Lima/VZ, the Linux kernel/systemd,
-the pinned Grok harness, the bundled guest broker and the desktop/native host.
+the pinned vendor harness, the bundled guest broker and the desktop/native host.
 The model provider receives the agent's authorized context. This boundary does
 not protect guest credentials from a compromised trusted harness or the device
 owner. It is an experimental enforcing provider with conformance tests;
@@ -92,14 +132,16 @@ independent security review and public release hardening remain separate gates.
 
 ## Turns, time and recovery
 
-A **turn** is one outer Grok prompt, which may contain multiple model calls and
+A **turn** is one outer runtime prompt, which may contain multiple model calls and
 tool operations. It is not a provider token, subscription credit or dollar.
 The adapter enforces turns, concurrent reservations, mission deadlines, local
 time allowances and permission expiry. Unlimited budgets remain supported;
 each execution permission still has a finite validity window. Missions with
 token/dollar enforcement requirements are rejected by this subscription adapter
 instead of pretending those limits can be measured accurately. Provider quotas
-remain external.
+remain external. Codex exposes last-request and saved-thread token totals;
+neither is a reliable aggregate for one outer turn after native resume. These
+totals are not reported as per-turn usage. Missing usage stays unknown, never zero.
 
 The execution window starts at the permission's signed issue time. The host
 uses the earlier of its expiry and offline window, additionally constrained by
@@ -125,7 +167,7 @@ from shared progress reports and are not published automatically.
 **Resume:** recover/confirm the old stop first, then obtain and consent to a
 fresh permission generation. The owner form continues the same execution
 identity after its previous grant is sealed; the host loads the saved native
-Grok session. Mission control and current instructions still take precedence
+runtime session. Mission control and current instructions still take precedence
 over that session's memory. Restart never automatically launches an agent.
 
 Pause, revocation or changed direction stops a running contribution when the
@@ -157,3 +199,31 @@ must preserve G5's `hb-worker` workspace ownership on reboot.
 
 These checks do not establish collaboration between independently operated
 computers or replace the separate cross-device and public security gates.
+
+### Additional runtime conformance
+
+```sh
+node tests/providers/g5-provider-conformance.mjs claude
+node tests/providers/g5-provider-conformance.mjs codex
+# Print a command for each fixture, then run it and complete provider login:
+node tests/providers/g5-runtime-live.mjs claude --login
+node tests/providers/g5-runtime-live.mjs codex --login
+# After signing in inside the corresponding disposable guest:
+node tests/providers/g5-runtime-live.mjs claude
+node tests/providers/g5-runtime-live.mjs codex
+node tests/providers/g5-mission-live.mjs claude
+node tests/providers/g5-mission-live.mjs codex
+```
+
+`g5-tool-surface.py` is a guest-side, account-free proof. It starts each pinned
+CLI under the production runtime restrictions with a fresh configuration home,
+and inspects its actual model-facing tools against a loopback fixture. It makes
+no provider inference calls and reads no existing login. It is not a substitute
+for a live subscription test. See `var/node/g5-runtimes/` for local evidence.
+
+| Check                                                               | Grok Build | Claude Code               | Codex                     |
+| ------------------------------------------------------------------- | ---------- | ------------------------- | ------------------------- |
+| Fresh VM, credential/worker separation, egress, expiry and shutdown | Passed     | Passed                    | Passed                    |
+| Actual CLI model-facing tool surface                                | Passed     | Passed (loopback fixture) | Passed (loopback fixture) |
+| Subscription inference, scoped tools and native resume              | Passed     | Passed                    | Passed                    |
+| Planning → human Start → HTML artifact → settled receipts           | Passed     | Passed                    | Passed                    |

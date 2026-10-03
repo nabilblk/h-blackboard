@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 from control import ENV, files, worker, runtime_properties
+from runtimes import command, environment
 
 MAX_LINE = 2 * 1024 * 1024
 output_lock = threading.Lock()
@@ -175,12 +176,10 @@ def main():
                 "--slice=hb-agent.slice", "--uid=hb-runtime", "--working-directory=/home/hb-runtime/control"]
         properties = runtime_properties(int(sys.argv[1]))
         args += ["--property=" + p for p in properties]
-        args += ["--setenv=HOME=/home/hb-runtime", "--setenv=GROK_SUBAGENTS=0",
-                 "--setenv=HTTPS_PROXY=http://127.0.0.1:18080", "--setenv=HTTP_PROXY=http://127.0.0.1:18080",
-                 "/opt/harakiri/grok", "--no-auto-update", "agent", "--no-leader",
-                 "--agent-profile", "/opt/harakiri/agent.md", "stdio"]
-        if os.path.isfile("/opt/harakiri/debug-enabled"):
-            args[-1:-1] = ["--debug", "--debug-file", "/home/hb-runtime/.grok/harakiri-debug.log"]
+        args += ["--setenv=" + key + "=" + value for key, value in environment().items()]
+        args += ["--setenv=HTTPS_PROXY=http://127.0.0.1:18080", "--setenv=HTTP_PROXY=http://127.0.0.1:18080"]
+        session = (sys.argv[2] == "resume", sys.argv[3]) if len(sys.argv) == 4 else None
+        args += command(session)
         os.makedirs("/var/log/harakiri", mode=0o700, exist_ok=True)
         diagnostics = os.open("/var/log/harakiri/runtime.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
         runtime = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=diagnostics, env=ENV)

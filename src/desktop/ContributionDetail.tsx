@@ -3,6 +3,7 @@ import { ArrowLeft, FolderOpen, LockKeyhole } from "lucide-react";
 import runtimes from "../../shared/runtimes.json";
 import { desktop, type Contribution } from "./bridge";
 import { Heading, Status, date, type Perform } from "./ui";
+import { ExecutionPanel } from "./ExecutionPanel";
 
 export default function ContributionDetail({
   item,
@@ -80,34 +81,16 @@ export default function ContributionDetail({
             </div>
           </dl>
         </section>
-        <section className="d-panel">
-          <header>
-            <h2>Execution</h2>
-            <Status muted>Not running</Status>
-          </header>
-          <p>
-            {item.status === "revoked"
-              ? "You revoked this preparation. It cannot be reused to authorize work."
-              : "Your local preparation is saved. No agent has joined the board or started work."}
-          </p>
-          <div className="d-pending">
-            <span className="d-label">Before an agent can run</span>
-            <ul>
-              {item.execution.blockers.map((reason) => (
-                <li key={reason.code}>{reason.message}</li>
-              ))}
-            </ul>
-          </div>
-          <p className="d-footnote">
-            The existing unrestricted launcher is not used by the desktop app.
-          </p>
-        </section>
+        <ExecutionPanel item={item} />
       </div>
       <section className="d-panel d-workspace-panel">
         <header>
           <div>
-            <h2>Dedicated workspace</h2>
-            <p>Files remain here if you revoke this preparation.</p>
+            <h2>Workspace exports</h2>
+            <p>
+              Exported files remain here if you revoke this contribution. Agent
+              execution stays inside its VM.
+            </p>
           </div>
           <button
             className="d-button"

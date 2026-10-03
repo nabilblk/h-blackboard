@@ -1,0 +1,163 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { Id } from "../model.mjs";
+
+// Separate from the trusted-local web runner's v1 protocol. That provider is
+// deliberately not an implementation of this contract.
+export const EXECUTION_PROVIDER_VERSION = 2;
+export const POLICY = Object.freeze({
+  version: 1,
+  provider: "lima-vz",
+  runtime: "grok",
+  runtimeVersion: "1.0.46",
+  runtimeSha256:
+    "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  os: "ubuntu-24.04-arm64",
+  imageRelease: "20260926",
+  imageSha256:
+    "1d6bffe64b848468ac97f821d369a4846d983de1800ccf6b5ec8853e85cefc55",
+  cpus: 2,
+  memoryMiB: 2048,
+  diskGiB: 8,
+  workspace: "/workspace",
+  hostMounts: false,
+  hostCredentials: false,
+  workerNetwork: "none",
+  runtimeNetwork: "provider-only",
+  runtimeHosts: Object.freeze([
+    "cli-chat-proxy.grok.com",
+    "api.x.ai",
+    "auth.x.ai",
+    "accounts.x.ai",
+    "grok.com",
+  ]),
+  credentials: "guest-native-login",
+  nativeTools: false,
+});
+export const POLICY_DIGEST = createHash("sha256")
+  .update(JSON.stringify(POLICY))
+  .digest("hex");
+export const Hash = z.string().regex(/^[a-f0-9]{64}$/);
+export const Session = z
+  .string()
+  .min(1)
+  .max(256)
+  .regex(/^[a-zA-Z0-9_-]+$/);
+export const ExecutionRequests = {
+  executionState: z.object({ contributionId: Id }).strict(),
+  executionPrepare: z.object({ contributionId: Id }).strict(),
+  executionLogin: z.object({ contributionId: Id }).strict(),
+  executionStart: z.object({ contributionId: Id, grant: Hash }).strict(),
+  executionStop: z.object({ contributionId: Id }).strict(),
+  executionExport: z.object({ contributionId: Id }).strict(),
+  executionImport: z.object({ contributionId: Id }).strict(),
+};
+
+export const Record = z
+  .object({
+    schema: z.literal(1),
+    contribution: Id,
+    policy: z.literal(POLICY_DIGEST),
+    status: z.enum([
+      "preparing",
+      "login_required",
+      "ready",
+      "reserving",
+      "launching",
+      "running",
+      "waiting",
+      "stopping",
+      "stopped",
+      "recovery_required",
+      "failed",
+    ]),
+    grant: Hash.nullable(),
+    execution: Hash.nullable(),
+    generation: z.number().int().positive().nullable(),
+    nonce: Hash.nullable(),
+    reservation: Hash.nullable(),
+    session: Session.nullable(),
+    // A launched turn is conservatively charged even if the harness crashes.
+    dispatched: z.boolean(),
+    receipt: Hash.nullable(),
+    expiresAt: z.number().int().nonnegative().nullable(),
+    updatedAt: z.number().int().nonnegative(),
+    reason: z.string().max(2048),
+  })
+  .strict();
+
+export function newRecord(contribution, now = Date.now()) {
+  return Record.parse({
+    schema: 1,
+    contribution,
+    policy: POLICY_DIGEST,
+    status: "preparing",
+    grant: null,
+    execution: null,
+    generation: null,
+    nonce: null,
+    reservation: null,
+    session: null,
+    dispatched: false,
+    receipt: null,
+    expiresAt: null,
+    updatedAt: now,
+    reason: "Preparing isolated environment.",
+  });
+}
+
+export function validateProvider(provider) {
+  if (
+    provider?.version !== EXECUTION_PROVIDER_VERSION ||
+    provider?.policy !== POLICY_DIGEST
+  )
+    throw new Error(
+      "An enforcing provider with the reviewed policy is required.",
+    );
+  for (const method of [
+    "prepare",
+    "login",
+    "launch",
+    "inspect",
+    "interrupt",
+    "terminate",
+    "checkpoint",
+    "resume",
+    "usage",
+    "exportFiles",
+    "importFiles",
+  ])
+    if (typeof provider[method] !== "function")
+      throw new Error(`Execution provider is missing ${method}.`);
+  return provider;
+}
+
+// A grant never receives a new offline window on reconnect, app restart or a
+// later turn. The issuer's signed timestamp gives a conservative outer bound.
+// Wall time chooses the initial bound; monotonic time enforces it thereafter.
+export function permissionLease(
+  grant,
+  { wall = Date.now, mono = () => performance.now() } = {},
+) {
+  const deadline = Math.min(
+    grant.expires_ms,
+    grant.issued_ms + grant.offline_ms,
+  );
+  const remaining = deadline - wall();
+  if (
+    !Number.isSafeInteger(deadline) ||
+    remaining <= 0 ||
+    grant.issued_ms > wall() + 30_000 ||
+    grant.sealed ||
+    !grant.consent
+  )
+    throw new Error(
+      "Permission expired or unavailable. Request a fresh permission.",
+    );
+  const started = mono();
+  return Object.freeze({
+    deadline,
+    remaining: () =>
+      Math.max(0, Math.min(deadline - wall(), remaining - (mono() - started))),
+  });
+}

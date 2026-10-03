@@ -6,6 +6,8 @@ backups/
 .browser-tests/
 .fresh-checkpoint
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 .DS_Store
 .env
 .env.*

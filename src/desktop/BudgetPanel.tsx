@@ -74,9 +74,9 @@ export function BudgetPanel({
         </div>
       </dl>
       <p className="d-field-help">
-        Permissions do not launch agents. Sandboxed execution is not enabled in
-        this build. Token and cost fields, when present, are planning estimates;
-        only turns and concurrency are allocated here.
+        Contributors approve and run their own agents from agent details. The
+        Grok subscription adapter enforces turns, time and concurrency; missions
+        with token or dollar limits require a metered adapter.
       </p>
       <div className="n-action-row">
         {own ? (
@@ -94,12 +94,14 @@ export function BudgetPanel({
               className="d-button"
               disabled={
                 busy ||
-                mission.lifecycle.phase !== "active" ||
+                !["active", "preparing"].includes(mission.lifecycle.phase) ||
                 !data.allocations.some((a) => !a.sealed && !a.reclaimed)
               }
               onClick={() => setForm("grant")}
             >
-              Issue permission
+              {mission.lifecycle.phase === "preparing"
+                ? "Allow Coordinator planning"
+                : "Issue permission"}
             </button>
           </>
         ) : null}
@@ -202,7 +204,7 @@ export function BudgetPanel({
                           : directionChanged
                             ? "Direction changed"
                             : g.consent
-                              ? "Consented · not executing"
+                              ? "Consented · inspect execution on contributor device"
                               : "Awaiting local consent"}
                 </Status>
               </div>

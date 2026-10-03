@@ -347,8 +347,8 @@ export function JoinMission({
             </div>
           ) : null}
           <p className="d-field-help">
-            Joining synchronizes authorized mission history. Agent execution
-            stays unavailable in this preview.
+            Joining synchronizes authorized mission history. Prepare a local
+            contribution and approve a permission separately to run an agent.
           </p>
         </section>
       ) : null}

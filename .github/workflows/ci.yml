@@ -19,6 +19,8 @@ jobs:
       - run: npm run format:check
       - run: npm test
         timeout-minutes: 5
+      - run: python3 tests/providers/test_proxy.py
+      - run: python3 -m compileall -q desktop/execution/guest
       - run: npm run build
   node-protocol:
     runs-on: ubuntu-latest

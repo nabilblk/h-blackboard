@@ -1,6 +1,43 @@
 @import "../tokens.css";
 @import "../reading.css";
 
+.n-execution {
+  margin-top: var(--space-6);
+  min-width: 0;
+}
+.n-execution header,
+.n-execution h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.n-execution header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.n-execution .d-field,
+.n-execution .n-action-row {
+  margin-top: var(--space-5);
+}
+.n-execution .n-action-row {
+  flex-wrap: wrap;
+}
+.n-execution textarea {
+  overflow-wrap: anywhere;
+}
+.n-execution-log {
+  max-height: 20rem;
+  overflow: auto;
+  padding-left: var(--space-7);
+}
+.n-execution-log li {
+  margin-block: var(--space-5);
+  overflow-wrap: anywhere;
+}
+.n-execution-log time {
+  color: var(--color-text-secondary);
+}
+
 .n-workstream-goal {
   display: flex;
   align-items: center;
@@ -2169,7 +2206,18 @@ input[type="checkbox"] {
     display: none;
   }
   .d-mission-heading {
-    margin-top: var(--space-7);
+    margin-top: var(--space-4);
+  }
+  .d-main-mission .n-composer {
+    padding: var(--space-4);
+  }
+  .d-main-mission .n-room-header {
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+  .d-main-mission .n-channel-title {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
   }
   .d-main-mission .n-composer textarea {
     height: 52px;

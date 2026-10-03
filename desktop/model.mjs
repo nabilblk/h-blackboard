@@ -123,9 +123,9 @@ export const Requests = {
   rename: z.object({ name: Label }).strict(),
 };
 
-// This milestone deliberately has no execution adapter. A descriptor claiming
-// isolation is not proof of isolation; the host must implement and attest it.
-// Do not fall back to the existing, unrestricted local-process provider.
+// Preparation alone is not execution authority. The separate provider-v2
+// manager verifies the environment, guest login and current signed permission.
+// Never fall back to the unrestricted web launcher.
 export function executionReadiness(contribution) {
   const blockers = [];
   if (contribution.status === "revoked")
@@ -142,7 +142,7 @@ export function executionReadiness(contribution) {
   blockers.push({
     code: "isolated_execution",
     message:
-      "An enforced isolation provider is required before agents can run.",
+      "Prepare an isolated environment, sign in inside it and approve a current permission before running.",
   });
   return { allowed: false, blockers };
 }

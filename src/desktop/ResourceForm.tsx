@@ -28,18 +28,23 @@ export function ResourceForm({
   close: () => void;
 }) {
   const [who, setWho] = useState(nodes[0] ?? "");
-  const [turns, setTurns] = useState("10");
+  const planning = mission.lifecycle.phase === "preparing" && mode === "grant";
+  const [turns, setTurns] = useState(planning ? "3" : "10");
   const [slots, setSlots] = useState(1);
   const [allocation, setAllocation] = useState(
     data.allocations.find((a) => !a.sealed && !a.reclaimed)?.id ?? "",
   );
   const [registration, setRegistration] = useState("");
-  const [minutes, setMinutes] = useState(60);
+  const [minutes, setMinutes] = useState(planning ? 10 : 60);
   const options = agents.filter(
     (a) =>
       a.contributor ===
         data.allocations.find((a) => a.id === allocation)?.node &&
-      a.status === "direction_assigned",
+      (planning
+        ? a.status === "waiting_for_start" &&
+          a.identity.role === "coordinator" &&
+          mission.lifecycle.coordinator?.identity.author === a.identity.author
+        : a.status === "direction_assigned"),
   );
   const selected = options.find((a) => a.id === registration) ?? options[0];
   return (
@@ -54,31 +59,45 @@ export function ResourceForm({
             turns: turns ? Number(turns) : null,
             slots,
           });
-        else if (selected?.direction)
+        else if (selected && (planning || selected.direction)) {
+          const previous = data.grants
+            .filter((g) => g.registration === selected.id && g.seal)
+            .at(-1);
           submit({
             type: "grant",
-            previous:
-              data.grants
-                .filter((g) => g.registration === selected.id && g.seal)
-                .at(-1)?.seal ?? null,
+            purpose: planning ? "planning" : "work",
+            previous: previous?.seal ?? null,
             allocation,
             registration: selected.id,
-            direction: selected.direction.id,
+            direction: planning
+              ? mission.lifecycle.revision
+              : selected.direction!.id,
             execution:
+              previous?.execution ??
               crypto.randomUUID().replaceAll("-", "") +
-              crypto.randomUUID().replaceAll("-", ""),
-            generation: 1,
+                crypto.randomUUID().replaceAll("-", ""),
+            generation: previous ? previous.generation + 1 : 1,
             turns: Number(turns),
             expires_ms: Date.now() + minutes * 60000,
-            offline_ms: Math.min(10, minutes) * 60000,
+            offline_ms: minutes * 60000,
           });
+        }
       }}
     >
       <h3>
         {mode === "allocate"
           ? "Allocate contributor resources"
-          : "Issue a bounded permission"}
+          : planning
+            ? "Allow Coordinator planning"
+            : "Issue a bounded permission"}
       </h3>
+      {planning ? (
+        <p>
+          Only the appointed Coordinator can prepare a plan and acknowledge
+          readiness. Workers wait for human Start. Planning is limited to eight
+          turns and fifteen minutes.
+        </p>
+      ) : null}
       {mode === "allocate" ? (
         <label className="d-field">
           <span>Contributor</span>
@@ -108,7 +127,11 @@ export function ResourceForm({
             </select>
           </label>
           <label className="d-field">
-            <span>Agent with an assigned direction</span>
+            <span>
+              {planning
+                ? "Appointed Coordinator"
+                : "Agent with an assigned direction"}
+            </span>
             <select
               required
               value={selected?.id ?? ""}
@@ -132,7 +155,7 @@ export function ResourceForm({
           name="turns"
           type="number"
           min="1"
-          max="4294967295"
+          max={planning ? "8" : "4294967295"}
           required={mode === "grant"}
           value={turns}
           onChange={(e) => setTurns(e.target.value)}
@@ -152,15 +175,20 @@ export function ResourceForm({
         </label>
       ) : (
         <label className="d-field">
-          <span>Permission expires in minutes</span>
+          <span>Execution window in minutes</span>
           <input
             type="number"
             min="1"
-            max="1440"
+            max={planning ? "15" : "1440"}
             required
             value={minutes}
             onChange={(e) => setMinutes(Number(e.target.value))}
           />
+          <small>
+            The window starts when issued and continues while disconnected.
+            Pause or revoke takes effect when received; this deadline is
+            enforced locally even offline.
+          </small>
         </label>
       )}
       <div className="n-action-row">

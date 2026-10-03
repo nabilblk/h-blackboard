@@ -23,6 +23,7 @@ try {
     "NOTICE",
     "licenses",
     "reader-fonts",
+    "guest",
     "ui",
   ])
     await cp(join(directory, file), join(staging, file), { recursive: true });

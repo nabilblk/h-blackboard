@@ -253,6 +253,7 @@ export type MessageQuery = {
   search: string | null;
 };
 export type AgentOperation =
+  | { type: "agents"; after: string | null }
   | { type: "governance" }
   | {
       type: "criterion";

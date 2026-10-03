@@ -18,6 +18,11 @@ import { inspectInvitation } from "./invitations.mjs";
 import { Requests } from "./model.mjs";
 import { NodeService, NodeRequests } from "./node-service.mjs";
 import { createArtifactViewer } from "./artifact-viewer.mjs";
+import { ExecutionRequests } from "./execution/contract.mjs";
+import { ExecutionStore } from "./execution/store.mjs";
+import { ExecutionManager } from "./execution/manager.mjs";
+import { LimaProvider } from "./execution/lima.mjs";
+import { exportWorkspace, readImportFiles } from "./execution/files.mjs";
 import {
   APP_URL,
   CONTENT_SECURITY_POLICY,
@@ -165,7 +170,7 @@ else {
           const result = await dialog.showOpenDialog(window, {
             title: "Choose where to keep this contribution",
             message:
-              "Harakiri will create a dedicated, empty folder here. Only that folder will be eligible for a future agent workspace.",
+              "Harakiri will create a dedicated folder for explicit workspace exports. Agents work inside their VM; this folder is never mounted into it.",
             buttonLabel: "Choose location",
             properties: ["openDirectory", "createDirectory"],
           });
@@ -178,6 +183,65 @@ else {
         },
       });
       nodeService.contributors = service;
+      const executions = new ExecutionManager({
+        store: new ExecutionStore(
+          join(app.getPath("userData"), "execution-v2"),
+        ),
+        provider: new LimaProvider({
+          // Lima creates UNIX sockets alongside VM files. Application Support
+          // paths exceed macOS' 104-byte limit. Profile-scoped instance names
+          // in a private short root retain separate consent and credentials.
+          directory: join(app.getPath("home"), ".harakiri", "vms"),
+          namespace: app.getPath("userData"),
+          resources: join(directory, "guest"),
+        }),
+        node: nodeService,
+        exportWorkspace,
+        importWorkspace: async () => {
+          const result = await dialog.showOpenDialog(window, {
+            title: "Share files with this isolated agent",
+            message:
+              "The agent can read every selected file. Imported files replace files with the same name in its VM workspace.",
+            buttonLabel: "Import selected files",
+            properties: ["openFile", "multiSelections"],
+          });
+          return result.canceled ? null : readImportFiles(result.filePaths);
+        },
+      });
+      nodeService.executions = executions;
+      // Recover saved launch intents without ever starting a new process.
+      void executions.recover().catch(() => {});
+      for (const [method, schema] of Object.entries(ExecutionRequests)) {
+        ipcMain.handle(`execution:${method}`, async (event, input) => {
+          if (!isTrustedFrame(event, window))
+            return {
+              ok: false,
+              error: "This page cannot control local execution.",
+            };
+          try {
+            const request = schema.parse(input);
+            const id = request.contributionId;
+            const actions = {
+              executionState: () => executions.state(id),
+              executionPrepare: () => executions.prepare(id),
+              executionLogin: () => executions.login(id),
+              executionStart: () => executions.start(id, request.grant),
+              executionStop: () => executions.stop(id),
+              executionExport: () => executions.transfer(id, "export"),
+              executionImport: () => executions.transfer(id, "import"),
+            };
+            return { ok: true, value: await actions[method]() };
+          } catch (error) {
+            return {
+              ok: false,
+              error:
+                error.name === "ZodError"
+                  ? "Invalid execution request."
+                  : error.message,
+            };
+          }
+        });
+      }
       for (const method of Object.keys(Requests)) {
         ipcMain.handle(`contributor:${method}`, async (event, input) => {
           if (!isTrustedFrame(event, window))
@@ -186,6 +250,10 @@ else {
               error: "This page cannot access desktop controls.",
             };
           try {
+            if (method === "revoke") {
+              const { contributionId } = Requests.revoke.parse(input);
+              await executions.stop(contributionId, "Local consent revoked.");
+            }
             return { ok: true, value: await service.handle(method, input) };
           } catch (error) {
             // System errors and validation internals do not cross the bridge.

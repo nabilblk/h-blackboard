@@ -13,6 +13,22 @@ import {
 } from "./artifact-contract.mjs";
 import { NodeIdentity } from "./node-identity.mjs";
 import { Limits, Runtime, Id } from "./model.mjs";
+import { POLICY_DIGEST } from "./execution/contract.mjs";
+
+export function executionBinding(contribution) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        id: contribution.id,
+        workspace: contribution.workspaceIdentity,
+        runtime: contribution.runtime,
+        limits: contribution.limits,
+        terms: contribution.nodeBinding,
+        policy: POLICY_DIGEST,
+      }),
+    )
+    .digest("hex");
+}
 
 const id = z.string().regex(/^[a-f0-9]{64}$/);
 const text = (max, min = 1) =>
@@ -199,6 +215,9 @@ const taskQuery = z
   .strict();
 // This contract deliberately has no identity, mission, path or execution field.
 export const AgentOperation = z.discriminatedUnion("type", [
+  z
+    .object({ type: z.literal("agents"), after: id.nullable().optional() })
+    .strict(),
   ...ArtifactAgentOperations,
   ...GovernanceAgentOperations,
   z.object({ type: z.literal("context") }).strict(),
@@ -552,6 +571,10 @@ export class NodeService {
       return result;
     }
     if (method === "withdrawAgent") {
+      await this.executions?.stop(
+        request.contributionId,
+        "Agent withdrawn by this device's human.",
+      );
       const c = this.contributors
         ?.snapshot()
         .contributions.find(
@@ -574,6 +597,17 @@ export class NodeService {
       return null;
     }
     if (method === "withdrawMission") {
+      const contributions =
+        this.contributors?.store
+          .read()
+          .contributions.filter(
+            (c) => c.mission.missionId === request.mission,
+          ) || [];
+      for (const c of contributions)
+        await this.executions?.stop(
+          c.id,
+          "This device withdrew from the mission.",
+        );
       await bridge.request({ type: "withdraw_mission", ...request });
       this.contributors?.withdrawNode(request.mission);
       return null;
@@ -651,17 +685,7 @@ export class NodeService {
         throw new Error(
           "This permission does not match your current contribution.",
         );
-      const binding = createHash("sha256")
-        .update(
-          JSON.stringify({
-            id: contribution.id,
-            workspace: contribution.workspaceIdentity,
-            runtime: contribution.runtime,
-            limits: contribution.limits,
-            terms: contribution.nodeBinding,
-          }),
-        )
-        .digest("hex");
+      const binding = executionBinding(contribution);
       return bridge.request({
         type: "govern",
         mission: request.mission,
@@ -715,7 +739,7 @@ export class NodeService {
     return bridge.request({ type, ...request });
   }
 
-  /** Internal capability for a future authenticated guest adapter. It must
+  /** Internal capability for the authenticated guest adapter. It must
    * never be returned through the renderer IPC or exposed as an open server. */
   openAgentChannel(contributionId) {
     Id.parse(contributionId);
@@ -761,7 +785,7 @@ export class NodeService {
     });
   }
 
-  /** Host accounting capability for a future enforcing provider. This creates
+  /** Host accounting capability for the enforcing provider. This creates
    * no process or executable credential and is absent from the preload. */
   openResourceLedger(contributionId) {
     Id.parse(contributionId);
@@ -770,6 +794,80 @@ export class NodeService {
       executionAvailable: false,
       close: () => {
         closed = true;
+      },
+      receipt: async ({ reservation, used, stopped, summary }) => {
+        id.parse(reservation);
+        if (closed || this.closed) throw new Error("Resource ledger closed.");
+        const bridge = await this.start(await this.keys.load());
+        const local = this.contributors?.store
+          .read()
+          .contributions.find((c) => c.id === contributionId);
+        if (!local?.sharedAgent) throw new Error("Unknown local contribution.");
+        const mission = local.mission.missionId;
+        const ledger = await bridge.request({ type: "governance", mission });
+        const record = ledger.reservations.find((r) => r.id === reservation);
+        const grant = ledger.grants.find((g) => g.id === record?.grant);
+        if (grant?.registration !== local.sharedAgent.registration)
+          throw new Error("Reservation belongs to another contribution.");
+        if (record.receipt) return { event: record.receipt };
+        const checked = await bridge.request({
+          type: "review_contribution",
+          mission,
+        });
+        return bridge.request({
+          type: "govern",
+          mission,
+          control: checked.control_revision,
+          action: { type: "receipt", reservation, used, stopped, summary },
+        });
+      },
+      state: async () => {
+        if (closed || this.closed) throw new Error("Resource ledger closed.");
+        const local = this.contributors?.store
+          .read()
+          .contributions.find((c) => c.id === contributionId);
+        if (!local?.sharedAgent) throw new Error("Unknown local contribution.");
+        const bridge = await this.start(await this.keys.load());
+        return bridge.request({
+          type: "governance",
+          mission: local.mission.missionId,
+        });
+      },
+      seal: async (grantId) => {
+        id.parse(grantId);
+        if (closed || this.closed) throw new Error("Resource ledger closed.");
+        const local = this.contributors?.store
+          .read()
+          .contributions.find((c) => c.id === contributionId);
+        if (!local?.sharedAgent) throw new Error("Unknown local contribution.");
+        const bridge = await this.start(await this.keys.load());
+        const mission = local.mission.missionId;
+        const ledger = await bridge.request({ type: "governance", mission });
+        const grant = ledger.grants.find((g) => g.id === grantId);
+        if (grant?.registration !== local.sharedAgent.registration)
+          throw new Error("Permission belongs to another contribution.");
+        if (grant.sealed) return { event: grant.seal };
+        const reservations = ledger.reservations.filter(
+          (r) => r.grant === grantId,
+        );
+        if (
+          reservations.some((r) => !r.stopped || r.used === null || !r.receipt)
+        )
+          throw new Error("Usage or termination is unresolved.");
+        const checked = await bridge.request({
+          type: "review_contribution",
+          mission,
+        });
+        return bridge.request({
+          type: "govern",
+          mission,
+          control: checked.control_revision,
+          action: {
+            type: "seal_grant",
+            grant: grantId,
+            settlements: reservations.map((r) => r.receipt).sort(),
+          },
+        });
       },
       reserve: async ({ grant, nonce }) => {
         id.parse(grant);
@@ -813,6 +911,89 @@ export class NodeService {
     });
   }
 
+  async executionContext(contributionId, grantId) {
+    Id.parse(contributionId);
+    const bridge = await this.start(await this.keys.load());
+    const local = this.contributors?.store
+      .read()
+      .contributions.find((c) => c.id === contributionId);
+    if (!local?.sharedAgent || local.runtime !== "grok")
+      throw new Error("Prepare and share a Grok contribution first.");
+    const mission = local.mission.missionId;
+    const review = await bridge.request({
+      type: "review_contribution",
+      mission,
+    });
+    const contribution = this.contributors.preparedContribution(
+      contributionId,
+      review,
+    );
+    const channel = this.openAgentChannel(contributionId);
+    try {
+      const [context, governance] = await Promise.all([
+        channel.request({ type: "context" }),
+        channel.request({ type: "governance" }),
+      ]);
+      const grant = governance.grants.find((g) => g.id === grantId);
+      if (
+        grantId &&
+        (!grant ||
+          grant.registration !== local.sharedAgent.registration ||
+          grant.control !== context.lifecycle.revision ||
+          grant.sealed ||
+          grant.consent_binding !== executionBinding(contribution))
+      )
+        throw new Error(
+          "A current permission with consent to this execution policy is required.",
+        );
+      if (grant) {
+        const planning =
+          grant.purpose === "planning" &&
+          context.lifecycle.phase === "preparing" &&
+          context.agent.status === "waiting_for_start" &&
+          context.lifecycle.coordinator?.identity.author ===
+            context.agent.identity.author;
+        const working =
+          grant.purpose === "work" &&
+          context.lifecycle.phase === "active" &&
+          context.agent.status === "direction_assigned" &&
+          context.agent.direction?.id === grant.direction;
+        if (!planning && !working)
+          throw new Error("Mission paused or the agent's direction changed.");
+        const budget = context.definition.policy?.budget;
+        if (
+          budget?.mode === "limited" &&
+          (budget.tokens != null || budget.model_cost_microusd != null)
+        )
+          throw new Error(
+            "This subscription adapter enforces turns, time and concurrency. Token or dollar limits require a metered adapter.",
+          );
+        if (budget?.deadline_ms && budget.deadline_ms <= Date.now())
+          throw new Error("Mission deadline reached.");
+        if (contribution.limits.mode === "bounded") {
+          const first = Math.min(
+            ...governance.grants
+              .filter(
+                (g) =>
+                  g.registration === local.sharedAgent.registration &&
+                  g.consent,
+              )
+              .map((g) => g.issued_ms),
+          );
+          const deadline = first + contribution.limits.minutes * 60000;
+          if (!Number.isSafeInteger(deadline) || deadline <= Date.now())
+            throw new Error("Local contribution time allowance expired.");
+          grant.expires_ms = Math.min(grant.expires_ms, deadline);
+        }
+        if (budget?.deadline_ms)
+          grant.expires_ms = Math.min(grant.expires_ms, budget.deadline_ms);
+      }
+      return { contribution, context, governance, grant };
+    } finally {
+      channel.close();
+    }
+  }
+
   async readArtifactFile(request) {
     ArtifactRequests.artifactOpen.parse(request);
     const chunks = [];
@@ -849,6 +1030,7 @@ export class NodeService {
   }
 
   async close() {
+    await this.executions?.close();
     this.closed = true;
     if (this.starting) await this.starting.catch(() => {});
     await this.bridge?.close();

@@ -1,5 +1,30 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+const executionCall = async (method, input) => {
+  const result = await ipcRenderer.invoke(`execution:${method}`, input);
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
+};
+contextBridge.exposeInMainWorld(
+  "blackboardExecution",
+  Object.freeze({
+    state: (contributionId) =>
+      executionCall("executionState", { contributionId }),
+    prepare: (contributionId) =>
+      executionCall("executionPrepare", { contributionId }),
+    login: (contributionId) =>
+      executionCall("executionLogin", { contributionId }),
+    start: (contributionId, grant) =>
+      executionCall("executionStart", { contributionId, grant }),
+    stop: (contributionId) =>
+      executionCall("executionStop", { contributionId }),
+    exportFiles: (contributionId) =>
+      executionCall("executionExport", { contributionId }),
+    importFiles: (contributionId) =>
+      executionCall("executionImport", { contributionId }),
+  }),
+);
+
 // A method per capability; no generic IPC, filesystem, shell or fetch bridge.
 const call = async (method, input = {}) => {
   const result = await ipcRenderer.invoke(`contributor:${method}`, input);

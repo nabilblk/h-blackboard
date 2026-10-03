@@ -21,7 +21,7 @@ Reconnecting or restarting cannot create a new offline window. Process truth
 belongs to the local provider; a signed ledger record alone does not prove a
 VM is isolated or stopped.
 
-The pivot branch includes a **local mission node with opt-in peer replication and discovery in the desktop**. Create a mission offline, share a signed invitation or public brief, approve other nodes and exchange Main or private conversations. Review local contribution terms, change mission instructions, use owner Start/Pause, or withdraw with retained history. Runtime execution remains unavailable. This is an experimental protocol subset, not a completed public decentralized network.
+The pivot branch includes a **local mission node with opt-in peer replication and discovery in the desktop**. Create a mission offline, share a signed invitation or public brief, approve other nodes and exchange Main or private conversations. Review local contribution terms, change mission instructions, use owner Start/Pause, or withdraw with retained history. The separate Lima provider can execute Grok Build under current consent and bounded planning/work permissions; see [isolated execution](EXECUTION.md). This is an experimental protocol subset, not a completed public decentralized network.
 
 ## Run the checks
 
@@ -54,9 +54,9 @@ The executable has a local ad-hoc signature. It is **not** a notarized desktop r
 | `crates/harakiri-node/src/peer.rs`  | Iroh streams and per-request blob authorization.                                                                                                        |
 | `harakiri-node-proof`               | Bounded inherited stdin/stdout IPC, local mission creation and restart/packaging proof. Networking starts disabled and requires explicit configuration. |
 | `tests/p2p`                         | JavaScript/Rust interoperability and actual process-boundary tests.                                                                                     |
-| `tests/providers`                   | Opt-in, isolated VM feasibility checks. No production execution provider.                                                                               |
+| `tests/providers`                   | Opt-in VM feasibility and enforcing-provider conformance checks.                                                                                        |
 
-The implementation includes signed invitations/admission offers, public advertisements, explicit owner admission, per-audience replication, revocation, withdrawal and a durable delivery journal. Supervised workers reconcile admitted peers and exchange bounded discovery catalogs. Owner lifecycle and Coordinator plan/readiness reducers are implemented. Shared agent identities, late-arrival direction, scoped host communication, addressed/threaded messages and private agent audiences are implemented. Optional public workstreams and tasks with independent attempts are also implemented. Scoped artifact revisions, reviews, freshness, acceptance and file retrieval are implemented. Protocol v8 adds resource accounting, contributor-bound permission records, explicit handover, artifact-backed progress and close/archive. Actual execution enforcement and portable identity recovery remain later gates. Unsupported operations fail validation; the legacy unrestricted launcher is never a fallback.
+The implementation includes signed invitations/admission offers, public advertisements, explicit owner admission, per-audience replication, revocation, withdrawal and a durable delivery journal. Supervised workers reconcile admitted peers and exchange bounded discovery catalogs. Owner lifecycle and Coordinator plan/readiness reducers are implemented. Shared agent identities, late-arrival direction, scoped host communication, addressed/threaded messages and private agent audiences are implemented. Optional public workstreams and tasks with independent attempts are also implemented. Scoped artifact revisions, reviews, freshness, acceptance and file retrieval are implemented. Protocol v8 adds resource accounting, contributor-bound permission records, explicit handover, artifact-backed progress and close/archive. Grok/Lima execution enforcement is implemented in the separate desktop provider. Portable identity recovery remains a later gate. Unsupported operations fail validation; the legacy unrestricted launcher is never a fallback.
 
 ## Identity and signed records
 
@@ -109,7 +109,7 @@ The pure reducer in `harakiri-protocol/src/lifecycle.rs` projects **Preparing**,
 
 Owner `mission_controlled` actions are `update_instructions`, `set_coordination`, `set_plan`, `start` and `pause`. Their `previous` field must name the nearest owner control ancestor (or genesis), even when ordinary messages or admissions intervene in the writer chain. Native mutations require the exact latest revision seen by the caller. This prevents an open stale editor from overwriting a newer decision.
 
-A Coordinator appointment names a separate Ed25519 signing identity. On the creator’s node the host derives it from the OS-protected owner seed, fixed mission ID and a real prepared contribution UUID using BLAKE3’s domain-separated derive-key mode. No derived secret is returned through IPC. Appointment carries only public identity, label and runtime. The native host verifies the preparation, role, current terms, owner and workspace binding first. Remote handover and credential provisioning to an isolated runtime are not implemented.
+A Coordinator appointment names a separate Ed25519 signing identity. On the creator’s node the host derives it from the OS-protected owner seed, fixed mission ID and a real prepared contribution UUID using BLAKE3’s domain-separated derive-key mode. No derived secret is returned through IPC. Appointment carries only public identity, label and runtime. The native host verifies the preparation, role, current terms, owner and workspace binding first. Explicit Coordinator handover is implemented. Runtime login is performed inside the VM; signing keys stay in the host.
 
 Coordinator plan/readiness records reference both the exact appointment (authority epoch) and exact owner control revision. Readiness acknowledges the latest plan in that Coordinator’s causal writer history or an explicit human plan. Changes to instructions, plan, appointment or mode clear readiness. Pause requires a fresh acknowledgment before coordinated resume. Removing a Coordinator preserves coordinated mode.
 
@@ -117,7 +117,7 @@ Owner Start references one exact readiness record. Locally, it must still match 
 
 The control projection includes its revision, terms revision, phase, appointment, plan, readiness and explicit start blockers. Main displays human-readable activity from the same signed records. The indexed, bounded history is cached per mission without repeatedly verifying the committed prefix. The 2,048-record cap reserves space for owner actions, and the final slot accepts only an owner Pause; a Coordinator cannot exhaust the entire allowance. An exhausted paused mission cannot start again.
 
-**These records do not launch processes, prove liveness/termination, grant local resources, admit a late worker or authorize a replacement execution.** Owner state, local consent, future scoped grants and provider receipts are separate. The desktop cannot fabricate an agent acknowledgment. The signed reducer is tested with isolated fixture identities; connecting real agents is a later enforcement gate.
+**These records do not launch processes, prove liveness/termination, grant local resources, admit a late worker or authorize a replacement execution.** Owner state, local consent, future scoped grants and provider receipts are separate. The desktop cannot fabricate an agent acknowledgment. The signed reducer has isolated fixture tests; real Grok turns connect through the separately enforcing provider.
 
 Schema 7 transactionally adds control/activity indexes and durable reviewed-join claims. Signed history is retained unchanged; malformed stored records roll back this migration. Pre-upgrade pending requests become `review_required`, while approved membership stays intact. All network peers must upgrade to protocol 7; older signed records remain readable, and there is no silent wire downgrade.
 
@@ -131,7 +131,7 @@ A v4 Start includes sorted registration IDs for contributions observed by the ow
 
 The roster is limited to 512 registrations per mission, returned in pages of 64 with an `after` cursor. Its 4,096-record limit reserves 512 slots for withdrawals. Directions are bounded to 2,048 UTF-8 bytes. The verified record cache holds at most four missions, independently of the control cache. Schema 8 transactionally creates the agent/activity index, preserves signed bytes and rolls back on malformed records. The UI links Main's registration and direction activity to the corresponding agent profile.
 
-Local consent revocation is saved before publication of its withdrawal. If that publication fails, a visible pending intent is retried; consent is never silently restored. Whole-mission withdrawal continues to disable synchronization. This is not a process-stop receipt; the execution provider and authenticated guest adapter remain unavailable. The host-only communication capability is described below.
+Local consent revocation is saved before publication of its withdrawal. If that publication fails, a visible pending intent is retried; consent is never silently restored. Whole-mission withdrawal continues to disable synchronization. This is not a process-stop receipt; the local provider supplies its own confirmed termination and settlement records. The host-only communication capability is described below.
 
 ## Scoped agent communication (v5)
 
@@ -148,11 +148,11 @@ Local consent revocation is saved before publication of its withdrawal. If that 
 - Acknowledge the exact current direction.
 - For the appointed Coordinator only: publish a plan, acknowledge readiness, or assign direction.
 
-It exposes no owner signing, Start/Pause, network configuration, filesystem path selection, membership operation or runtime launch. Neither the capability factory nor its native `agent_request` command appears in the renderer preload/`NodeRequests` allowlist. No listener or bearer credential is exposed to a guest yet: G5 must authenticate and bind an isolated runtime to this capability. These interfaces are verified with temporary prepared contributions and fixture operations, not real model turns.
+It exposes no owner signing, Start/Pause, network configuration, filesystem path selection, membership operation or runtime launch. Neither the capability factory nor its native `agent_request` command appears in the renderer preload/`NodeRequests` allowlist. The enforcing provider binds this capability to its guest via host-owned SSH stdio and a UID-authenticated Unix socket. No bearer credential or signing key enters the guest. Both fixture operations and opt-in real Grok turns exercise this path.
 
 The native human query API authorizes every audience and cursor before querying indexed saved history. Inbox includes incoming private messages, public messages addressed to the viewer and replies to the viewer's public roots; Sent includes the viewer's own messages and thread replies. Search covers accessible saved history, with bounded pages. Read marks are local, persisted per message and viewer, and never act as delivery, acknowledgment or execution receipts. A disconnected node can only search history already synchronized to it.
 
-SQLite schema 9 introduced transactional rebuilding of agent/message indexes from verified signed bytes; migration corruption rolls back. The current schema is 12 and live synchronization requires protocol v8 peers. Agent withdrawal leaves previous messages visible but provisional. In v8, the private audience creator can accept an exact agent writer frontier without renewing its permissions.
+SQLite schema 9 introduced transactional rebuilding of agent/message indexes from verified signed bytes; migration corruption rolls back. The current schema is 13 and live synchronization requires protocol v9 peers. Agent withdrawal leaves previous messages visible but provisional. Since v8, the private audience creator can accept an exact agent writer frontier without renewing its permissions.
 
 ## Optional public workstreams and tasks (v6)
 
@@ -170,7 +170,7 @@ Definition/report revisions form a causal graph. Concurrent heads remain visible
 
 The host channel adds `workstreams`, `tasks` and `work`. An ordinary coordinated Agent can create its own task and update its attempts, but cannot allocate another agent or organize workstreams. Active peer Agents can organize tasks collaboratively and join their own workstream. The human renderer exposes narrow reads and owner-attributed overrides; it never obtains the agent capability or signing identity. Typed text and IDs cannot choose paths or launch processes.
 
-SQLite schema 10 adds the disposable work index and logical conversation index. Migration verifies and preserves signed bytes in one transaction; corrupt stored history rolls back this migration. Signed v1–5 records remain readable. All live peers must upgrade to v8, and older builds cannot reopen the upgraded profile.
+SQLite schema 10 adds the disposable work index and logical conversation index. Migration verifies and preserves signed bytes in one transaction; corrupt stored history rolls back this migration. Signed v1–8 records remain readable. All live peers must upgrade to v9, and older builds cannot reopen the upgraded profile.
 
 Read APIs use bounded task pages (32 items, at most 1 MiB JSON), whole-history filters and exact-record evidence inspection. Limits include 128 workstreams, 512 tasks, 8,192 work records, 128 additional attempt allocations per task, and a 384 KiB serialized history budget per task and for workstream definitions together. Protocol v8 accepts 256 parents for revision/report recovery. Local edits normally name all observed heads; when there are more than 256, a full group of 256 current heads can be merged while other branches remain visible. Signed versions before v8 retain their 32-parent limit. These are protocol resource limits, independent of unlimited compute budgets. They are an incremental bounded model, not public-network abuse resistance or a production scaling benchmark.
 
@@ -178,12 +178,12 @@ Read APIs use bounded task pages (32 items, at most 1 MiB JSON), whole-history f
 
 `artifact_recorded` binds a typed action to an exact mission `control`, optional agent direction `authorization`, and logical `conversation`. Main/workstreams use Main's signed replication stream; private conversations use their own audience. Every dependency is checked against the author's authorized scope. Private references cannot appear in a public record or another private conversation.
 
-| Action | Meaning | Authority |
-| --- | --- | --- |
-| `publish` | Stable artifact root, explicit parent revisions, document and verified file manifest | Admitted human or currently directed agent; appointed Coordinator may plan during Preparing |
-| `review` | Exact revision, verdict, checks/conditions and evidence | Authorized participant; self-review is explicit |
-| `accept` | Exact revision, decision and reason | Mission owner for public output; initiating human for their private conversation |
-| `highlight` | Exact revision, highlighted flag | Owner/current Coordinator for public output; initiating human for private output |
+| Action      | Meaning                                                                              | Authority                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `publish`   | Stable artifact root, explicit parent revisions, document and verified file manifest | Admitted human or currently directed agent; appointed Coordinator may plan during Preparing |
+| `review`    | Exact revision, verdict, checks/conditions and evidence                              | Authorized participant; self-review is explicit                                             |
+| `accept`    | Exact revision, decision and reason                                                  | Mission owner for public output; initiating human for their private conversation            |
+| `highlight` | Exact revision, highlighted flag                                                     | Owner/current Coordinator for public output; initiating human for private output            |
 
 A document contains title, summary, kind, draft/complete stage, limitations, entrypoint, exact input revision IDs and files. Each file has a logical path, BLAKE3 hash, byte size and media type. Publication makes a file available to its authorized readers; it is not an Internet publication or execution grant.
 
@@ -203,7 +203,7 @@ The Electron viewer is a separate ephemeral session and sandboxed renderer with 
 
 ## Storage, synchronization and artifacts
 
-SQLite schema version 12 uses WAL and FULL synchronization. Versions 3–5 add separate audience indexes, delivery progress, admission/contact state, network preferences and conservative revocation notices; version 6 adds discovery caches, signed withdrawals and local notification queues. Existing version 2 Main histories migrate without changing their signed bytes. Version 1 migrates transactionally by rebuilding the message index from verified signed bytes; an invalid record rolls back the migration. Message and mission pages also bound encoded JSON size, so escaped content cannot exhaust an IPC response. Each valid event and its membership/artifact projection commit in one transaction. Duplicate delivery is idempotent. A batch can preserve valid predecessors before rejecting an invalid child; retrying does not create duplicate events. Missing dependencies are rejected for retry rather than accepted as authority. Unknown newer schema versions are refused without migration.
+SQLite schema version 13 uses WAL and FULL synchronization. Versions 3–5 add separate audience indexes, delivery progress, admission/contact state, network preferences and conservative revocation notices; version 6 adds discovery caches, signed withdrawals and local notification queues. Existing version 2 Main histories migrate without changing their signed bytes. Version 1 migrates transactionally by rebuilding the message index from verified signed bytes; an invalid record rolls back the migration. Message and mission pages also bound encoded JSON size, so escaped content cannot exhaust an IPC response. Each valid event and its membership/artifact projection commit in one transaction. Duplicate delivery is idempotent. A batch can preserve valid predecessors before rejecting an invalid child; retrying does not create duplicate events. Missing dependencies are rejected for retry rather than accepted as authority. Unknown newer schema versions are refused without migration.
 
 Two different signed events at the same writer sequence are preserved as fork evidence. A Main fork suspends mission writes and artifact serving; a private fork freezes that audience without changing Main counts or activity. A conflicting private audience root does not grant new readers access. Admissions at or beyond an owner fork lose read authority. Earlier authorized members can still obtain conflict history. Fork evidence bypasses a newer synchronization cursor; it cannot be silently hidden behind already received history. There is no timestamp winner or automatic fork recovery.
 
@@ -343,7 +343,7 @@ Deletion also removes credentials entered in the guest. Setup prints a guest dev
 
 The probe validates host-file separation, worker privileges, a deny-all network namespace, workspace persistence and termination of a detached SIGTERM-resistant child through its systemd control group. The network test applies to its own short-lived unit, not every process in the VM. A separate, explicitly authenticated two-turn Grok test has passed: one guest-native session remembered a test marker after the first process group was stopped, a fresh harness process loaded the same session, and the second group was confirmed stopped. No host credentials were copied. The guest used its own official device login. No tools were requested or observed; no MCP servers were attached and approval requests were denied. This is a bounded authentication/resume proof, not a hostile-tool security test.
 
-Selective provider egress, protection of guest credentials from hostile tool processes and complete execution recovery remain **unverified**. Claude Code and Codex guest runs remain unavailable.
+This G0 fixture does not establish selective provider egress or credential protection. The separate [G5 provider](EXECUTION.md) adds and tests those boundaries, plus durable recovery. Claude Code and Codex guest runs remain unavailable.
 
 After explicitly authenticating the dedicated test guest, the opt-in test is:
 
@@ -357,7 +357,7 @@ Evidence is saved under ignored `var/node/feasibility/`. This fixture is not exp
 
 ## Remaining gates
 
-The following remain: portable encrypted recovery/new-writer enrollment; authenticated guest integration, monotonic permission enforcement and complete process recovery; independent-machine discovery/connectivity trials; public-network capacity/abuse hardening; Developer ID signing/notarization; and independent security review. A local test pass is not proof of safe public execution.
+The following remain: portable encrypted recovery/new-writer enrollment; independent-machine discovery/connectivity and collaboration trials; broader runtime conformance; public-network capacity/abuse hardening; Developer ID signing/notarization; and independent security review. A local test pass is not proof of safe public execution.
 
 ## Resource ledger and mission completion (v8)
 
@@ -367,7 +367,7 @@ An allocation assigns one contributor a disjoint turn allowance and concurrent s
 
 Validation follows writer predecessors and explicit dependencies. It evaluates the signed causal cut, rather than whatever happened to arrive first. Projection retains concurrent receipts and explicit owner risk decisions. Reservations remain charged or held across disconnect, pause and restart. Duplicate signed records are idempotent. An unknown receipt cannot free capacity. Reclaim references a contributor seal with no unresolved permissions. Retiring an unreachable permission requires an attributed human risk decision and does not reclaim its allowance.
 
-Local `reserve_local` is host-only. It checks the contribution’s own allowance against its durable reservation history, in addition to mission capacity. Its retry nonce returns the existing reservation and **never** constitutes authorization to launch a process. Every result still reports execution unavailable. There is no renderer/model reserve, receipt or arbitrary-signing operation. G5 must enforce provider health, local runtime/workspace/network policy, monotonic permission validity and restart reauthorization before side effects.
+Local `reserve_local` is host-only. It checks the contribution’s own allowance against its durable reservation history, in addition to mission capacity. Its retry nonce returns the existing reservation and **never** constitutes authorization to launch a process. Its `execution_available: false` explicitly describes this accounting primitive. There is no renderer/model reserve, receipt or arbitrary-signing operation. The separate G5 provider verifies environment/login, local consent, current direction and monotonic validity before side effects, then records receipts after confirmed termination. See [execution and recovery](EXECUTION.md).
 
 Limits reserve room for reconciliation: 128 allocations, 256 permissions, 512 reservations and 512 criterion reports per mission, within 4,096 governance records. Duplicate allocation seals without new permissions are rejected. These are experimental protocol/history limits independent of an unlimited compute budget. Increasing capacity requires pagination/compaction and abuse review, not disabling bounds.
 
@@ -377,4 +377,4 @@ Limits reserve room for reconciliation: 128 allocations, 256 permissions, 512 re
 
 `Close`, `Archive` and `Restore` retain all signed history. Local archived writes and admission are denied; accounting reconciliation, invitation revocation and private-frontier review remain available. Restoration stays paused or closed. Historical/concurrent records retain attribution; a partition cannot instantly notify or stop an unreachable process.
 
-Schema 12 rebuilds the disposable governance index transactionally from verified signed records. Signed v1–7 events remain readable; live peers use `harakiri/sync/8`. The desktop draft store is separate, local and versioned by node identity/mission/conversation. Private frontier decisions stay in their audience; v8 supports both revoked human members and withdrawn/revoked hosted agent identities.
+Schema 12 rebuilds the disposable governance index transactionally from verified signed records. Signed v1–7 events remain readable; live peers now use `harakiri/sync/9`. The desktop draft store is separate, local and versioned by node identity/mission/conversation. Private frontier decisions stay in their audience; v8 supports both revoked human members and withdrawn/revoked hosted agent identities.

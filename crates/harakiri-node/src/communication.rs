@@ -47,6 +47,9 @@ impl MessageQuery {
 #[derive(Debug, Deserialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentOperation {
+    Agents {
+        after: Option<String>,
+    },
     Governance {},
     Criterion {
         control: String,
@@ -285,6 +288,9 @@ impl Store {
             );
         }
         let event = match operation {
+            AgentOperation::Agents { after } => {
+                return Ok(serde_json::to_value(self.agent_page(mission, after)?)?);
+            }
             AgentOperation::Governance {} => {
                 return Ok(serde_json::to_value(
                     self.governance(mission, &identity.public_key())?,

@@ -312,7 +312,7 @@ export default function Desktop() {
             {nodeState?.network === "enabled"
               ? "Peer networking enabled"
               : "Offline · local workspace"}{" "}
-            · Agent execution is unavailable in this preview.
+            · Isolated Grok execution is available on Apple Silicon with Lima.
           </span>
         </div>
         {error ? (

@@ -176,9 +176,7 @@ function MissionPreview({ step }: { step: number }) {
           <Mark />
           <span>BLACKBOARD</span>
         </div>
-        <span className="mono">
-          Workspace concept · agent execution in development
-        </span>
+        <span className="mono">Illustrative workspace · developer preview</span>
       </div>
       <div className="preview-heading">
         <span className="eyebrow">
@@ -422,14 +420,14 @@ const features = [
   {
     icon: ShieldCheck,
     title: "Local authority comes first",
-    body: "Choose your runtime, workspace and allowance. Withdraw participation locally. Running agents on untrusted missions waits for enforced isolation.",
+    body: "Choose your contribution and allowance. Grok Build runs in a dedicated Lima VM on Apple Silicon, with a separate guest login and scoped workspace tools. Approve each execution permission locally, stop it, or withdraw. Independent security review remains a public release gate.",
   },
 ];
 
 const questions = [
   {
     title: "Can I run the decentralized product today?",
-    body: "It is a developer preview, not a finished public release. Local mission creation, approved peer exchange, discovery and contribution preparation are being tested in the desktop. Mission control now includes owner Start/Pause and instruction review; the decentralized app does not launch agents yet. The original trusted-local Blackboard experiment remains available in the repository.",
+    body: "It is a developer preview. Local missions, approved peer exchange, discovery, workstreams, tasks, artifacts and budgets are implemented. Grok Build has an isolated execution path on Apple Silicon; Claude and Codex require their own validation. The original trusted-local Blackboard experiment remains available in the repository.",
   },
   {
     title: "Do I need a server or a central account?",
@@ -445,7 +443,7 @@ const questions = [
   },
   {
     title: "What comes next?",
-    body: "The complete Slack-like mission experience on replicated state: workstreams, artifacts, accountable budgets and safe Coordinator handover. Then enforced sandboxing and a supervised experiment across independently controlled machines. Production distribution also needs signing, notarization and independent security review.",
+    body: "A supervised experiment across independently controlled computers, broader runtime conformance, and measured collaboration outcomes. Production distribution also needs signing, notarization and independent security review.",
   },
 ];
 
@@ -662,15 +660,15 @@ export default function Landing() {
           <div className="next-step">
             <ShieldCheck size={21} />
             <div>
-              <h3>Agent execution is the next boundary.</h3>
+              <h3>Local consent. Isolated execution.</h3>
               <p>
-                Full coordinator-led missions, replicated artifacts and budgets,
-                and enforced sandboxing are still in development. The desktop
-                supports mission Start/Pause without launching agents. A joined
-                node never starts an agent automatically.
+                Grok Build runs inside a dedicated Lima VM. The contributor
+                signs in inside the guest and approves a bounded permission.
+                Coordinators can prepare a plan; the human starts the mission.
+                Joining never starts an agent automatically.
               </p>
             </div>
-            <span className="mini-badge mono">In progress</span>
+            <span className="mini-badge mono">Grok · Apple Silicon</span>
           </div>
         </section>
 

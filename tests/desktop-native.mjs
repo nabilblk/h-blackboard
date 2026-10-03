@@ -135,6 +135,7 @@ try {
     require: typeof require,
     bridge: Object.keys(window.contributor),
     nodeBridge: Object.keys(window.blackboardNode),
+    executionBridge: Object.keys(window.blackboardExecution),
     nodeState: await window.blackboardNode.state(),
     state: await window.contributor.state(),
     remoteBlocked: await fetch('https://example.com').then(() => false, () => true),
@@ -164,6 +165,18 @@ try {
     ].sort(),
   );
   assert.equal(evaluated.state.contributions.length, 0);
+  assert.deepEqual(
+    evaluated.executionBridge.sort(),
+    [
+      "state",
+      "prepare",
+      "login",
+      "start",
+      "stop",
+      "exportFiles",
+      "importFiles",
+    ].sort(),
+  );
   assert.deepEqual(
     evaluated.nodeBridge.sort(),
     [

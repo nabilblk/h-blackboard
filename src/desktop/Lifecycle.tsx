@@ -147,8 +147,8 @@ export function MissionControl({
             ) : null}
           </div>
           <p className="d-field-help">
-            Agent execution is unavailable in this preview. Mission state does
-            not mean that a process is running or has stopped.
+            Contributors control execution on their devices. Mission state is
+            separate from confirmed process status.
           </p>
         </>
       ) : null}

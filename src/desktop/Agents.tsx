@@ -3,6 +3,7 @@ import { Users, Plus, FolderOpen } from "lucide-react";
 import { desktop, node, type Contribution } from "./bridge";
 import type { AgentView, AgentStatus, MissionView } from "./node-contract";
 import { type Perform } from "./ui";
+import { ExecutionPanel } from "./ExecutionPanel";
 
 const runtimes = { grok: "Grok Build", claude: "Claude Code", codex: "Codex" };
 const runtimeName = (runtime: string) =>
@@ -127,8 +128,8 @@ export function AgentRoster({
         </button>
       </header>
       <p>
-        Shared contributions and their direction. Agent execution is unavailable
-        in this preview.
+        Shared contributions and their direction. Open your agent’s details to
+        prepare, run or stop its isolated environment.
       </p>
       {error ? <p role="alert">{error}</p> : null}
       {available.length ? (
@@ -317,8 +318,8 @@ export function AgentRoster({
                           : "Shared mission direction"}
                       .{" "}
                       {a.acknowledgment
-                        ? "Direction acknowledged by this agent; execution remains unavailable."
-                        : "Awaiting agent acknowledgment; no process has started."}
+                        ? "Direction acknowledged by this agent. Process status is reported by its contributor."
+                        : "Awaiting agent acknowledgment."}
                     </p>
                   ) : null}
                   {canDirect ? (
@@ -417,7 +418,7 @@ export function AgentRoster({
                       <p className="d-field-help">
                         Local consent:{" "}
                         {c.status === "prepared" ? "prepared" : "revoked"}.
-                        Execution remains unavailable.
+                        Runtime controls apply only on this device.
                       </p>
                       {c.status === "prepared" ? (
                         <button
@@ -430,6 +431,7 @@ export function AgentRoster({
                       ) : null}
                     </details>
                   ) : null}
+                  {c ? <ExecutionPanel item={c} /> : null}
                   {withdraw === c?.id && c ? (
                     <div className="n-withdraw-confirm">
                       <p>

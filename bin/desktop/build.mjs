@@ -69,6 +69,20 @@ export async function buildDesktop() {
     join(root, "desktop/preload.cjs"),
     join(output, "preload.cjs"),
   );
+  await mkdir(join(output, "guest"), { recursive: true });
+  for (const name of [
+    "agent.md",
+    "bridge.py",
+    "control.py",
+    "files.py",
+    "mcp.py",
+    "proxy.py",
+    "setup.sh",
+  ])
+    await copyFile(
+      join(root, "desktop/execution/guest", name),
+      join(output, "guest", name),
+    );
   const project = JSON.parse(
     await readFile(join(root, "package.json"), "utf8"),
   );
@@ -112,6 +126,7 @@ export async function buildDesktop() {
     ["scheduler", "LICENSE"],
     ["lucide-react", "LICENSE"],
     ["zod", "LICENSE"],
+    ["zod-to-json-schema", "LICENSE"],
     ["@fontsource/ibm-plex-mono", "LICENSE"],
     ["@fontsource/ibm-plex-sans", "LICENSE"],
     ["vite", "LICENSE.md"],

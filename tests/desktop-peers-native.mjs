@@ -229,6 +229,28 @@ async function rosterProof(a, b) {
       .includes("Waiting for mission start"),
   );
   b.browser("screenshot", join(evidence, "agent-shared.png"));
+  b.click(".n-agent-summary");
+  await b.wait(
+    "!!document.querySelector('.n-execution')",
+    "Local execution controls missing",
+  );
+  assert.match(
+    b.evaluate("document.querySelector('.n-execution').textContent"),
+    /Prepare isolated environment/,
+  );
+  assert.equal(
+    b.evaluate(
+      "window.blackboardExecution.state(" +
+        JSON.stringify(service.snapshot().contributions[0].id) +
+        ")",
+    ).record,
+    null,
+  );
+  assert.equal(
+    b.evaluate("document.querySelector('#main-message').value"),
+    "My unsent accessibility question",
+  );
+  b.browser("screenshot", join(evidence, "local-execution-controls.png"));
   closePanel(b);
   assert.equal(
     b.evaluate("document.querySelector('#main-message').value"),
@@ -419,9 +441,17 @@ async function conversationProof(a, b) {
       "document.querySelector('.n-composer').getBoundingClientRect().bottom <= innerHeight",
     ),
   );
+  const metrics = b.evaluate(
+    `Object.fromEntries(['.n-messages','.n-composer','.n-room-header','.n-channel-title','.n-control','.n-mission-brief'].map(s=>[s,document.querySelector(s)?.getBoundingClientRect().toJSON()]))`,
+  );
+  await writeFile(
+    join(evidence, "narrow-layout.json"),
+    JSON.stringify(metrics, null, 2),
+  );
   assert.ok(
-    b.evaluate("document.querySelector('.n-messages').clientHeight") >= 180,
-    "The narrow window must keep a usable conversation area",
+    metrics[".n-messages"].height >= 180,
+    "The narrow window must keep a usable conversation area: " +
+      JSON.stringify(metrics),
   );
   b.evaluate(
     "(()=>{document.querySelector('.n-message-text h2').scrollIntoView({block:'start'});return true})()",

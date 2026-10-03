@@ -1,6 +1,8 @@
+import { readDrafts, writeDrafts } from "../../shared/desktop-drafts.mjs";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
+  Compass,
   Check,
   ChevronRight,
   CircleHelp,
@@ -14,23 +16,60 @@ import {
   X,
 } from "lucide-react";
 import runtimes from "../../shared/runtimes.json";
-import { desktop, type LocalState } from "./bridge";
+import { desktop, node, type LocalState, type NodeState } from "./bridge";
 import { Brand, Heading, Status, date, type Perform } from "./ui";
 import Prepare from "./Prepare";
 import ContributionDetail from "./ContributionDetail";
+import {
+  MyMissions,
+  CreateMission,
+  MissionRoom,
+  type MissionSession,
+} from "./Missions";
+import { NetworkSettings, JoinMission } from "./Peers";
+import { Discover, DeviceDiscovery } from "./Discovery";
+import type { ContributionReview } from "./bridge";
+import type { InvitationReview } from "./node-contract";
 
 type View =
-  "contributions" | "prepare" | "device" | "activity" | { id: string };
+  | "discover"
+  | "node-contribution"
+  | "missions"
+  | "new-mission"
+  | "join"
+  | "contributions"
+  | "prepare"
+  | "device"
+  | "activity"
+  | { id: string }
+  | { missionId: string };
 
 export default function Desktop() {
   const [state, setState] = useState<LocalState | null>(null);
-  const [view, setView] = useState<View>("contributions");
+  const [view, setView] = useState<View>("missions");
+  const [nodeState, setNodeState] = useState<NodeState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [joinReview, setJoinReview] = useState<{
+    reference: string;
+    review: InvitationReview;
+  } | null>(null);
+  const [contributionReview, setContributionReview] =
+    useState<ContributionReview | null>(null);
   const main = useRef<HTMLElement>(null);
+  const missionScroll = useRef<Record<string, number>>({});
+  const latestSessions = useRef<Record<string, MissionSession>>({});
+  const [missionSessions, setMissionSessions] = useState<
+    Record<string, MissionSession>
+  >({});
   useEffect(() => {
-    main.current?.scrollTo({ top: 0 });
+    main.current?.scrollTo({
+      top:
+        typeof view === "object" && "missionId" in view
+          ? (missionScroll.current[view.missionId] ?? 0)
+          : 0,
+    });
   }, [view]);
   useEffect(() => {
     let cancelled = false;
@@ -46,8 +85,29 @@ export default function Desktop() {
       .catch((failure: Error) => {
         if (!cancelled) setError(failure.message);
       });
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const value = await node.state();
+        const local = await desktop.state();
+        if (!cancelled) {
+          setNodeState(value);
+          setState(local);
+        }
+      } catch (failure) {
+        if (!cancelled)
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "The local node is unavailable.",
+          );
+      }
+      if (!cancelled) timer = setTimeout(() => void poll(), 2500);
+    };
+    void poll();
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
   const perform: Perform = async (operation) => {
@@ -70,6 +130,8 @@ export default function Desktop() {
     }
   };
   const navigate = (next: View) => {
+    if (typeof view === "object" && "missionId" in view && main.current)
+      missionScroll.current[view.missionId] = main.current.scrollTop;
     setView(next);
     setError("");
     setNotice("");
@@ -86,9 +148,17 @@ export default function Desktop() {
       </div>
     );
   const selected =
-    typeof view === "object"
+    typeof view === "object" && "id" in view
       ? state.contributions.find((item) => item.id === view.id)
       : undefined;
+  const selectedMission =
+    typeof view === "object" && "missionId" in view
+      ? nodeState?.missions.find((item) => item.id === view.missionId)
+      : undefined;
+  const refreshNode = async () => {
+    setNodeState(await node.state());
+    setState(await desktop.state());
+  };
   const prepared = state.contributions.filter(
     (item) => item.status === "prepared",
   );
@@ -97,7 +167,7 @@ export default function Desktop() {
       <header className="d-topbar">
         <Brand />
         <span className="d-topbar-divider" />
-        <span>Contributor desktop</span>
+        <span>Blackboard</span>
         <span className="d-preview">Preview</span>
         <div className="d-topbar-right">
           <Laptop size={15} />
@@ -111,6 +181,93 @@ export default function Desktop() {
           <LockKeyhole size={13} aria-label="Local to this device" />
         </div>
         <nav aria-label="Contributor controls">
+          <button
+            disabled={busy}
+            className={view === "discover" ? "active" : ""}
+            onClick={() => navigate("discover")}
+          >
+            <Compass size={16} />
+            Discover
+          </button>
+          <button
+            disabled={busy}
+            className={view === "missions" ? "active" : ""}
+            onClick={() => navigate("missions")}
+          >
+            <Layers size={16} />
+            My missions
+            <span className="d-count">{nodeState?.missions.length ?? 0}</span>
+          </button>
+          <button
+            disabled={busy}
+            className={view === "join" ? "active" : ""}
+            onClick={() => {
+              setJoinReview(null);
+              navigate("join");
+            }}
+          >
+            <Link size={16} />
+            Join a mission
+          </button>
+        </nav>
+        <div className="d-sidebar-title d-mission-heading">
+          <span className="d-label">Mission channels</span>
+          <button
+            className="d-icon"
+            aria-label="Create mission"
+            disabled={busy || !nodeState}
+            onClick={() => navigate("new-mission")}
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+        <div className="d-mission-nav">
+          {nodeState?.missions
+            .filter((m) => m.lifecycle.phase !== "archived")
+            .map((mission) => (
+              <div key={mission.id}>
+                <button
+                  className={`n-channel-nav ${selectedMission?.id === mission.id ? "active" : ""}`}
+                  disabled={busy}
+                  onClick={() => navigate({ missionId: mission.id })}
+                >
+                  <span className="d-hash">#</span>
+                  <span>{mission.definition.name}</span>
+                </button>
+                {selectedMission?.id === mission.id ? (
+                  <div id="mission-conversations" />
+                ) : null}
+              </div>
+            ))}
+          {nodeState?.missions.some((m) => m.lifecycle.phase === "archived") ? (
+            <details
+              className="n-archived"
+              open={
+                selectedMission?.lifecycle.phase === "archived" || undefined
+              }
+            >
+              <summary>Archived channels</summary>
+              {nodeState.missions
+                .filter((m) => m.lifecycle.phase === "archived")
+                .map((m) => (
+                  <div key={m.id}>
+                    <button
+                      className={`n-channel-nav ${selectedMission?.id === m.id ? "active" : ""}`}
+                      onClick={() => navigate({ missionId: m.id })}
+                    >
+                      <span className="d-hash">#</span>
+                      <span>{m.definition.name}</span>
+                    </button>
+                    {selectedMission?.id === m.id ? (
+                      <div id="mission-conversations" />
+                    ) : null}
+                  </div>
+                ))}
+            </details>
+          ) : null}
+          {!nodeState?.missions.length ? <p>No local missions yet.</p> : null}
+        </div>
+        <nav aria-label="Local settings" className="d-local-nav">
           <button
             disabled={busy}
             className={view === "contributions" ? "active" : ""}
@@ -136,34 +293,6 @@ export default function Desktop() {
             Local activity
           </button>
         </nav>
-        <div className="d-sidebar-title d-mission-heading">
-          <span className="d-label">Prepared missions</span>
-          <button
-            className="d-icon"
-            aria-label="Prepare contribution"
-            disabled={busy || view === "prepare"}
-            onClick={() => navigate("prepare")}
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-        <div className="d-mission-nav">
-          {prepared.length ? (
-            prepared.map((item) => (
-              <button
-                disabled={busy}
-                key={item.id}
-                className={selected?.id === item.id ? "active" : ""}
-                onClick={() => navigate({ id: item.id })}
-              >
-                <span className="d-hash">#</span>
-                <span>{item.mission.name}</span>
-              </button>
-            ))
-          ) : (
-            <p>Your missions will appear here.</p>
-          )}
-        </div>
         <div className="d-sidebar-foot">
           <ShieldCheck size={17} />
           <div>
@@ -172,12 +301,18 @@ export default function Desktop() {
           </div>
         </div>
       </aside>
-      <main className="d-main" id="main" ref={main}>
+      <main
+        className={`d-main${selectedMission ? " d-main-mission" : ""}`}
+        id="main"
+        ref={main}
+      >
         <div className="d-stage-note">
           <LockKeyhole size={14} />
           <span>
-            Desktop foundation · Prepare contributions locally. Agent execution
-            is not available yet.
+            {nodeState?.network === "enabled"
+              ? "Peer networking enabled"
+              : "Offline · local workspace"}{" "}
+            · Agent execution is unavailable in this preview.
           </span>
         </div>
         {error ? (
@@ -199,6 +334,144 @@ export default function Desktop() {
           </div>
         ) : null}
         <div className="d-content">
+          {view === "missions" ? (
+            <MyMissions
+              state={nodeState}
+              busy={busy}
+              create={() => navigate("new-mission")}
+              join={() => {
+                setJoinReview(null);
+                navigate("join");
+              }}
+              withdraw={(mission) =>
+                void perform(async () => {
+                  await node.withdrawMission(mission);
+                  await refreshNode();
+                })
+              }
+              open={(id) => navigate({ missionId: id })}
+            />
+          ) : null}
+          {view === "discover" ? (
+            <Discover
+              state={nodeState}
+              busy={busy}
+              perform={perform}
+              updated={refreshNode}
+              network={() => navigate("device")}
+              review={(reference, review) => {
+                setJoinReview({ reference, review });
+                navigate("join");
+              }}
+            />
+          ) : null}
+          {view === "node-contribution" && contributionReview ? (
+            <Prepare
+              key={contributionReview.reviewId}
+              nodeReview={contributionReview}
+              busy={busy}
+              perform={perform}
+              cancel={() =>
+                navigate({ missionId: contributionReview.mission.missionId })
+              }
+              complete={(value) => {
+                setState(value);
+                navigate({ missionId: contributionReview.mission.missionId });
+                setNotice(
+                  "Contribution prepared. Open Members to share your agent with the mission.",
+                );
+              }}
+            />
+          ) : null}
+          {view === "join" ? (
+            <JoinMission
+              key={joinReview?.reference ?? "private"}
+              initialTicket={joinReview?.reference}
+              initialReview={joinReview?.review}
+              state={nodeState}
+              busy={busy}
+              perform={perform}
+              updated={refreshNode}
+              back={() => navigate("missions")}
+              open={(missionId) => navigate({ missionId })}
+            />
+          ) : null}
+          {view === "new-mission" ? (
+            <CreateMission
+              busy={busy}
+              enrolled={nodeState?.status === "ready"}
+              perform={perform}
+              cancel={() => navigate("missions")}
+              complete={async (id) => {
+                await refreshNode();
+                navigate({ missionId: id });
+                setNotice("Mission created. Main is ready for your notes.");
+              }}
+            />
+          ) : null}
+          {selectedMission && nodeState?.identity ? (
+            <MissionRoom
+              error={error}
+              readScroll={(audience) =>
+                missionScroll.current[`${selectedMission.id}:${audience}`]
+              }
+              rememberScroll={(audience, top) => {
+                missionScroll.current[`${selectedMission.id}:${audience}`] =
+                  top;
+              }}
+              key={selectedMission.id}
+              session={
+                missionSessions[
+                  `${nodeState.identity.owner}:${selectedMission.id}`
+                ] ??
+                readDrafts(
+                  localStorage,
+                  nodeState.identity.owner,
+                  selectedMission.id,
+                )
+              }
+              updateSession={(change) => {
+                const owner = nodeState.identity!.owner;
+                const key = `${owner}:${selectedMission.id}`;
+                const next = change(
+                  latestSessions.current[key] ??
+                    missionSessions[key] ??
+                    readDrafts(localStorage, owner, selectedMission.id),
+                );
+                try {
+                  writeDrafts(localStorage, owner, selectedMission.id, next);
+                } catch (e) {
+                  setError(
+                    e instanceof Error
+                      ? e.message
+                      : "Draft could not be saved on this device.",
+                  );
+                }
+                latestSessions.current[key] = next;
+                setMissionSessions((all) => ({ ...all, [key]: next }));
+              }}
+              mission={selectedMission}
+              contributions={state.contributions}
+              owner={nodeState.identity.owner}
+              name={state.contributor.name}
+              busy={busy}
+              perform={perform}
+              updated={refreshNode}
+              enabled={nodeState.network === "enabled"}
+              network={() => navigate("device")}
+              withdrawal={nodeState.withdrawals.find(
+                (w) => w.mission === selectedMission.id,
+              )}
+              prepare={(role) =>
+                void perform(async () => {
+                  setContributionReview(
+                    await node.reviewContribution(selectedMission.id, role),
+                  );
+                  navigate("node-contribution");
+                })
+              }
+            />
+          ) : null}
           {view === "contributions" ? (
             <>
               <Heading
@@ -353,8 +626,8 @@ export default function Desktop() {
                 section="Local ownership / This device"
                 title="Your machine. Your authority."
               >
-                These identifiers and preferences belong to this installation.
-                They are not yet linked to a network account.
+                Your profile and node identity belong to this computer. No
+                central account is required.
               </Heading>
               <div className="d-two-columns">
                 <section className="d-panel">
@@ -438,6 +711,57 @@ export default function Desktop() {
                   </div>
                 </section>
               </div>
+              <NetworkSettings
+                state={nodeState}
+                busy={busy}
+                perform={perform}
+                updated={refreshNode}
+              />
+              <DeviceDiscovery
+                state={nodeState}
+                busy={busy}
+                perform={perform}
+                updated={refreshNode}
+              />
+              <section className="d-panel n-identity-panel">
+                <header>
+                  <h2>Node identity</h2>
+                  <Status muted>
+                    {nodeState?.identity ? "OS-protected keys" : "Not enrolled"}
+                  </Status>
+                </header>
+                {nodeState?.identity ? (
+                  <>
+                    <dl className="d-facts">
+                      <div>
+                        <dt>Owner public key</dt>
+                        <dd className="d-mono">{nodeState.identity.owner}</dd>
+                      </div>
+                      <div>
+                        <dt>Node public key</dt>
+                        <dd className="d-mono">
+                          {nodeState.identity.endpoint}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p>
+                      These public keys identify this node and its signed
+                      records. Private keys stay in protected local storage.
+                    </p>
+                    <p className="d-field-help">
+                      Back up the complete closed-app profile and retain its
+                      original OS keychain. Restore on this device only.
+                      Cross-device recovery is not available yet; copying an
+                      active identity can create conflicting histories.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    Your first mission creates a protected identity here.
+                    Existing contribution preparations remain separate.
+                  </p>
+                )}
+              </section>
               <div className="d-explainer">
                 <LockKeyhole size={17} />
                 <p>

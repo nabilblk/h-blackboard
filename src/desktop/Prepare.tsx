@@ -10,6 +10,8 @@ import {
 import runtimes from "../../shared/runtimes.json";
 import {
   desktop,
+  node,
+  type ContributionReview,
   type Limits,
   type LocalState,
   type Mission,
@@ -22,17 +24,19 @@ export default function Prepare({
   perform,
   cancel,
   complete,
+  nodeReview,
 }: {
   busy: boolean;
   perform: Perform;
   cancel: () => void;
   complete: (value: LocalState) => void;
+  nodeReview?: ContributionReview;
 }) {
   const [invitation, setInvitation] = useState("");
   const [review, setReview] = useState<{
     reviewId: string;
     mission: Mission;
-  } | null>(null);
+  } | null>(nodeReview ?? null);
   const [workspace, setWorkspace] = useState<{
     id: string;
     path: string;
@@ -141,12 +145,14 @@ export default function Prepare({
                 : { mode, concurrency: Number(concurrency) };
             void perform(async () =>
               complete(
-                await desktop.prepare({
-                  reviewId: review.reviewId,
-                  workspaceChoiceId: workspace.id,
-                  runtime,
-                  limits,
-                }),
+                await (nodeReview ? node.prepareContribution : desktop.prepare)(
+                  {
+                    reviewId: review.reviewId,
+                    workspaceChoiceId: workspace.id,
+                    runtime,
+                    limits,
+                  },
+                ),
               ),
             );
           }}
@@ -155,7 +161,9 @@ export default function Prepare({
             <div className="d-hash large">#</div>
             <div>
               <span className="d-label">
-                Invitation preview · owner unverified
+                {nodeReview
+                  ? "Signed mission terms · owner key verified"
+                  : "Invitation preview · owner unverified"}
               </span>
               <h2>{review.mission.name}</h2>
               <p className="d-mono">{review.mission.origin}</p>
@@ -167,11 +175,33 @@ export default function Prepare({
               type="button"
               className="d-button"
               disabled={busy}
-              onClick={() => setReview(null)}
+              onClick={() => (nodeReview ? cancel() : setReview(null))}
             >
-              Change invitation
+              {nodeReview ? "Back to mission" : "Change invitation"}
             </button>
           </div>
+          {nodeReview ? (
+            <section
+              className="d-panel n-reviewed-terms"
+              aria-label="Reviewed contribution terms"
+            >
+              <h2>{nodeReview.definition.objective}</h2>
+              <p className="n-preserve">{nodeReview.definition.scope}</p>
+              <ul>
+                {nodeReview.definition.criteria.map((criterion, index) => (
+                  <li key={index}>{criterion}</li>
+                ))}
+              </ul>
+              <details>
+                <summary>Exact signed mission revision</summary>
+                <code className="n-key">{nodeReview.nodeBinding.revision}</code>
+                <p className="d-field-help">
+                  These local terms are bound to this revision. A signature
+                  identifies the owner’s key, not their real-world identity.
+                </p>
+              </details>
+            </section>
+          ) : null}
           <div className="d-two-columns d-terms">
             <section className="d-panel">
               <header>

@@ -20,4 +20,26 @@ jobs:
       - run: npm test
         timeout-minutes: 5
       - run: npm run build
+  node-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            var/node/target
+          key: node-${{ runner.os }}-rust-1.94.0-${{ hashFiles('Cargo.lock') }}
+      - run: npm ci
+      - run: npm run check:node
+      - run: npm run test:node
       - run: npm run desktop:build

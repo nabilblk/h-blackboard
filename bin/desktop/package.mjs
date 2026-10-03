@@ -22,6 +22,7 @@ try {
     "LICENSE",
     "NOTICE",
     "licenses",
+    "reader-fonts",
     "ui",
   ])
     await cp(join(directory, file), join(staging, file), { recursive: true });
@@ -36,6 +37,9 @@ try {
     platform: "darwin",
     arch: process.arch,
     asar: true,
+    // A native executable must remain outside app.asar. Its fixed path is
+    // selected by the signed host; neither renderer nor peers may replace it.
+    extraResource: [join(directory, "node")],
     overwrite: true,
     prune: false,
   });

@@ -48,6 +48,7 @@ export class ContributorService {
     this.choices = new Map();
     this.inspecting = false;
     this.choosing = false;
+    this.nodeTerms = new Map();
   }
 
   snapshot() {
@@ -56,9 +57,71 @@ export class ContributorService {
       ...state,
       contributions: state.contributions.map((item) => {
         const { workspaceIdentity: _identity, ...publicItem } = item;
-        return { ...publicItem, execution: executionReadiness(item) };
+        const execution = executionReadiness(item);
+        const latest = this.nodeTerms.get(item.mission.missionId);
+        if (item.nodeBinding && latest && latest !== item.nodeBinding.revision)
+          execution.blockers.unshift({
+            code: "mission_terms_changed",
+            message:
+              "Mission instructions changed. Review them and prepare a new contribution.",
+          });
+        if (
+          item.status === "revoked" &&
+          item.sharedAgent &&
+          !item.sharedAgent.withdrawn
+        )
+          execution.blockers.unshift({
+            code: "agent_withdrawal_pending",
+            message:
+              "Local consent revoked. The shared agent withdrawal is pending; it will retry automatically.",
+          });
+        return { ...publicItem, execution };
       }),
     };
+  }
+
+  observeNodeTerms(missions) {
+    for (const m of missions)
+      this.nodeTerms.set(m.id, m.lifecycle.terms_revision);
+  }
+
+  preparedCoordinator(id, checked) {
+    const item = this.preparedContribution(id, checked);
+    if (item.mission.role !== "coordinator")
+      throw new Error(
+        "Prepare a Coordinator contribution for the current mission instructions first.",
+      );
+    return item;
+  }
+
+  preparedContribution(id, checked) {
+    const item = this.store.read().contributions.find((c) => c.id === id);
+    if (
+      !item ||
+      item.status !== "prepared" ||
+      item.mission.missionId !== checked.mission ||
+      item.nodeBinding?.owner !== checked.owner ||
+      item.nodeBinding?.revision !== checked.reviewed_revision
+    )
+      throw new Error(
+        "Prepare a contribution for the current mission instructions first.",
+      );
+    if (
+      realpathSync(item.workspace) !== item.workspace ||
+      !sameIdentity(identity(item.workspace), item.workspaceIdentity)
+    )
+      throw new Error(
+        "The prepared workspace was moved or replaced. Prepare a new contribution.",
+      );
+    return item;
+  }
+
+  markAgentShared(id, sharedAgent) {
+    this.store.update((state) => {
+      const item = state.contributions.find((c) => c.id === id);
+      if (!item) throw new Error("Contribution not found on this device.");
+      item.sharedAgent = sharedAgent;
+    });
   }
 
   cache(map, data) {
@@ -77,7 +140,49 @@ export class ContributorService {
     return entry;
   }
 
-  async handle(method, raw) {
+  // Called only by the native node service after signed membership/terms were
+  // checked. The renderer and legacy HTTP invitation cannot supply this proof.
+  reviewNode(checked, role) {
+    const mission = MissionPreview.parse({
+      origin: `harakiri://node/${checked.owner}`,
+      missionId: checked.mission,
+      name: checked.definition.name,
+      role,
+      inspectedAt: new Date(this.now()).toISOString(),
+    });
+    const nodeBinding = {
+      owner: checked.owner,
+      revision: checked.reviewed_revision,
+    };
+    return {
+      reviewId: this.cache(this.reviews, { mission, nodeBinding }),
+      mission,
+      definition: checked.definition,
+      nodeBinding,
+    };
+  }
+
+  withdrawNode(missionId) {
+    const ids = this.store
+      .read()
+      .contributions.filter(
+        (c) =>
+          c.nodeBinding &&
+          c.mission.missionId === missionId &&
+          c.status === "prepared",
+      )
+      .map((c) => c.id);
+    for (const id of ids)
+      this.store.update((next) => {
+        const c = next.contributions.find((c) => c.id === id);
+        if (!c || c.status !== "prepared") return;
+        c.status = "revoked";
+        c.revokedAt = new Date(this.now()).toISOString();
+        event(next, "consent_revoked", c.mission.name, c.id);
+      });
+  }
+
+  async handle(method, raw, native = {}) {
     if (!Object.hasOwn(Requests, method))
       throw new Error("Unsupported desktop operation.");
     const schema = Requests[method];
@@ -126,11 +231,15 @@ export class ContributorService {
         }
       }
       case "prepare": {
-        const { mission } = this.reviewed(
+        const { mission, nodeBinding } = this.reviewed(
           this.reviews,
           input.reviewId,
           "The invitation review",
         );
+        if (nodeBinding && native.nodeRevision !== nodeBinding.revision)
+          throw new Error(
+            "Prepare this contribution through its signed mission review.",
+          );
         const choice = this.reviewed(
           this.choices,
           input.workspaceChoiceId,
@@ -146,16 +255,19 @@ export class ContributorService {
             "This desktop has reached its limit of 500 saved contributions.",
           );
         if (
+          (!nodeBinding || mission.role === "coordinator") &&
           current.contributions.some(
             (item) =>
               item.status === "prepared" &&
               item.mission.origin === mission.origin &&
               item.mission.missionId === mission.missionId &&
-              item.runtime === input.runtime,
+              item.runtime === input.runtime &&
+              item.mission.role === mission.role &&
+              item.nodeBinding?.revision === nodeBinding?.revision,
           )
         )
           throw new Error(
-            "A contribution for this mission and runtime is already prepared. Revoke it before replacing its terms.",
+            "A contribution for this mission, role and runtime is already prepared under these instructions. Revoke it before replacing its local terms.",
           );
         if (
           realpathSync(choice.path) !== choice.path ||
@@ -173,6 +285,7 @@ export class ContributorService {
             contributorId: current.contributor.id,
             deviceId: current.device.id,
             mission,
+            ...(nodeBinding ? { nodeBinding } : {}),
             runtime: input.runtime,
             limits: input.limits,
             workspace,

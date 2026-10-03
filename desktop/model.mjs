@@ -9,7 +9,7 @@ const Label = z
   .string()
   .trim()
   .min(1)
-  .max(100)
+  .max(120)
   .refine(
     (value) =>
       !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(value),
@@ -51,7 +51,23 @@ export const Contribution = z
     contributorId: Id,
     deviceId: Id,
     mission: MissionPreview,
+    nodeBinding: z
+      .object({
+        owner: z.string().regex(/^[a-f0-9]{64}$/),
+        revision: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .strict()
+      .optional(),
     runtime: Runtime,
+    sharedAgent: z
+      .object({
+        registration: z.string().regex(/^[a-f0-9]{64}$/),
+        author: z.string().regex(/^[a-f0-9]{64}$/),
+        label: Label,
+        withdrawn: z.boolean(),
+      })
+      .strict()
+      .optional(),
     limits: Limits,
     workspace: z.string().min(1).max(4096),
     workspaceIdentity: z
@@ -117,17 +133,16 @@ export function executionReadiness(contribution) {
       code: "consent_revoked",
       message: "Your local consent is revoked.",
     });
-  blockers.push(
-    {
+  if (!contribution.nodeBinding)
+    blockers.push({
       code: "contributor_identity",
       message:
         "This board invitation does not authenticate a contributor or device.",
-    },
-    {
-      code: "isolated_execution",
-      message:
-        "An enforced isolation provider is required before agents can run.",
-    },
-  );
+    });
+  blockers.push({
+    code: "isolated_execution",
+    message:
+      "An enforced isolation provider is required before agents can run.",
+  });
   return { allowed: false, blockers };
 }

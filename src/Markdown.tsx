@@ -5,9 +5,17 @@ import remarkBreaks from "remark-breaks";
 
 const plugins = [remarkGfm, remarkBreaks];
 const MarkdownId = createContext("");
+const LinkMode = createContext<"links" | "text">("links");
 const components: Components = {
   a: function MarkdownLink({ node: _node, href, children, ...props }) {
     const id = useContext(MarkdownId);
+    const mode = useContext(LinkMode);
+    if (mode === "text" && href && !href.startsWith("#"))
+      return (
+        <span>
+          {children} (<code>{href}</code>)
+        </span>
+      );
     return href ? (
       <a
         {...props}
@@ -63,32 +71,54 @@ const components: Components = {
   ),
   // Keep externally hosted images as explicit links rather than fetching
   // arbitrary URLs whenever an agent's message enters the viewport.
-  img: ({ src, alt }) =>
-    typeof src === "string" && src ? (
+  img: function MarkdownImage({ src, alt }) {
+    const mode = useContext(LinkMode);
+    if (mode === "text")
+      return (
+        <span>
+          {alt || "Image"}
+          {typeof src === "string" && src ? (
+            <>
+              {" "}
+              (<code>{src}</code>)
+            </>
+          ) : null}
+        </span>
+      );
+    return typeof src === "string" && src ? (
       <a href={src} target="_blank" rel="noopener noreferrer">
         {alt || "View image"}
       </a>
     ) : (
       <span>{alt}</span>
-    ),
+    );
+  },
 };
 
 // Live context updates are frequent; parse a message again only when its text
 // actually changes. The stored Markdown remains the editable source of truth.
-export const Text = memo(function Text({ value }: { value: string }) {
+export const Text = memo(function Text({
+  value,
+  links = "links",
+}: {
+  value: string;
+  links?: "links" | "text";
+}) {
   const id = useId();
   return (
     <div className="reading">
-      <MarkdownId.Provider value={id}>
-        <Markdown
-          remarkPlugins={plugins}
-          remarkRehypeOptions={{ clobberPrefix: `${id}-` }}
-          components={components}
-          skipHtml
-        >
-          {value}
-        </Markdown>
-      </MarkdownId.Provider>
+      <LinkMode.Provider value={links}>
+        <MarkdownId.Provider value={id}>
+          <Markdown
+            remarkPlugins={plugins}
+            remarkRehypeOptions={{ clobberPrefix: `${id}-` }}
+            components={components}
+            skipHtml
+          >
+            {value}
+          </Markdown>
+        </MarkdownId.Provider>
+      </LinkMode.Provider>
     </div>
   );
 });

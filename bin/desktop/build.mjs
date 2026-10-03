@@ -4,12 +4,42 @@ import { build as buildJS } from "esbuild";
 import { mkdir, copyFile, rename, writeFile, readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { writeNodeInventory } from "../node/licenses.mjs";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const output = join(root, "var/desktop/build");
 
 export async function buildDesktop() {
   await mkdir(output, { recursive: true });
+  await promisify(execFile)(
+    "cargo",
+    ["build", "--locked", "--release", "--bin", "harakiri-node"],
+    { cwd: root, maxBuffer: 4 * 1024 * 1024 },
+  );
+  await mkdir(join(output, "node"), { recursive: true });
+  await copyFile(
+    join(root, "var/node/target/release/harakiri-node"),
+    join(output, "node/harakiri-node"),
+  );
+  if (process.platform === "darwin") {
+    await promisify(execFile)("/usr/bin/codesign", [
+      "--force",
+      "--sign",
+      "-",
+      join(output, "node/harakiri-node"),
+    ]);
+  }
+  await writeNodeInventory({
+    output: join(output, "node"),
+    binary: join(output, "node/harakiri-node"),
+    component: "harakiri-node",
+    signature:
+      process.platform === "darwin"
+        ? "ad-hoc-development-only"
+        : "unsigned-development-only",
+  });
   // A separate output and entry. Neither a desktop build nor packaging touches
   // the web server's live dist/, database, credentials or public tunnel.
   await buildVite({
@@ -65,6 +95,15 @@ export async function buildDesktop() {
     await copyFile(
       join(root, `public/licenses/${font}.txt`),
       join(output, `licenses/${font}.txt`),
+    );
+  await mkdir(join(output, "reader-fonts"), { recursive: true });
+  for (const family of ["sans", "mono"])
+    await copyFile(
+      join(
+        root,
+        `node_modules/@fontsource/ibm-plex-${family}/files/ibm-plex-${family}-latin-400-normal.woff2`,
+      ),
+      join(output, `reader-fonts/${family}.woff2`),
     );
   const bundledLicenses = [];
   for (const [name, license] of [

@@ -6,6 +6,8 @@ import {
   protocol,
   session,
   shell,
+  safeStorage,
+  clipboard,
 } from "electron";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
@@ -14,6 +16,8 @@ import { DesktopStore } from "./store.mjs";
 import { ContributorService } from "./service.mjs";
 import { inspectInvitation } from "./invitations.mjs";
 import { Requests } from "./model.mjs";
+import { NodeService, NodeRequests } from "./node-service.mjs";
+import { createArtifactViewer } from "./artifact-viewer.mjs";
 import {
   APP_URL,
   CONTENT_SECURITY_POLICY,
@@ -30,6 +34,10 @@ if (!app.isPackaged && process.env.HARAKIRI_DESKTOP_DATA)
 
 protocol.registerSchemesAsPrivileged([
   {
+    scheme: "harakiri-artifact",
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+  {
     scheme: "harakiri",
     privileges: {
       standard: true,
@@ -42,6 +50,19 @@ protocol.registerSchemesAsPrivileged([
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   let window;
+  let nodeService;
+  let isolatedSession;
+  let quitting = false;
+  app.on("before-quit", (event) => {
+    isolatedSession?.flushStorageData();
+    if (!nodeService || quitting) return;
+    event.preventDefault();
+    quitting = true;
+    nodeService
+      .close()
+      .catch(() => {})
+      .finally(() => app.quit());
+  });
   app.on("second-instance", () => {
     if (window) {
       window.restore();
@@ -56,7 +77,17 @@ else {
       const store = new DesktopStore(
         join(app.getPath("userData"), "contributor"),
       );
-      const isolatedSession = session.fromPartition("harakiri-desktop");
+      nodeService = new NodeService({
+        directory: join(app.getPath("userData"), "node-v1"),
+        binary: app.isPackaged
+          ? join(process.resourcesPath, "node/harakiri-node")
+          : join(directory, "node/harakiri-node"),
+        secureStorage: safeStorage,
+        writeClipboard: (value) => clipboard.writeText(value),
+      });
+      // Only the trusted workspace retains local drafts. Artifact viewers use
+      // separate in-memory sessions and never share this storage or preload.
+      isolatedSession = session.fromPartition("persist:harakiri-desktop");
       isolatedSession.setPermissionRequestHandler(
         (_contents, _permission, callback) => callback(false),
       );
@@ -114,6 +145,10 @@ else {
         },
       });
       window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      const artifacts = createArtifactViewer(nodeService, () => window);
+      nodeService.openArtifact = artifacts.open;
+      nodeService.saveArtifact = artifacts.save;
+      window.on("closed", () => artifacts.close());
       window.webContents.on("will-navigate", (event) => event.preventDefault());
       window.webContents.on("will-attach-webview", (event) =>
         event.preventDefault(),
@@ -142,6 +177,7 @@ else {
             throw new Error("The system could not open this workspace folder.");
         },
       });
+      nodeService.contributors = service;
       for (const method of Object.keys(Requests)) {
         ipcMain.handle(`contributor:${method}`, async (event, input) => {
           if (!isTrustedFrame(event, window))
@@ -159,6 +195,26 @@ else {
                 error.code || error.name === "ZodError"
                   ? "The operation could not be completed. Check your folder access or invitation and try again."
                   : error.message || "The operation could not be completed.",
+            };
+          }
+        });
+      }
+      for (const method of Object.keys(NodeRequests)) {
+        ipcMain.handle(`node:${method}`, async (event, input) => {
+          if (!isTrustedFrame(event, window))
+            return {
+              ok: false,
+              error: "This page cannot access node controls.",
+            };
+          try {
+            return { ok: true, value: await nodeService.handle(method, input) };
+          } catch (error) {
+            return {
+              ok: false,
+              error:
+                error.code || error.name === "ZodError"
+                  ? "The node request could not be validated. Check the mission fields and local profile access."
+                  : error.message || "The local node is unavailable.",
             };
           }
         });

@@ -28,7 +28,13 @@ export function permissionOutcome(params, mode, previous = {}) {
 }
 
 export class GrokConnection {
-  constructor({ cwd, permissions = "default", onEvent = emit } = {}) {
+  constructor({
+    cwd,
+    permissions = "default",
+    onEvent = emit,
+    transport,
+    diagnostics = process.stderr,
+  } = {}) {
     this.pending = new Map();
     this.calls = new Map();
     this.nextId = 0;
@@ -40,16 +46,20 @@ export class GrokConnection {
     args.push("stdio");
     // No shared leader: the launcher's process group owns this runtime. Do not
     // detach; a pause/stop must also reach the Grok process and its children.
-    this.child = spawn("grok", args, {
-      cwd,
-      env: {
-        ...process.env,
-        ...(permissions === "full" ? { GROK_SANDBOX: "off" } : {}),
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    // An enforcing provider can own the process behind this stdio transport.
+    // This is an internal dependency, never a command supplied by a peer/UI.
+    this.child =
+      transport ||
+      spawn("grok", args, {
+        cwd,
+        env: {
+          ...process.env,
+          ...(permissions === "full" ? { GROK_SANDBOX: "off" } : {}),
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
     this.closed = new Promise((done) => this.child.once("close", done));
-    this.child.stderr.pipe(process.stderr, { end: false });
+    this.child.stderr.pipe(diagnostics, { end: false });
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk) => this.consume(chunk));
     this.child.once("error", (error) =>

@@ -1,6 +1,7 @@
 // Optional native smoke check; requires macOS and the agent-browser CLI.
 // Kept outside *.test.mjs so normal unit tests never launch a GUI or download
-// an Electron binary. No mission fixture, paid runtime or real profile is used.
+// an Electron binary. Mission fixtures use an isolated temporary profile; no
+// paid runtime, peer connection or real workspace is used.
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
@@ -34,6 +35,27 @@ const browser = (...args) =>
     timeout: 15000,
     stdio: ["ignore", "pipe", "pipe"],
   });
+function click(selector) {
+  browser("scrollintoview", selector);
+  browser("click", selector);
+}
+async function waitForMission() {
+  const deadline = Date.now() + 45000;
+  while (Date.now() < deadline) {
+    const status = JSON.parse(
+      browser(
+        "eval",
+        `({ready:!!document.querySelector('.n-conversation-start'), error:document.querySelector('[role=alert]')?.textContent})`,
+      ),
+    );
+    if (status.error) throw new Error(status.error);
+    if (status.ready) return;
+    await new Promise((done) => setTimeout(done, 200));
+  }
+  throw new Error(
+    "Mission creation did not finish. Check for a pending macOS Keychain prompt; the native test never approves it automatically.",
+  );
+}
 async function startApp() {
   let startupError;
   child = spawn(
@@ -80,7 +102,7 @@ async function startApp() {
       "The native app did not load its bundled UI within 20 seconds.",
   );
   browser("connect", String(port));
-  browser("wait", "--text", "Contribute on your terms.");
+  browser("wait", "--text", "Your missions, on your computer.");
   browser("snapshot", "-i");
 }
 async function stopApp() {
@@ -112,10 +134,13 @@ try {
     node: typeof process,
     require: typeof require,
     bridge: Object.keys(window.contributor),
+    nodeBridge: Object.keys(window.blackboardNode),
+    nodeState: await window.blackboardNode.state(),
     state: await window.contributor.state(),
     remoteBlocked: await fetch('https://example.com').then(() => false, () => true),
     fileBlocked: await fetch('file:///etc/passwd').then(() => false, () => true),
     forgedRequestBlocked: await window.contributor.prepare({workspace:'/tmp',permissions:'full-access'}).then(() => false, () => true),
+    forgedNodeRequestBlocked: await window.blackboardNode.createMission({profile:'/tmp',command:'launch'}).then(() => false, () => true),
     insecureInvitationRejected: await window.contributor.inspect('http://127.0.0.1:9/j/desktop_fixture_0123456789').then(() => false, e => e.message.includes('HTTPS')),
     renamed: (await window.contributor.rename('Native smoke test')).contributor.name,
     overflow: document.documentElement.scrollWidth > innerWidth
@@ -123,7 +148,7 @@ try {
     ),
   );
   if (typeof evaluated === "string") evaluated = JSON.parse(evaluated);
-  assert.equal(evaluated.heading, "Contribute on your terms.");
+  assert.equal(evaluated.heading, "Your missions, on your computer.");
   assert.equal(evaluated.node, "undefined");
   assert.equal(evaluated.require, "undefined");
   assert.deepEqual(
@@ -139,6 +164,69 @@ try {
     ].sort(),
   );
   assert.equal(evaluated.state.contributions.length, 0);
+  assert.deepEqual(
+    evaluated.nodeBridge.sort(),
+    [
+      "state",
+      "enroll",
+      "createMission",
+      "updateInstructions",
+      "setCoordination",
+      "setPlan",
+      "startMission",
+      "pauseMission",
+      "appointCoordinator",
+      "governance",
+      "govern",
+      "consentGrant",
+      "missionAction",
+      "privateRecovery",
+      "reconcilePrivate",
+      "agents",
+      "shareAgent",
+      "withdrawAgent",
+      "directAgent",
+      "postMessage",
+      "openAgentConversation",
+      "artifacts",
+      "copyArtifactReference",
+      "artifactDetail",
+      "artifactAction",
+      "artifactTransfer",
+      "artifactOpen",
+      "artifactSave",
+      "workEvidence",
+      "workstreams",
+      "tasks",
+      "work",
+      "queryMessages",
+      "markMessagesRead",
+      "messages",
+      "networkState",
+      "configureNetwork",
+      "issueInvitation",
+      "copyInvitation",
+      "discoveryState",
+      "configureDiscovery",
+      "publishListing",
+      "copyPeerTicket",
+      "withdrawMission",
+      "reviewContribution",
+      "prepareContribution",
+      "inspectInvitation",
+      "requestJoin",
+      "localJoins",
+      "peers",
+      "decideJoin",
+      "revokeInvitations",
+      "revokeMember",
+      "createAudience",
+      "audiences",
+    ].sort(),
+  );
+  assert.equal(evaluated.nodeState.status, "not_enrolled");
+  assert.equal(evaluated.nodeState.identity, null);
+  assert.equal(evaluated.forgedNodeRequestBlocked, true);
   assert.equal(evaluated.remoteBlocked, true);
   assert.equal(evaluated.fileBlocked, true);
   assert.equal(evaluated.forgedRequestBlocked, true);
@@ -146,6 +234,67 @@ try {
   assert.equal(evaluated.renamed, "Native smoke test");
   assert.equal(evaluated.overflow, false);
   await access(join(profile, "contributor/contributions.json"));
+
+  // Use actual form interactions and the OS key store, then restart the app.
+  // No renderer mock or direct DB insert can make this path pass.
+  click(".n-empty .d-button");
+  browser("wait", "--text", "Define the mission.");
+  browser("snapshot", "-i");
+  browser("fill", "input[name=name]", "Community science day");
+  browser(
+    "fill",
+    "textarea[name=objective]",
+    "Plan a science day that families can explore together.",
+  );
+  browser(
+    "fill",
+    "textarea[name=scope]",
+    "Six activities, accessible spaces and a practical afternoon schedule.",
+  );
+  browser(
+    "fill",
+    "#criterion",
+    "Every activity has an age range and a materials list.",
+  );
+  click(".n-inline button");
+  click("button[type=submit]");
+  await waitForMission();
+  browser("snapshot", "-i");
+  browser(
+    "fill",
+    "#main-message",
+    "Start with hands-on experiments. Keep every activity under 20 minutes, with time to reset between groups.",
+  );
+  click("button[type=submit]");
+  browser("wait", "--text", "Start with hands-on experiments.");
+  click(".n-mission-brief summary");
+  const savedNode = JSON.parse(
+    browser("eval", "window.blackboardNode.state()"),
+  );
+  assert.equal(savedNode.missions.length, 1);
+  assert.equal(savedNode.missions[0].state, "preparing");
+  assert.equal(savedNode.execution, "unavailable");
+  assert.equal(savedNode.network, "disabled");
+  assert.equal(savedNode.missions[0].definition.criteria.length, 1);
+  assert.equal(
+    savedNode.missions[0].definition.policy.budget.mode,
+    "unlimited",
+  );
+  browser(
+    "screenshot",
+    resolve(`var/desktop/${packaged ? "package" : "native"}-mission.png`),
+  );
+  browser("set", "viewport", "900", "650");
+  assert.equal(
+    JSON.parse(
+      browser("eval", "document.documentElement.scrollWidth > innerWidth"),
+    ),
+    false,
+  );
+  browser(
+    "screenshot",
+    resolve(`var/desktop/${packaged ? "package" : "native"}-mission-small.png`),
+  );
   await stopApp();
   await startApp();
   let restarted = JSON.parse(browser("eval", "window.contributor.state()"));
@@ -154,6 +303,20 @@ try {
   assert.equal(restarted.contributor.id, evaluated.state.contributor.id);
   assert.equal(restarted.device.id, evaluated.state.device.id);
   assert.equal(restarted.activity[0].type, "contributor_named");
+  assert.deepEqual(
+    JSON.parse(browser("eval", "window.blackboardNode.state()")),
+    savedNode,
+  );
+  click(".n-mission-row");
+  browser("wait", "--text", "Start with hands-on experiments.");
+  const restoredMessages = JSON.parse(
+    browser(
+      "eval",
+      `window.blackboardNode.messages(${JSON.stringify(savedNode.missions[0].id)})`,
+    ),
+  );
+  assert.equal(restoredMessages.items.length, 1);
+  assert.equal(restoredMessages.items[0].author, savedNode.identity.owner);
   await writeFile(
     packaged
       ? "var/desktop/package-smoke.json"
@@ -162,6 +325,9 @@ try {
       {
         checkedAt: new Date().toISOString(),
         restartPreservedState: true,
+        localMissionCreatedThroughUI: true,
+        encryptedNodeIdentityAndSignedHistorySurvivedRestart: true,
+        executionRemainedDisabled: true,
         ...evaluated,
       },
       null,
@@ -169,9 +335,14 @@ try {
     ),
   );
   console.log(
-    `${packaged ? "Packaged" : "Development"} native startup, isolated IPC, denied network/file requests and real local persistence passed.`,
+    `${packaged ? "Packaged" : "Development"} native startup, isolated IPC, denied network/file requests, OS-protected identity, mission creation and signed history across restart passed.`,
   );
 } catch (error) {
+  try {
+    console.error(browser("snapshot", "-i"));
+  } catch {
+    /* Startup may have failed. */
+  }
   console.error(output);
   throw error;
 } finally {

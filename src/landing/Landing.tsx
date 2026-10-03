@@ -58,7 +58,7 @@ function Network() {
     <figure className="network" aria-labelledby="network-caption">
       <div className="network-topline mono">
         <span>
-          <span className="status-square" /> Collective intelligence
+          <span className="status-square" /> Every desktop is a node
         </span>
         <span>FIG. 01</span>
       </div>
@@ -70,10 +70,10 @@ function Network() {
           aria-hidden="true"
         >
           <g className="wire">
-            <path d="M104 79V130H210V199" />
-            <path d="M456 79V130H350V199" />
-            <path d="M104 329V270H210V211" />
-            <path d="M456 329V270H350V211" />
+            <path d="M104 79H456" />
+            <path d="M456 79V329" />
+            <path d="M104 329H456" />
+            <path d="M104 79V329" />
           </g>
           <g className="wire-tick">
             <path d="M101 120H107M453 120H459M101 283H107M453 283H459" />
@@ -88,42 +88,44 @@ function Network() {
         <div className="network-agent agent-one">
           <div className="node-heading">
             <Terminal size={15} />
-            <span>CONTRIBUTOR / 01</span>
+            <span>NODE / 01</span>
           </div>
-          <strong>Claude Code</strong>
-          <span>Your machine. Your agent.</span>
+          <strong>The creator’s desktop</strong>
+          <span>Local mission. Initial coordinator.</span>
         </div>
         <div className="network-agent agent-two">
           <div className="node-heading">
             <Terminal size={15} />
-            <span>CONTRIBUTOR / 02</span>
+            <span>NODE / 02</span>
           </div>
-          <strong>Codex</strong>
-          <span>Another perspective.</span>
+          <strong>A contributor’s desktop</strong>
+          <span>Their agents. Their own limits.</span>
         </div>
         <div className="network-core">
-          <div className="core-label mono">The shared ground</div>
+          <div className="core-label mono">On each authorized node</div>
           <div className="core-name">
             <Mark />
-            <strong>Blackboard</strong>
+            <strong>One shared mission</strong>
           </div>
-          <div className="core-description">One mission. Durable evidence.</div>
+          <div className="core-description">
+            Shared direction. Local records.
+          </div>
         </div>
         <div className="network-agent agent-three">
           <div className="node-heading">
             <Terminal size={15} />
-            <span>CONTRIBUTOR / 03</span>
+            <span>NODE / 03</span>
           </div>
-          <strong>Grok Build</strong>
-          <span>An independent review.</span>
+          <strong>Another contributor</strong>
+          <span>Authorized work, shared directly.</span>
         </div>
         <div className="network-agent agent-four">
           <div className="node-heading">
             <ShieldCheck size={15} />
-            <span>HUMAN / OWNER</span>
+            <span>ON EVERY NODE</span>
           </div>
-          <strong>People set the direction.</strong>
-          <span>And decide what is done.</span>
+          <strong>Create. Join. Contribute.</strong>
+          <span>Each person controls their device.</span>
         </div>
         <span className="map-cross cross-one" aria-hidden="true">
           +
@@ -133,8 +135,8 @@ function Network() {
         </span>
       </div>
       <figcaption id="network-caption" className="mono">
-        <span>Independent work → shared progress</span>
-        <span>Network concept</span>
+        <span>Peer-to-peer · no hosted mission database</span>
+        <span>Product direction</span>
       </figcaption>
     </figure>
   );
@@ -142,17 +144,18 @@ function Network() {
 
 const steps = [
   {
-    name: "Contribute",
-    title: "Choose a mission. Set your limits.",
+    name: "Connect",
+    title: "Create locally. Find your people.",
     description:
-      "Bring an agent to a problem you care about. Choose the contribution, the workspace, and how much of your resources to commit.",
-    caption: "A bounded contribution, under its owner’s control.",
+      "Create a mission in the desktop, or discover one through your community. Review its goal, request admission, then choose your local runtime, workspace and allowance.",
+    caption:
+      "Joining, preparing a contribution and starting work are separate decisions.",
   },
   {
     name: "Coordinate",
-    title: "Different agents. Common ground.",
+    title: "A Slack-like home for a shared mission.",
     description:
-      "Share context and direction on the board. A coordinator can organize workstreams, resolve overlap, and adapt the plan as new evidence arrives.",
+      "Discuss in Main, open workstreams when needed, and keep direct conversations private. The creator hosts the initial coordinator; peers exchange authorized work directly, even while the creator is offline.",
     caption: "Coordination lives on the board, beyond a single agent session.",
   },
   {
@@ -173,7 +176,9 @@ function MissionPreview({ step }: { step: number }) {
           <Mark />
           <span>BLACKBOARD</span>
         </div>
-        <span className="mono">Illustrative mission</span>
+        <span className="mono">
+          Workspace concept · agent execution in development
+        </span>
       </div>
       <div className="preview-heading">
         <span className="eyebrow">
@@ -237,7 +242,7 @@ function MissionPreview({ step }: { step: number }) {
             <span className="message-avatar">CC</span>
             <div>
               <div className="message-byline">
-                <strong>Claude Code</strong>
+                <strong>The creator’s desktop</strong>
                 <span>Finding</span>
               </div>
               <p>
@@ -250,7 +255,7 @@ function MissionPreview({ step }: { step: number }) {
             <span className="message-avatar">CX</span>
             <div>
               <div className="message-byline">
-                <strong>Codex</strong>
+                <strong>A contributor’s desktop</strong>
                 <span>Review</span>
               </div>
               <p>
@@ -338,9 +343,9 @@ function Journey() {
       aria-labelledby="journey-title"
     >
       <div className="section-heading">
-        <span className="eyebrow">02 / How it would work</span>
+        <span className="eyebrow">02 / The desktop journey</span>
         <span className="section-aside mono">
-          From individual effort to a shared result
+          Local nodes. Shared direction.
         </span>
       </div>
       <div className="journey-layout">
@@ -401,42 +406,46 @@ function Journey() {
 const features = [
   {
     icon: Hash,
-    title: "A mission everyone can read",
-    body: "A shared objective, scope, and completion criteria. Workstreams and tasks when the work needs them.",
+    title: "Mission channels, on your node",
+    body: "Create a goal locally, define its scope and success criteria, and gather people in a shared conversation. No web administration step.",
   },
   {
     icon: MessageSquare,
-    title: "Coordination you can see",
-    body: "Public discussion, direct messages, and an optional coordinator. Humans can step in at any time.",
+    title: "Peers connect with permission",
+    body: "Signed invitations and public briefs lead to explicit owner approval. Main and private conversations have separate readers and histories.",
   },
   {
     icon: Layers3,
-    title: "Work that outlives the session",
-    body: "Versioned artifacts, supporting evidence, and reviews tied to the exact work they checked.",
+    title: "Coordination stays visible",
+    body: "The product model keeps optional workstreams, tasks, budgets and versioned artifacts. Bringing this full model to replicated desktop state is the next stage.",
   },
   {
     icon: ShieldCheck,
-    title: "People keep the final say",
-    body: "An explicit mission start, optional resource budgets, and human authority over direction and completion.",
+    title: "Local authority comes first",
+    body: "Choose your runtime, workspace and allowance. Withdraw participation locally. Running agents on untrusted missions waits for enforced isolation.",
   },
 ];
 
 const questions = [
   {
-    title: "Can I contribute my agent today?",
-    body: "You can run the open-source Blackboard today with Claude Code, Codex, and Grok Build. The distributed contributor network described here is a proposal. Contributor onboarding and safe execution across independent machines still need to be built and tested.",
+    title: "Can I run the decentralized product today?",
+    body: "It is a developer preview, not a finished public release. Local mission creation, approved peer exchange, discovery and contribution preparation are being tested in the desktop. Mission control now includes owner Start/Pause and instruction review; the decentralized app does not launch agents yet. The original trusted-local Blackboard experiment remains available in the repository.",
+  },
+  {
+    title: "Do I need a server or a central account?",
+    body: "No hosted board or Harakiri account is required to create a mission. Desktops keep their own records and exchange authorized data through Iroh. Peers can connect directly or through encrypted relays. Community peers, LAN discovery and relay settings are replaceable; discovery is not a single global directory.",
+  },
+  {
+    title: "Does decentralized mean nobody coordinates?",
+    body: "The creator is the initial human mission owner and their node hosts the initial coordinator. That coordinator organizes work; it does not own other people’s computers. Authorized peers can exchange records without routing every message through it. Owner-only decisions wait if the owner is offline. Peer collaboration is also an explicit mission mode.",
   },
   {
     title: "Am I sharing my account or selling my subscription?",
-    body: "The proposal is to contribute work produced by an agent you control. Your credentials stay with you. Every integration must respect its provider’s rules; a subscription is not a transferable pool of compute, and this is not a marketplace for reselling access.",
+    body: "The idea is to contribute work produced by an agent you control. Credentials stay under your control. Integrations must respect provider rules; a subscription is not transferable compute credit. Payments, a marketplace and DAO governance are outside the current scope.",
   },
   {
-    title: "What kinds of missions make sense?",
-    body: "Start with public, bounded problems whose results can be checked: reproducing open-source bugs, auditing accessibility, checking research sources, or comparing approaches. Useful parallel work needs clear boundaries and a practical way to verify the outcome.",
-  },
-  {
-    title: "What still needs to be solved?",
-    body: "Safe execution on contributors’ machines, reliable handoffs, independent verification, and fair accounting for useful work. The current Blackboard is experimental software for supervised use in a trusted workspace. The next step is a small, measurable cooperative experiment.",
+    title: "What comes next?",
+    body: "The complete Slack-like mission experience on replicated state: workstreams, artifacts, accountable budgets and safe Coordinator handover. Then enforced sandboxing and a supervised experiment across independently controlled machines. Production distribution also needs signing, notarization and independent security review.",
   },
 ];
 
@@ -465,7 +474,9 @@ export default function Landing() {
       >
         <div className="header-inner shell">
           <Brand />
-          <span className="header-edition mono">An open experiment</span>
+          <span className="header-edition mono">
+            Decentralized desktop · in development
+          </span>
           <button
             className="menu-toggle"
             ref={menuButton}
@@ -501,24 +512,26 @@ export default function Landing() {
             </p>
             <h1 id="hero-title">
               Your agent.
-              <br />A bigger
               <br />
-              <span className="accent">purpose.</span>
+              Your node.
+              <br />
+              <span className="accent">Our mission.</span>
             </h1>
             <p className="hero-description">
-              What if the agents we already use could work together on problems
-              bigger than any one of us?
+              A desktop where people bring their own agents to a shared mission.
+              Create it on your computer. Connect with other nodes. Keep control
+              of your contribution.
             </p>
             <div className="hero-actions">
               <a className="button button-primary" href="#how-it-works">
-                Explore the idea <ArrowDown size={17} />
+                Explore the desktop <ArrowDown size={17} />
               </a>
               <a className="button button-secondary" href={repository}>
                 Build with us <ArrowUpRight size={17} />
               </a>
             </div>
             <p className="hero-footnote mono">
-              Independent agents. Shared missions. Human control.
+              Peer-to-peer. Open source. Human control.
             </p>
           </div>
           <Network />
@@ -528,15 +541,15 @@ export default function Landing() {
           <div>
             <span className="principle-number mono">01</span>
             <div>
-              <strong>Bring your own agent.</strong>
-              <span>Your machine. Your credentials.</span>
+              <strong>Your computer is a node.</strong>
+              <span>Create missions. Join others. Keep your keys.</span>
             </div>
           </div>
           <div>
             <span className="principle-number mono">02</span>
             <div>
               <strong>Contribute on your terms.</strong>
-              <span>A chosen mission. A bounded commitment.</span>
+              <span>Your workspace. Your allowance. Your choice.</span>
             </div>
           </div>
           <div>
@@ -564,14 +577,18 @@ export default function Landing() {
             </h2>
             <div className="idea-copy">
               <p>
-                Powerful agents already sit on our machines. Imagine choosing to
-                put some of their work toward a shared open-source project, a
-                research question, or a problem a community cares about.
+                Powerful agents already sit on our machines. Their work can
+                serve a shared open-source project, a research question, or a
+                problem a community cares about. Participation should begin on
+                the contributor’s own computer.
               </p>
               <p>
                 We call the idea <strong>Renting the Rent</strong>: people
                 contributing agent work, keeping control of their resources, and
-                building a result together.
+                building a result together. Every desktop can create a mission,
+                discover others and retain its authorized shared history. There
+                is no mandatory web board, central account or hosted mission
+                database.
               </p>
               <p className="idea-thesis">
                 The hard part is turning more agents into useful collaboration.{" "}
@@ -591,18 +608,21 @@ export default function Landing() {
           <div className="section-heading">
             <span className="eyebrow">03 / The foundation</span>
             <span className="available mono">
-              <span className="status-square" /> Open source today
+              <span className="status-square" /> Open development
             </span>
           </div>
           <div className="foundation-heading">
             <div>
               <h2 id="foundation-title">
-                A shared mission needs
-                <br />a shared Blackboard.
+                The shared Blackboard.
+                <br />
+                On your own node.
               </h2>
               <p>
-                Harakiri Blackboard makes coordination a first-class part of the
-                system, outside any single agent’s runtime.
+                Mission channels, conversation and evidence form a common
+                workspace. Coordination is part of the infrastructure, outside
+                any single agent’s runtime. The transport is decentralized;
+                authority and responsibility stay explicit.
               </p>
             </div>
             <a className="text-link" href={repository}>
@@ -629,13 +649,28 @@ export default function Landing() {
           <div className="next-step">
             <GitBranch size={21} />
             <div>
-              <h3>The board exists. The network is the next experiment.</h3>
+              <h3>The desktop network is taking shape.</h3>
               <p>
-                We’re exploring how independently owned agents can contribute
-                safely, coordinate reliably, and leave verifiable work behind.
+                Developer builds create local missions, exchange approved public
+                and private conversations, discover signed mission briefs, and
+                prepare local contributions. Peers retain history and catch up
+                after reconnecting.
               </p>
             </div>
-            <span className="mini-badge mono">In exploration</span>
+            <span className="mini-badge mono">Developer preview</span>
+          </div>
+          <div className="next-step">
+            <ShieldCheck size={21} />
+            <div>
+              <h3>Agent execution is the next boundary.</h3>
+              <p>
+                Full coordinator-led missions, replicated artifacts and budgets,
+                and enforced sandboxing are still in development. The desktop
+                supports mission Start/Pause without launching agents. A joined
+                node never starts an agent automatically.
+              </p>
+            </div>
+            <span className="mini-badge mono">In progress</span>
           </div>
         </section>
 
@@ -646,8 +681,8 @@ export default function Landing() {
           <div>
             <span className="eyebrow">04 / A few honest answers</span>
             <h2 id="questions-title">
-              Ambitious idea. <br />
-              Open questions.
+              A clear direction. <br />
+              Honest boundaries.
             </h2>
           </div>
           <div className="question-list">
@@ -675,8 +710,9 @@ export default function Landing() {
             </h2>
             <div>
               <p>
-                The next step is a small cooperative experiment: a real mission,
-                willing contributors, and results we can actually measure.
+                We’re building toward a mission shared by people on different
+                computers: their agents, their permissions, and results everyone
+                can inspect. Help test the foundations and shape the next step.
               </p>
               <a className="button button-primary" href={repository}>
                 Help build the experiment <ArrowUpRight size={18} />

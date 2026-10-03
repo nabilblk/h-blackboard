@@ -1,0 +1,36 @@
+# G0 isolation probe, never a production execution profile.
+# Run under a fresh LIMA_HOME; do not reuse an existing personal VM.
+vmType: vz
+arch: aarch64
+cpus: 2
+memory: 2GiB
+disk: 8GiB
+images:
+  - location: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img
+    arch: aarch64
+    digest: sha256:1d6bffe64b848468ac97f821d369a4846d983de1800ccf6b5ec8853e85cefc55
+mounts: []
+ssh:
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+  forwardX11: false
+  forwardX11Trusted: false
+  overVsock: true
+containerd:
+  system: false
+  user: false
+portForwards:
+  - guestPortRange: [1, 65535]
+    ignore: true
+hostResolver:
+  enabled: false
+propagateProxyEnv: false
+provision:
+  - mode: system
+    script: |
+      #!/bin/sh
+      set -eu
+      id agent-worker >/dev/null 2>&1 || useradd --create-home --shell /bin/bash agent-worker
+      install -d -m 0700 -o agent-worker -g agent-worker /workspace
+      printf 'Harakiri isolated G0 fixture\n' >/workspace/README.txt
+      chown agent-worker:agent-worker /workspace/README.txt

@@ -546,7 +546,7 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
                     Command::ReviewContribution{mission}=>{
                         ensure!(store.can_read(&mission,&profile.endpoint)? && !store.conflicted(&mission)?,"participation unavailable");
                         let current=store.control_state(&mission)?;
-                        Ok(serde_json::json!({"mission":mission,"owner":store.owner(&mission)?,"definition":current.definition,"reviewed_revision":current.lifecycle.terms_revision}))
+                        Ok(serde_json::json!({"mission":mission,"owner":store.owner(&mission)?,"definition":current.definition,"reviewed_revision":current.lifecycle.terms_revision,"control_revision":current.lifecycle.revision}))
                     }
                     Command::Peers {mission} => Ok(serde_json::json!({
                         "members":store.members(&mission)?,"delivery":store.deliveries(&mission,"main")?,
@@ -678,6 +678,7 @@ pub fn typescript() -> String {
         harakiri_protocol::artifacts::ArtifactFileRef::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactTransfer::decl(&cfg),
         harakiri_protocol::governance::GovernanceAction::decl(&cfg),
+        harakiri_protocol::governance::GrantPurpose::decl(&cfg),
         harakiri_protocol::governance::GovernanceView::decl(&cfg),
         harakiri_protocol::governance::AllocationView::decl(&cfg),
         harakiri_protocol::governance::GrantView::decl(&cfg),

@@ -16,6 +16,195 @@ struct F {
     reg: String,
     control: String,
 }
+
+#[test]
+fn planning_is_bounded_to_the_appointed_coordinator_and_does_not_start_workers() {
+    use harakiri_protocol::{governance::GrantPurpose, lifecycle::CoordinatorIdentity};
+    let mut f = F::new(true);
+    f.control =
+        f.s.control(
+            &f.a,
+            &f.m,
+            &f.control,
+            C::SetCoordination {
+                mode: Coordination::Coordinated,
+                coordinator: None,
+            },
+        )
+        .unwrap()
+        .id;
+    let terms = f.control.clone();
+    let coordinator = Identity::from_seed([113; 32]);
+    let identity = AgentIdentity {
+        author: coordinator.public_key(),
+        label: "Planner".into(),
+        runtime: "grok".into(),
+        role: AgentRole::Coordinator,
+        contributor_name: "Contributor".into(),
+    };
+    let reg =
+        f.s.offer_agent(&f.b, &f.m, &terms, identity.clone())
+            .unwrap()
+            .id;
+    let worker =
+        f.s.offer_agent(
+            &f.b,
+            &f.m,
+            &terms,
+            AgentIdentity {
+                author: Identity::from_seed([114; 32]).public_key(),
+                role: AgentRole::Agent,
+                ..identity.clone()
+            },
+        )
+        .unwrap()
+        .id;
+    let allocation = f
+        .owner(G::Allocate {
+            node: f.b.public_key(),
+            turns: Some(8),
+            slots: 1,
+        })
+        .id;
+    let expires_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 600_000;
+    let mut grant = G::Grant {
+        purpose: GrantPurpose::Planning,
+        previous: None,
+        allocation,
+        registration: reg.clone(),
+        direction: f.control.clone(),
+        execution: "ab".repeat(32),
+        generation: 1,
+        turns: 2,
+        expires_ms,
+        offline_ms: 300_000,
+    };
+    assert!(
+        f.s.govern(&f.a, &f.m, &f.control, grant.clone()).is_err(),
+        "unappointed Coordinator cannot run"
+    );
+    f.control =
+        f.s.control(
+            &f.a,
+            &f.m,
+            &f.control,
+            C::SetCoordination {
+                mode: Coordination::Coordinated,
+                coordinator: Some(CoordinatorIdentity {
+                    author: coordinator.public_key(),
+                    label: "Planner".into(),
+                    runtime: "grok".into(),
+                }),
+            },
+        )
+        .unwrap()
+        .id;
+    if let G::Grant { direction, .. } = &mut grant {
+        *direction = f.control.clone();
+    }
+    for invalid in [0, 1, 2] {
+        let mut wrong = grant.clone();
+        if let G::Grant {
+            purpose,
+            registration,
+            turns,
+            ..
+        } = &mut wrong
+        {
+            match invalid {
+                0 => *purpose = GrantPurpose::Work,
+                1 => *registration = worker.clone(),
+                _ => *turns = 9,
+            }
+        }
+        assert!(f.s.govern(&f.a, &f.m, &f.control, wrong).is_err());
+    }
+    let permission = f.owner(grant);
+    let consent = f.peer(G::Consent {
+        grant: permission.id.clone(),
+        binding: "cd".repeat(32),
+    });
+    f.reg = reg;
+    let reserved = f.reserve(&permission.id, "de");
+    let plan =
+        f.s.append(
+            &coordinator,
+            &f.m,
+            Payload::CoordinatorPlanned {
+                control: f.control.clone(),
+                text: "Discuss scope and prepare optional experiments".into(),
+            },
+        )
+        .unwrap();
+    let ready =
+        f.s.append(
+            &coordinator,
+            &f.m,
+            Payload::CoordinatorReadied {
+                control: f.control.clone(),
+                plan: plan.id,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.s.control_state(&f.m).unwrap().lifecycle.phase,
+        MissionPhase::Preparing
+    );
+    assert!(
+        f.s.agent_views(&f.m)
+            .unwrap()
+            .iter()
+            .find(|a| a.id == worker)
+            .unwrap()
+            .direction
+            .is_none()
+    );
+    f.peer(G::Receipt {
+        reservation: reserved.id,
+        used: Some(1),
+        stopped: true,
+        summary: "Planning process terminated".into(),
+    });
+    f.control =
+        f.s.control(
+            &f.a,
+            &f.m,
+            &f.control,
+            C::Start {
+                readiness: Some(ready.id),
+                participants: vec![f.reg.clone(), worker]
+                    .into_iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+            },
+        )
+        .unwrap()
+        .id;
+    assert!(
+        f.s.govern(
+            &f.b,
+            &f.m,
+            &f.control,
+            G::Reserve {
+                grant: permission.id.clone(),
+                consent: consent.id,
+                nonce: "ef".repeat(32)
+            }
+        )
+        .is_err(),
+        "planning permission cannot become a working permission"
+    );
+    let view = f.s.governance(&f.m, &f.a.public_key()).unwrap();
+    let g = &view.grants[0];
+    assert_eq!(g.purpose, GrantPurpose::Planning);
+    assert_eq!(g.issued_ms, permission.body.created_at_ms.unwrap());
+    assert_eq!(g.consent_binding.as_deref(), Some("cd".repeat(32).as_str()));
+}
 impl F {
     fn new(unlimited: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
@@ -117,6 +306,7 @@ impl F {
             + 3600000;
         let grant = self
             .owner(G::Grant {
+                purpose: Default::default(),
                 previous: None,
                 allocation: allocation.clone(),
                 registration: self.reg.clone(),
@@ -919,6 +1109,7 @@ fn handover_fences_the_old_coordinator_and_needs_new_readiness() {
         .as_millis() as u64
         + 3600000;
     let grant = f.owner(G::Grant {
+        purpose: Default::default(),
         previous: None,
         allocation: alloc.id,
         registration: first_registration,

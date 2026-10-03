@@ -564,6 +564,7 @@ export type GovernanceAction =
   | { type: "reclaim"; seal: string }
   | {
       type: "grant";
+      purpose?: GrantPurpose;
       previous: string | null;
       allocation: string;
       registration: string;
@@ -595,6 +596,7 @@ export type GovernanceAction =
       summary: string;
       evidence: Array<string>;
     };
+export type GrantPurpose = "work" | "planning";
 export type GovernanceView = {
   allocations: Array<AllocationView>;
   grants: Array<GrantView>;
@@ -616,6 +618,8 @@ export type AllocationView = {
 };
 export type GrantView = {
   id: string;
+  purpose: GrantPurpose;
+  issued_ms: number;
   allocation: string;
   registration: string;
   node: string;
@@ -627,6 +631,7 @@ export type GrantView = {
   control: string;
   direction: string;
   consent: string | null;
+  consent_binding: string | null;
   risk_accepted: string | null;
   sealed: boolean;
   seal: string | null;

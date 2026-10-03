@@ -93,7 +93,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(2))?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(
-            version <= 12,
+            version <= 13,
             "unsupported node database version; preserve this profile"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -326,6 +326,11 @@ impl Store {
             }
             tx.pragma_update(None, "user_version", 12)?;
             tx.commit()?;
+        }
+        // v9 permission purpose changes authority semantics. Refuse reopening
+        // with a v8 binary even though the disposable SQL indexes are unchanged.
+        if version < 13 {
+            connection.pragma_update(None, "user_version", 13)?;
         }
         Ok(Self {
             artifact_cache: Default::default(),

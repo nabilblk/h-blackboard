@@ -1,5 +1,26 @@
 # Experimental local node and peer protocol
 
+## Protocol v9: bounded Coordinator preparation
+
+Live peers now negotiate `harakiri/sync/9`; SQLite schema 13 prevents older
+executables reopening a profile with the new permission semantics. Signed
+v1–8 records remain readable, with their original bytes unchanged.
+
+A permission has purpose `work` (the default for existing signed records) or
+`planning`. Planning requires the mission to be Preparing, the exact current
+control revision, and the appointed Coordinator's prepared registration. It
+is limited to eight managed turns and fifteen minutes. Consent, local limits,
+reservation and settlement apply as for work. It never releases workers or
+starts the mission. Human Start invalidates planning execution; working
+permissions still require Active and the exact current direction.
+
+Permission projections include the signed issue time and the contributor's
+consent binding. The enforcing host binds consent to its execution policy and
+uses the earlier of absolute expiry and issue time plus the offline window.
+Reconnecting or restarting cannot create a new offline window. Process truth
+belongs to the local provider; a signed ledger record alone does not prove a
+VM is isolated or stopped.
+
 The pivot branch includes a **local mission node with opt-in peer replication and discovery in the desktop**. Create a mission offline, share a signed invitation or public brief, approve other nodes and exchange Main or private conversations. Review local contribution terms, change mission instructions, use owner Start/Pause, or withdraw with retained history. Runtime execution remains unavailable. This is an experimental protocol subset, not a completed public decentralized network.
 
 ## Run the checks

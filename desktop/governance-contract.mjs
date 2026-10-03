@@ -33,6 +33,7 @@ export const governAction = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("grant"),
+      purpose: z.enum(["work", "planning"]).optional(),
       previous: id.nullable(),
       allocation: id,
       registration: id,

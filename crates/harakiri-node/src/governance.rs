@@ -98,6 +98,7 @@ impl Ledger {
                 a.reclaimed = true;
             }
             GovernanceAction::Grant {
+                purpose,
                 direction,
                 allocation,
                 registration,
@@ -139,6 +140,8 @@ impl Ledger {
                     e.id.clone(),
                     GrantView {
                         id: e.id.clone(),
+                        purpose: *purpose,
+                        issued_ms: e.body.created_at_ms.unwrap_or(0),
                         allocation: allocation.clone(),
                         registration: registration.clone(),
                         node: a.node.clone(),
@@ -150,6 +153,7 @@ impl Ledger {
                         control: control.into(),
                         direction: direction.clone(),
                         consent: None,
+                        consent_binding: None,
                         risk_accepted: None,
                         sealed: false,
                         seal: None,
@@ -158,7 +162,7 @@ impl Ledger {
                     },
                 );
             }
-            GovernanceAction::Consent { grant, .. } => {
+            GovernanceAction::Consent { grant, binding } => {
                 let g = self
                     .grants
                     .get_mut(grant)
@@ -172,6 +176,7 @@ impl Ledger {
                     "grant consent unavailable"
                 );
                 g.consent = Some(e.id.clone());
+                g.consent_binding = Some(binding.clone());
             }
             GovernanceAction::Reserve {
                 grant,
@@ -493,12 +498,21 @@ impl Store {
                 .get(grant)
                 .ok_or_else(|| anyhow!("grant unavailable"))?;
             let agent = self.communicative_agent(mission, &g.registration)?;
+            let planning = g.purpose == GrantPurpose::Planning
+                && p.lifecycle.phase == MissionPhase::Preparing
+                && g.direction == control
+                && agent.status == harakiri_protocol::agents::AgentStatus::WaitingForStart
+                && p.lifecycle
+                    .coordinator
+                    .as_ref()
+                    .is_some_and(|c| c.identity.author == agent.identity.author);
             ensure!(
-                agent.status == harakiri_protocol::agents::AgentStatus::DirectionAssigned
-                    && agent
-                        .direction
-                        .as_ref()
-                        .is_some_and(|d| d.id == g.direction),
+                planning
+                    || (agent.status == harakiri_protocol::agents::AgentStatus::DirectionAssigned
+                        && agent
+                            .direction
+                            .as_ref()
+                            .is_some_and(|d| d.id == g.direction)),
                 "permission direction changed"
             );
             ensure!(
@@ -507,15 +521,27 @@ impl Store {
             );
         }
         if let GovernanceAction::Grant {
+            purpose,
             registration,
             direction,
             ..
         } = &a
         {
             let agent = self.communicative_agent(mission, registration)?;
+            let planning = *purpose == GrantPurpose::Planning
+                && p.lifecycle.phase == MissionPhase::Preparing
+                && direction == control
+                && agent.status == harakiri_protocol::agents::AgentStatus::WaitingForStart
+                && p.lifecycle
+                    .coordinator
+                    .as_ref()
+                    .is_some_and(|c| c.identity.author == agent.identity.author);
             ensure!(
-                agent.status == harakiri_protocol::agents::AgentStatus::DirectionAssigned
-                    && agent.direction.as_ref().is_some_and(|d| &d.id == direction),
+                planning
+                    || (*purpose == GrantPurpose::Work
+                        && agent.status
+                            == harakiri_protocol::agents::AgentStatus::DirectionAssigned
+                        && agent.direction.as_ref().is_some_and(|d| &d.id == direction)),
                 "current agent direction required"
             );
         }
@@ -616,6 +642,8 @@ impl Store {
                 );
             }
             GovernanceAction::Grant {
+                purpose,
+                turns,
                 registration,
                 direction,
                 expires_ms,
@@ -623,8 +651,12 @@ impl Store {
                 ..
             } => {
                 ensure!(
-                    is_owner && p.lifecycle.phase == MissionPhase::Active,
-                    "active owner permission required"
+                    is_owner
+                        && match purpose {
+                            GrantPurpose::Work => p.lifecycle.phase == MissionPhase::Active,
+                            GrantPurpose::Planning => p.lifecycle.phase == MissionPhase::Preparing,
+                        },
+                    "owner permission for the current mission phase required"
                 );
                 let offered = self
                     .event(registration)?
@@ -652,6 +684,18 @@ impl Store {
                             .is_some_and(|c| c.identity.author == offered_identity.author),
                     "Coordinator must be appointed before permission"
                 );
+                if *purpose == GrantPurpose::Planning {
+                    ensure!(
+                        offered_identity.role == harakiri_protocol::agents::AgentRole::Coordinator
+                            && p.lifecycle
+                                .coordinator
+                                .as_ref()
+                                .is_some_and(|c| c.identity.author == offered_identity.author)
+                            && direction == control
+                            && *turns <= 8,
+                        "bounded appointed Coordinator planning permission required"
+                    );
+                }
                 let direction = self
                     .event(direction)?
                     .ok_or_else(|| anyhow!("direction unavailable"))?;
@@ -682,7 +726,10 @@ impl Store {
                     } => r == registration && c == control,
                     _ => false,
                 };
-                ensure!(valid, "exact current direction required");
+                ensure!(
+                    valid || (*purpose == GrantPurpose::Planning && direction.id == control),
+                    "exact current direction required"
+                );
                 let now = e
                     .body
                     .created_at_ms
@@ -692,6 +739,10 @@ impl Store {
                         && expires_ms - now <= MAX_GRANT_MS
                         && *offline_ms <= expires_ms - now,
                     "permission validity exceeds bound"
+                );
+                ensure!(
+                    *purpose != GrantPurpose::Planning || expires_ms - now <= 900_000,
+                    "planning permission is limited to fifteen minutes"
                 );
             }
             GovernanceAction::Reclaim { .. }
@@ -738,8 +789,11 @@ impl Store {
                 }
             }
             GovernanceAction::Consent { .. } | GovernanceAction::Reserve { .. } => ensure!(
-                p.lifecycle.phase == MissionPhase::Active,
-                "mission is not active"
+                matches!(
+                    p.lifecycle.phase,
+                    MissionPhase::Active | MissionPhase::Preparing
+                ),
+                "mission does not permit execution"
             ),
             _ => {}
         }
@@ -843,6 +897,13 @@ impl Store {
             ensure!(
                 g.control == control && e.body.created_at_ms.is_some_and(|t| t < g.expires_ms),
                 "permission changed or expired"
+            );
+            ensure!(
+                match g.purpose {
+                    GrantPurpose::Work => p.lifecycle.phase == MissionPhase::Active,
+                    GrantPurpose::Planning => p.lifecycle.phase == MissionPhase::Preparing,
+                },
+                "permission purpose does not match mission phase"
             );
         }
         ledger.apply(e, true)?;

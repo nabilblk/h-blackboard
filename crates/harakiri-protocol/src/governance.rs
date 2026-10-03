@@ -7,6 +7,19 @@ use ts_rs::TS;
 pub const MAX_RECORDS: usize = 4096;
 pub const MAX_GRANT_MS: u64 = 86_400_000;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GrantPurpose {
+    #[default]
+    Work,
+    Planning,
+}
+impl GrantPurpose {
+    pub fn is_work(&self) -> bool {
+        *self == Self::Work
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GovernanceAction {
@@ -19,6 +32,8 @@ pub enum GovernanceAction {
         seal: String,
     },
     Grant {
+        #[serde(default, skip_serializing_if = "GrantPurpose::is_work")]
+        purpose: GrantPurpose,
         previous: Option<String>,
         allocation: String,
         registration: String,
@@ -176,6 +191,8 @@ pub struct AllocationView {
 #[derive(Debug, Clone, Serialize, TS)]
 pub struct GrantView {
     pub id: String,
+    pub purpose: GrantPurpose,
+    pub issued_ms: u64,
     pub allocation: String,
     pub registration: String,
     pub node: String,
@@ -187,6 +204,7 @@ pub struct GrantView {
     pub control: String,
     pub direction: String,
     pub consent: Option<String>,
+    pub consent_binding: Option<String>,
     pub risk_accepted: Option<String>,
     pub sealed: bool,
     pub seal: Option<String>,

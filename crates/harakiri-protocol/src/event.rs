@@ -238,7 +238,7 @@ pub fn is_audience(value: &str) -> bool {
 
 impl EventBody {
     pub fn validate(&self) -> Result<()> {
-        if ![1, 2, 3, 4, 5, 6, 7, limits::VERSION].contains(&self.version)
+        if ![1, 2, 3, 4, 5, 6, 7, 8, limits::VERSION].contains(&self.version)
             || (self.version < 3
                 && matches!(
                     self.payload,
@@ -300,6 +300,17 @@ impl EventBody {
                         if self.version >= 8 && self.audience == "main" && is_hash(control) =>
                     {
                         action.validate()?;
+                        if self.version < 9
+                            && matches!(
+                                action,
+                                crate::governance::GovernanceAction::Grant {
+                                    purpose: crate::governance::GrantPurpose::Planning,
+                                    ..
+                                }
+                            )
+                        {
+                            return Err(Error::Invalid("planning permission requires v9"));
+                        }
                     }
                     Payload::CoordinatorPlanArtifact { control, revision }
                         if self.version >= 8

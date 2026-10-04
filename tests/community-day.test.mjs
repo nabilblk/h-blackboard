@@ -5,7 +5,51 @@ import {
   applyDisruption,
   checkPlan,
   deliveryPaths,
+  hasIndependentReview,
 } from "../experiments/community-day/check.mjs";
+
+test("handoff review cannot be replaced by publication, self-review or stale evidence", () => {
+  const review = {
+    verdict: "verified",
+    stale: false,
+    self_review: false,
+    checks: [{ method: "source_inspection", result: "passed" }],
+  };
+  assert.equal(hasIndependentReview([], "source_inspection"), false);
+  assert.equal(hasIndependentReview([review], "source_inspection"), true);
+  assert.equal(hasIndependentReview([review], "executed_tests"), false);
+  for (const change of [{ stale: true }, { self_review: true }, { checks: [] }])
+    assert.equal(
+      hasIndependentReview([{ ...review, ...change }], "source_inspection"),
+      false,
+    );
+});
+
+test("an outstanding review objection blocks the experiment despite another positive review", () => {
+  const positive = {
+    verdict: "verified",
+    stale: false,
+    self_review: false,
+    checks: [{ method: "source_inspection", result: "passed" }],
+  };
+  const objection = {
+    ...positive,
+    verdict: "changes_requested",
+    checks: [{ method: "source_inspection", result: "failed" }],
+  };
+  assert.equal(hasIndependentReview([objection], "source_inspection"), false);
+  assert.equal(
+    hasIndependentReview([positive, objection], "source_inspection"),
+    false,
+  );
+  assert.equal(
+    hasIndependentReview(
+      [positive, { ...objection, stale: true }],
+      "source_inspection",
+    ),
+    true,
+  );
+});
 
 test("delivery evaluation accepts data beside a nested HTML entrypoint without selecting unrelated files", () => {
   const doc = (entrypoint, paths) => ({

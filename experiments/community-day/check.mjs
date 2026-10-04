@@ -1,6 +1,28 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+// Experiment rubric only, not a product acceptance rule. A completed artifact
+// with an outstanding objection is not independently verified for this trial.
+export function hasIndependentReview(reviews, method) {
+  const current = reviews.filter((review) => !review.stale);
+  if (
+    current.some(
+      (review) =>
+        review.verdict === "changes_requested" ||
+        review.checks?.some((check) => check.result === "failed"),
+    )
+  )
+    return false;
+  return current.some(
+    (review) =>
+      !review.self_review &&
+      review.verdict === "verified" &&
+      review.checks?.some(
+        (check) => check.method === method && check.result === "passed",
+      ),
+  );
+}
+
 // Data may sit beside a nested HTML entrypoint or at the bundle root. Never
 // pick a similarly named file from an unrelated directory or another artifact.
 export function deliveryPaths(document) {

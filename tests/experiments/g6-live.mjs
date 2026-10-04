@@ -27,6 +27,7 @@ import {
   applyDisruption,
   checkPlan,
   deliveryPaths,
+  hasIndependentReview,
 } from "../../experiments/community-day/check.mjs";
 import {
   evidenceAt,
@@ -419,7 +420,8 @@ app
           });
           if (
             report.document.inputs.includes(inputArtifact) &&
-            report.document.inputs.includes(artifact.revision)
+            report.document.inputs.includes(artifact.revision) &&
+            hasIndependentReview(report.reviews, "source_inspection")
           ) {
             handoff = item.revision;
             break;
@@ -429,17 +431,7 @@ app
           evaluation.passed &&
           layoutPassed &&
           handoff &&
-          detail.reviews.some(
-            (r) =>
-              r.verdict === "verified" &&
-              !r.self_review &&
-              !r.stale &&
-              r.checks.some(
-                (check) =>
-                  check.method === "executed_tests" &&
-                  check.result === "passed",
-              ),
-          )
+          hasIndependentReview(detail.reviews, "executed_tests")
         )
           return { artifact, detail, evaluation, handoff, layout };
       }
@@ -474,7 +466,7 @@ app
         if (output) return output;
         await a.n.handle("postMessage", {
           mission,
-          text: "Experiment checkpoint: continue the current plan. Final application must include schedule.json, budget.json, offline HTML and a Python checker, cite the current input artifact, and receive an independent exact-version review with executed_tests scope and honest environment/results. Read the operator's exact-revision layout findings and fix any overflow or browser errors. Publish a complete report handoff whose inputs include both current input and application revisions. Keep human-facing times and costs readable, technical IDs secondary. Use messages for updated review targets within the existing direction. Report blockers honestly.",
+          text: "Experiment checkpoint: continue the current plan. Final application must include schedule.json, budget.json, offline HTML and a Python checker, cite the current input artifact, and receive an independent exact-version review with executed_tests scope and honest environment/results. Read the operator's exact-revision layout findings and fix any overflow or browser errors. Publish a complete report handoff whose inputs include both current input and application revisions, and obtain an independent source review of that report. Outstanding changes requested must be addressed. Keep human-facing times and costs readable, technical IDs secondary. Use messages for updated review targets within the existing direction. Report blockers honestly.",
         });
         evidence.record("operator_intervention", {
           reason:

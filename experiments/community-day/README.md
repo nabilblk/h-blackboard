@@ -115,8 +115,11 @@ human acceptance. Read `result.json` for observed outcomes, not the existence of
 an HTML file alone. Runtime failures and provider limits are experiment results.
 
 The repeat-run rubric also requires a scoped independent executed-test review,
-a current handoff referencing the exact input/application revisions, and bounded
-desktop/phone layout checks. The supervisor publishes the independent JSON
+a current handoff referencing the exact input/application revisions with its
+own independent source review, and bounded desktop/phone layout checks.
+Outstanding changes-requested or failed scoped checks block qualification, even
+if another review is positive. Publication alone cannot satisfy the handoff gate.
+The supervisor publishes the independent JSON
 validation and layout measurements as
 attributed findings; agents still have to repair their own artifacts. This is
 operator assistance, not autonomous guest browser access or proof of visual

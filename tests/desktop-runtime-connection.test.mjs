@@ -66,51 +66,59 @@ test("runtime consent and journals distinguish all three policies while preservi
   assert.throws(() => newRecord(contribution.id, 1, "other"));
 });
 
-test("Claude persists the exact session before dispatch and normalizes scoped tools/text", async (t) => {
-  const sessionId = randomUUID(),
-    events = [];
-  let saved = false;
-  const child = transport((message, c) => {
-    assert.ok(saved);
-    assert.equal(message.session_id, sessionId);
-    c.send({ type: "system", subtype: "init", session_id: sessionId, tools });
-    c.send({
-      type: "assistant",
-      session_id: sessionId,
-      message: {
-        content: [
-          { type: "tool_use", name: tools[0] },
-          { type: "text", text: "Completed." },
-        ],
+for (const includeImport of [true, false])
+  test(`Claude preserves session and scoped tools with ${includeImport ? "current" : "previous"} guest broker`, async (t) => {
+    const sessionId = randomUUID(),
+      events = [];
+    let saved = false;
+    const child = transport((message, c) => {
+      assert.ok(saved);
+      assert.equal(message.session_id, sessionId);
+      c.send({
+        type: "system",
+        subtype: "init",
+        session_id: sessionId,
+        tools: includeImport
+          ? tools
+          : tools.filter((name) => !name.endsWith("__import_artifact")),
+      });
+      c.send({
+        type: "assistant",
+        session_id: sessionId,
+        message: {
+          content: [
+            { type: "tool_use", name: tools[0] },
+            { type: "text", text: "Completed." },
+          ],
+        },
+      });
+      c.send({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        session_id: sessionId,
+        usage: { input_tokens: 5, output_tokens: 2 },
+      });
+    });
+    const connection = new ClaudeConnection({
+      transport: child,
+      sessionId,
+      onEvent: (e) => events.push(e),
+    });
+    t.after(() => connection.close());
+    const result = await connection.run({
+      prompt: "Do work",
+      seconds: 2,
+      onSession: async (id) => {
+        assert.equal(id, sessionId);
+        saved = true;
       },
     });
-    c.send({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      session_id: sessionId,
-      usage: { input_tokens: 5, output_tokens: 2 },
-    });
+    assert.equal(result.session, sessionId);
+    assert.equal(result.usage.totalTokens, 7);
+    assert.equal(events[0].update.sessionUpdate, "tool_call");
+    assert.equal(events[1].update.content.text, "Completed.");
   });
-  const connection = new ClaudeConnection({
-    transport: child,
-    sessionId,
-    onEvent: (e) => events.push(e),
-  });
-  t.after(() => connection.close());
-  const result = await connection.run({
-    prompt: "Do work",
-    seconds: 2,
-    onSession: async (id) => {
-      assert.equal(id, sessionId);
-      saved = true;
-    },
-  });
-  assert.equal(result.session, sessionId);
-  assert.equal(result.usage.totalTokens, 7);
-  assert.equal(events[0].update.sessionUpdate, "tool_call");
-  assert.equal(events[1].update.content.text, "Completed.");
-});
 
 for (const [name, messages, pattern] of [
   [

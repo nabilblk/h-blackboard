@@ -1,14 +1,16 @@
 import { GrokConnection } from "../../bin/grok-acp.mjs";
 import { Session } from "./contract.mjs";
 
-const toolNames = [
+const requiredToolNames = [
   "board",
   "workspace_exec",
   "workspace_read",
   "workspace_write",
-  "import_artifact",
   "publish_artifact",
 ];
+// Existing idle guests keep the original safe broker until explicitly prepared
+// again. A compositional convenience tool must not break their saved sessions.
+const toolNames = [...requiredToolNames, "import_artifact"];
 const scopedClaudeTool = (name) =>
   toolNames.some((t) => name === `mcp__harakiri__${t}`);
 const event = (type, value) => ({
@@ -170,7 +172,7 @@ export class ClaudeConnection extends JsonConnection {
       )
         throw new Error("Claude exposed an unreviewed native tool.");
       if (
-        !toolNames.every((name) =>
+        !requiredToolNames.every((name) =>
           message.tools.includes(`mcp__harakiri__${name}`),
         )
       )

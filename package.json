@@ -25,7 +25,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"server/*.mjs\" \"bin/**/*.mjs\" \"desktop/**/*.{mjs,cjs}\" \"tests/**/*.mjs\" \"shared/*.{mjs,json}\"",
     "test:live": "node tests/runtime-live.mjs",
     "test:live:grok": "node tests/grok-live.mjs",
-    "test:desktop:peers": "npm run desktop:build && node tests/desktop-peers-native.mjs"
+    "test:desktop:peers": "npm run desktop:build && node tests/desktop-peers-native.mjs",
+    "test:g6": "node tests/experiments/g6-rehearsal.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

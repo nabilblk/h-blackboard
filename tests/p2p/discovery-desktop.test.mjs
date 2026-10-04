@@ -139,8 +139,15 @@ test(
       "Explicit admission did not synchronize",
     );
     assert.equal((await b.state()).missions.length, 0);
-    await assert.rejects(
-      c.handle("reviewContribution", { mission, role: "coordinator" }),
+    const coordinatorReview = await c.handle("reviewContribution", {
+      mission,
+      role: "coordinator",
+    });
+    assert.equal(coordinatorReview.mission.role, "coordinator");
+    assert.equal(
+      (await c.state()).missions[0].lifecycle.coordinator,
+      null,
+      "Offering a Coordinator must not appoint one",
     );
     const terms = await c.handle("reviewContribution", {
       mission,

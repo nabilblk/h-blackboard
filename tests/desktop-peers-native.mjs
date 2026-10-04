@@ -875,12 +875,26 @@ async function discoveryProof(a) {
     "I will investigate accessible activities and share the evidence here.",
   );
   c.button("Your contribution");
+  c.browser("select", ".n-participation select", "coordinator");
+  assert.ok(
+    c.evaluate(
+      "document.querySelector('.n-participation').textContent.includes('It waits for appointment')",
+    ),
+    "A remote contributor can prepare a Coordinator without self-appointment",
+  );
+  c.browser("screenshot", join(evidence, "remote-coordinator-preparation.png"));
   c.button("Prepare contribution");
   await c.wait(
     "!!document.querySelector('.n-reviewed-terms')",
     "Local offer has no signed terms",
   );
   c.browser("screenshot", join(evidence, "local-contribution.png"));
+  assert.equal(
+    c.evaluate("window.blackboardNode.state()").missions[0].lifecycle
+      .coordinator,
+    null,
+    "Reviewing a remote Coordinator contribution does not appoint it",
+  );
   assert.equal(
     c.evaluate("window.blackboardNode.state()").execution,
     "unavailable",

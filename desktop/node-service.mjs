@@ -474,11 +474,10 @@ export class NodeService {
       });
       if (
         request.role === "coordinator" &&
-        (checked.owner !== this.identity.owner ||
-          checked.definition.policy?.coordination !== "coordinated")
+        checked.definition.policy?.coordination !== "coordinated"
       )
         throw new Error(
-          "Only the creator of a coordinated mission can prepare its initial coordinator.",
+          "Coordinator contributions require a coordinated mission. Preparation does not appoint a Coordinator; only the mission owner can do that.",
         );
       const review = this.contributors.reviewNode(checked, request.role);
       if (this.contributionReviews.size >= 10)

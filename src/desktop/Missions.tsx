@@ -798,7 +798,8 @@ export function MissionRoom({
             </header>
             <p>
               Choose a runtime, a dedicated local folder and your own allowance.
-              These are preparation terms; this preview cannot start agents.
+              Preparation does not start work. You approve isolated execution
+              separately from your agent’s details.
             </p>
             {!revoked && !withdrawal ? (
               <>
@@ -811,13 +812,19 @@ export function MissionRoom({
                     }
                   >
                     <option value="agent">Agent</option>
-                    {mission.owner === owner &&
-                    mission.definition.policy?.coordination ===
-                      "coordinated" ? (
+                    {mission.definition.policy?.coordination ===
+                    "coordinated" ? (
                       <option value="coordinator">Coordinator</option>
                     ) : null}
                   </select>
                 </label>
+                {role === "coordinator" ? (
+                  <p className="d-field-help">
+                    Share this contribution in Members so the mission owner can
+                    select it for coordination. It waits for appointment;
+                    preparing it does not replace the current Coordinator.
+                  </p>
+                ) : null}
                 <div className="n-action-row">
                   <button
                     className="d-button primary"
@@ -955,10 +962,10 @@ export function MissionRoom({
             <div>
               <dt>Coordination</dt>
               <dd>
-                {mission.coordinator_node
-                  ? mission.owner === owner
-                    ? "Coordinator-led · hosted on this node"
-                    : "Coordinator-led · hosted on the creator’s node"
+                {mission.definition.policy?.coordination === "coordinated"
+                  ? mission.lifecycle.coordinator
+                    ? `Coordinator-led · ${mission.lifecycle.coordinator.identity.label}`
+                    : "Coordinator-led · awaiting appointment"
                   : "Peer collaboration"}
               </dd>
             </div>

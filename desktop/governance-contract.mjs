@@ -83,7 +83,7 @@ const missionAction = z.discriminatedUnion("type", [
           runtime: z.enum(["claude", "codex", "grok"]),
         })
         .strict(),
-      settlements: z.array(id).max(512),
+      settlements: refs(256),
     })
     .strict(),
 ]);

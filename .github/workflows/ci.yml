@@ -44,4 +44,6 @@ jobs:
       - run: npm ci
       - run: npm run check:node
       - run: npm run test:node
+      - run: npm run test:g6
+        timeout-minutes: 5
       - run: npm run desktop:build

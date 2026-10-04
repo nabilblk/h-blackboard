@@ -140,6 +140,10 @@ test(
       command("appointCoordinator", { contributionId: c2.id }),
     );
     await command("setCoordination", { mode: "peer" });
+    await assert.rejects(
+      n.handle("reviewContribution", { mission, role: "coordinator" }),
+      /coordinated mission/,
+    );
     await command("startMission", { readiness: null });
     assert.equal((await current()).state, "active");
     assert.equal((await n.state()).execution, "unavailable");

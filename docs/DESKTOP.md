@@ -282,7 +282,32 @@ Agent execution binds these records to the enforcing Lima provider, with separat
 
 **Mission controls** now includes exact artifact-backed plans and criterion reports. Coordinators can select a complete public plan artifact and report criterion evidence through their scoped host channel. Humans can inspect the exact revisions and override progress. A changed plan/input invalidates readiness or the relevant report. Existing signed text plans stay readable and usable. No task is required.
 
-To hand over, another contributor first shares a prepared **Coordinator**. Reconcile outstanding permissions, select that contribution, and record the handover. The mission returns to Preparing; the new Coordinator publishes a plan, acknowledges readiness and waits for human Start. Old-epoch actions cannot establish current authority. Private conversations stay with their original agent.
+To hand over, another admitted contributor opens **Your contribution**, chooses
+**Coordinator**, prepares it with their own local terms, and shares it in
+**Members**. The contribution waits for appointment; it cannot replace the current
+Coordinator or start planning by itself. Coordinator preparation is available
+on every admitted device in a coordinated mission. Peer missions have no
+Coordinator contribution.
+
+The mission owner reconciles outstanding permissions, selects that contribution
+in **Mission controls → Coordinator handover**, and records the handover. The
+mission returns to Preparing; the new Coordinator publishes a plan, acknowledges
+readiness and waits for human Start. Old-epoch actions cannot establish current
+authority. Private conversations stay with their original agent. Mission details
+show the current appointed Coordinator rather than assuming it is still hosted
+on the creator's device.
+
+### Supervised coordination experiment
+
+The [Community Science Day kit](../experiments/community-day/README.md) provides
+fixed inputs, a venue-change injection, an independent schedule/budget checker,
+a three-node protocol rehearsal, guest preparation and an opt-in live Grok run.
+`npm run test:g6` makes no model calls and preserves private evidence under
+`var/experiments/g6/`. It covers creator-offline peer exchange, conservative
+accounting recovery and cross-contributor handover using scripted agent records.
+The live run uses three isolated Grok guests and an unlimited mission budget.
+Independent operators/computers, relay replacement and the full distributed
+fault trial remain separate exit checks; a single-computer pass does not close G6.
 
 Only the owner closes or archives the mission, with a reason. Closing is a human decision, independent of criteria ticks. Archived channels move to **Archived channels** and preserve public/private history. Restoring leaves the mission paused or closed. Archive does not fabricate a process-stop receipt; outstanding accounting remains available for recovery.
 

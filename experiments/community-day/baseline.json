@@ -1,0 +1,123 @@
+{
+  "revision": "baseline",
+  "name": "Community Science Day",
+  "opens": 600,
+  "closes": 960,
+  "setup_minutes": 15,
+  "volunteers": 5,
+  "equipment": { "science_kits": 2 },
+  "rooms": [
+    { "id": "hall", "capacity": 60, "closures": [] },
+    { "id": "lab", "capacity": 24, "closures": [] },
+    { "id": "courtyard", "capacity": 40, "closures": [] }
+  ],
+  "facilitators": [
+    { "id": "sam", "from": 600, "until": 960 },
+    { "id": "alex", "from": 600, "until": 960 },
+    { "id": "jo", "from": 600, "until": 960 },
+    { "id": "lee", "from": 780, "until": 900 }
+  ],
+  "activities": [
+    {
+      "id": "welcome",
+      "name": "Welcome and safety",
+      "duration": 30,
+      "attendance": 50,
+      "rooms": ["hall"],
+      "facilitator": "sam",
+      "volunteers": 2,
+      "equipment": {},
+      "after": []
+    },
+    {
+      "id": "bridges",
+      "name": "Paper bridge challenge",
+      "duration": 45,
+      "attendance": 24,
+      "rooms": ["lab", "hall"],
+      "facilitator": "alex",
+      "volunteers": 2,
+      "equipment": { "science_kits": 1 },
+      "after": ["welcome"]
+    },
+    {
+      "id": "robots",
+      "name": "Build a tiny robot",
+      "duration": 60,
+      "attendance": 24,
+      "rooms": ["lab", "hall"],
+      "facilitator": "alex",
+      "volunteers": 2,
+      "equipment": { "science_kits": 2 },
+      "after": ["welcome"]
+    },
+    {
+      "id": "repair",
+      "name": "Repair cafe",
+      "duration": 60,
+      "attendance": 30,
+      "rooms": ["hall", "courtyard"],
+      "facilitator": "jo",
+      "volunteers": 2,
+      "equipment": {},
+      "after": ["welcome"]
+    },
+    {
+      "id": "gardens",
+      "name": "Pocket gardens",
+      "duration": 45,
+      "attendance": 30,
+      "rooms": ["courtyard"],
+      "facilitator": "jo",
+      "volunteers": 1,
+      "equipment": {},
+      "after": ["welcome"]
+    },
+    {
+      "id": "solar",
+      "name": "Solar science",
+      "duration": 45,
+      "attendance": 24,
+      "rooms": ["lab", "courtyard"],
+      "facilitator": "sam",
+      "volunteers": 2,
+      "equipment": { "science_kits": 1 },
+      "after": ["welcome"]
+    },
+    {
+      "id": "first-aid",
+      "name": "Family first aid",
+      "duration": 45,
+      "attendance": 35,
+      "rooms": ["hall", "courtyard"],
+      "facilitator": "lee",
+      "volunteers": 2,
+      "equipment": {},
+      "after": ["welcome"]
+    },
+    {
+      "id": "finale",
+      "name": "Show and tell",
+      "duration": 30,
+      "attendance": 50,
+      "rooms": ["hall"],
+      "facilitator": "sam",
+      "volunteers": 2,
+      "equipment": {},
+      "after": ["bridges", "robots", "repair", "gardens", "solar", "first-aid"]
+    }
+  ],
+  "costs": [
+    { "id": "venue", "quantity": 1, "unit_cost_cents": 18000 },
+    { "id": "welcome", "quantity": 1, "unit_cost_cents": 2000 },
+    { "id": "bridges", "quantity": 1, "unit_cost_cents": 4500 },
+    { "id": "robots", "quantity": 1, "unit_cost_cents": 11000 },
+    { "id": "repair", "quantity": 1, "unit_cost_cents": 6000 },
+    { "id": "gardens", "quantity": 1, "unit_cost_cents": 3500 },
+    { "id": "solar", "quantity": 1, "unit_cost_cents": 6000 },
+    { "id": "first-aid", "quantity": 1, "unit_cost_cents": 4500 },
+    { "id": "finale", "quantity": 1, "unit_cost_cents": 2000 }
+  ],
+  "reserve_percent": 10,
+  "spending_cap_cents": 90000
+}

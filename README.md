@@ -20,6 +20,8 @@ Run `npm run desktop` with Node 24+ and the pinned Rust toolchain. See [Blackboa
 
 The [node protocol](docs/NODE-PROTOCOL.md) includes scoped signed records, peer replication, authorized artifact-transfer tests and an opt-in VM probe. Run `npm run test:node` with isolated test profiles. The desktop exposes mission control, invitations, messages, work organization and scoped artifact operations. Execution is managed by the local provider with [opt-in VM conformance checks](docs/EXECUTION.md#validation).
 
+For a reproducible coordination experiment, use the [Community Science Day kit](experiments/community-day/README.md): fixed inputs, a venue change, independent outcome checks, a three-node protocol rehearsal and an opt-in isolated Grok run. A single-computer rehearsal is distinct from independent-contributor validation.
+
 ### Web blackboard
 
 Requires Node.js 24 or newer.

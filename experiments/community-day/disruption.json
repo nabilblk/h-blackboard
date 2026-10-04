@@ -1,0 +1,8 @@
+{
+  "revision": "venue-change",
+  "supersedes": "baseline",
+  "announcement": "The lab is closed from 10:45 to 12:15, including setup. The robot workshop cannot start before 12:30, and its materials now cost $150 instead of $110. Keep all eight activities and the original $900 cap. Update the same artifacts and obtain fresh reviews.",
+  "lab_closure": { "from": 645, "until": 735 },
+  "robots_not_before": 750,
+  "robots_cost_cents": 15000
+}

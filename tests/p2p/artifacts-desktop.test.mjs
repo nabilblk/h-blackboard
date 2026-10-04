@@ -136,8 +136,11 @@ test(
       n.handle("artifactInspect", { ...inspect, revision: "f".repeat(64) }),
     );
     assert.equal(
-      AgentOperation.safeParse({ type: "artifact_inspect", ...inspect })
-        .success,
+      AgentOperation.safeParse({
+        type: "artifact_inspect",
+        revision: first,
+        path: "index.html",
+      }).success,
       false,
     );
     assert.equal(

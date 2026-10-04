@@ -118,6 +118,33 @@ test(
     await assert.rejects(
       n.readArtifactFile({ mission, revision: first, path: "../node.sqlite" }),
     );
+    let inspected = 0;
+    n.inspectArtifact = async (request, detail) => {
+      inspected++;
+      assert.equal(request.revision, first);
+      assert.equal(detail.revision, first);
+      return { revision: first };
+    };
+    const inspect = { mission, revision: first, path: "index.html" };
+    assert.deepEqual(await n.handle("artifactInspect", inspect), {
+      revision: first,
+    });
+    await assert.rejects(
+      n.handle("artifactInspect", { ...inspect, path: "missing.html" }),
+    );
+    await assert.rejects(
+      n.handle("artifactInspect", { ...inspect, revision: "f".repeat(64) }),
+    );
+    assert.equal(
+      AgentOperation.safeParse({ type: "artifact_inspect", ...inspect })
+        .success,
+      false,
+    );
+    assert.equal(
+      inspected,
+      1,
+      "Invalid reads must never invoke a host renderer",
+    );
     const prepare = async (label) => {
       const review = await n.handle("reviewContribution", {
         mission,

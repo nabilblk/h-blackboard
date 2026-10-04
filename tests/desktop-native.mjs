@@ -207,6 +207,7 @@ try {
       "artifactAction",
       "artifactTransfer",
       "artifactOpen",
+      "artifactInspect",
       "artifactSave",
       "workEvidence",
       "workstreams",

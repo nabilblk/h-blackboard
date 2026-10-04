@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld(
       nodeCall("artifactTransfer", { mission, transfer }),
     artifactOpen: (mission, revision, path) =>
       nodeCall("artifactOpen", { mission, revision, path }),
+    artifactInspect: (mission, revision, path) =>
+      nodeCall("artifactInspect", { mission, revision, path }),
     artifactSave: (mission, revision, path) =>
       nodeCall("artifactSave", { mission, revision, path }),
     workstreams: (mission) => nodeCall("workstreams", { mission }),

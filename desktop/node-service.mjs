@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   GovernanceRequests,
   GovernanceAgentOperations,
@@ -13,22 +12,12 @@ import {
 } from "./artifact-contract.mjs";
 import { NodeIdentity } from "./node-identity.mjs";
 import { Limits, Runtime, Id } from "./model.mjs";
-import { policyDigest } from "./execution/contract.mjs";
+import {
+  executionBinding,
+  DirectionChanged,
+} from "./execution/permissions.mjs";
 
-export function executionBinding(contribution) {
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        id: contribution.id,
-        workspace: contribution.workspaceIdentity,
-        runtime: contribution.runtime,
-        limits: contribution.limits,
-        terms: contribution.nodeBinding,
-        policy: policyDigest(contribution.runtime),
-      }),
-    )
-    .digest("hex");
-}
+export { executionBinding } from "./execution/permissions.mjs";
 
 const id = z.string().regex(/^[a-f0-9]{64}$/);
 const text = (max, min = 1) =>
@@ -647,7 +636,7 @@ export class NodeService {
       this.writeClipboard(request.revision);
       return null;
     }
-    if (method === "artifactOpen" || method === "artifactSave") {
+    if (["artifactOpen", "artifactSave", "artifactInspect"].includes(method)) {
       const detail = await bridge.request({
         type: "artifact_detail",
         mission: request.mission,
@@ -656,7 +645,11 @@ export class NodeService {
       if (!detail.document.files.some((f) => f.path === request.path))
         throw new Error("File not in this revision.");
       const callback =
-        method === "artifactOpen" ? this.openArtifact : this.saveArtifact;
+        method === "artifactOpen"
+          ? this.openArtifact
+          : method === "artifactInspect"
+            ? this.inspectArtifact
+            : this.saveArtifact;
       if (!callback) throw new Error("The artifact viewer is unavailable.");
       return callback(request, detail);
     }
@@ -957,8 +950,22 @@ export class NodeService {
           context.lifecycle.phase === "active" &&
           context.agent.status === "direction_assigned" &&
           context.agent.direction?.id === grant.direction;
-        if (!planning && !working)
-          throw new Error("Mission paused or the agent's direction changed.");
+        if (!planning && !working) {
+          if (
+            grant.purpose === "work" &&
+            context.lifecycle.phase === "active" &&
+            context.agent.status === "direction_assigned" &&
+            context.agent.direction?.id &&
+            context.agent.direction.id !== grant.direction
+          )
+            throw new DirectionChanged(
+              grant.direction,
+              context.agent.direction.id,
+            );
+          throw new Error(
+            "Mission is not authorized for this execution. Review its current state and permission.",
+          );
+        }
         const budget = context.definition.policy?.budget;
         if (
           budget?.mode === "limited" &&

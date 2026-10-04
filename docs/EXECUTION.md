@@ -212,6 +212,22 @@ must preserve G5's `hb-worker` workspace ownership on reboot.
 These checks do not establish collaboration between independently operated
 computers or replace the separate cross-device and public security gates.
 
+### Direction changes and saved-session recovery
+
+Execution permissions bind an exact direction. A changed direction interrupts
+the old run, confirms termination, and settles its reservation before it may
+resume. The contribution panel preserves the reason and saved native session,
+shows the current direction, and offers only eligible current permissions.
+The owner issues a fresh permission generation; the contributor separately
+chooses **Approve and resume**. New permissions never imply automatic consent.
+An identical repeated individual direction from the same authority returns its
+existing signed event, avoiding unnecessary interruptions after retries.
+
+Clarifications and a new artifact to review within the existing assignment
+normally belong in messages. A real change of responsibility needs a new
+direction and permission. Pauses, revoked consent and changed mission terms
+remain separate blockers; recovery does not bypass them.
+
 ### Additional runtime conformance
 
 ```sh

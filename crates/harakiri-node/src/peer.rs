@@ -29,7 +29,7 @@ use std::{
 };
 use tokio::{sync::Semaphore, task::JoinHandle, time::timeout};
 
-pub const ALPN: &[u8] = b"harakiri/sync/9";
+pub const ALPN: &[u8] = b"harakiri/sync/10";
 pub type SharedStore = Arc<Mutex<Store>>;
 
 #[derive(Debug)]

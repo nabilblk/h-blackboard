@@ -152,6 +152,17 @@ fn exact_start_snapshot_late_direction_and_human_precedence_survive_reordering()
         )
         .unwrap();
     history.push(assigned.bytes().to_vec());
+    let repeated = s
+        .direct_agent(
+            &coordinator,
+            m,
+            &begun.id,
+            &late.id,
+            "Check transport".into(),
+        )
+        .unwrap();
+    assert_eq!(repeated.id, assigned.id);
+    assert_eq!(view(&s, m, &late.id).direction.unwrap().id, assigned.id);
     let human = s
         .direct_agent(
             &owner,

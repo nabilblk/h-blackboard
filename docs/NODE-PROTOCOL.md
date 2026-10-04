@@ -1,10 +1,21 @@
 # Experimental local node and peer protocol
 
-## Protocol v9: bounded Coordinator preparation
+## Protocol v10: explicit artifact review scope
 
-Live peers now negotiate `harakiri/sync/9`; SQLite schema 13 prevents older
-executables reopening a profile with the new permission semantics. Signed
-v1–8 records remain readable, with their original bytes unchanged.
+Live peers negotiate `harakiri/sync/10`; all connected peers must upgrade.
+SQLite schema 14 prevents older executables reopening an upgraded profile.
+Signed v1–9 records remain readable with their original bytes unchanged. This
+upgrade adds a schema barrier, without rewriting tables or signed history.
+
+Artifact reviews may contain up to eight `{method, result, details}` checks.
+Methods are `source_inspection`, `executed_tests`, `browser_check` and
+`visual_inspection`; results are `passed`, `failed` or `not_run`. Details are
+required and bounded to 1,024 UTF-8 bytes. A `verified` review with scoped checks
+needs at least one passed check and no failed checks. Legacy reviews without
+checks remain readable and visibly unspecified. These are attributed claims,
+not proof of host execution or human acceptance. Nonempty checks require v10.
+
+## Bounded Coordinator preparation (introduced in v9)
 
 A permission has purpose `work` (the default for existing signed records) or
 `planning`. Planning requires the mission to be Preparing, the exact current
@@ -73,7 +84,7 @@ The proof uses maintained cryptographic libraries: `coset` 0.4.2, `ed25519-dalek
 CBOR maps use RFC 8949 core deterministic bytewise key ordering and shortest integer/length encoding. Indefinite items, duplicate keys, floats, tags, excessive nesting and trailing bytes are rejected. The parser bounds input before invoking general-purpose deserialization. See [RFC 8949](https://www.rfc-editor.org/rfc/rfc8949.html) and [COSE RFC 9052](https://www.rfc-editor.org/rfc/rfc9052.html).
 
 ```text
-version: 7 (versions 1–6 remain readable; typed artifacts require 7)
+version: 10 (versions 1–9 remain readable; scoped artifact review checks require 10)
 mission: null for genesis; otherwise the genesis event ID
 author: signing public key, 64 lowercase hex characters
 audience: "main" or "private:<64 lowercase hex characters>"
@@ -152,7 +163,7 @@ It exposes no owner signing, Start/Pause, network configuration, filesystem path
 
 The native human query API authorizes every audience and cursor before querying indexed saved history. Inbox includes incoming private messages, public messages addressed to the viewer and replies to the viewer's public roots; Sent includes the viewer's own messages and thread replies. Search covers accessible saved history, with bounded pages. Read marks are local, persisted per message and viewer, and never act as delivery, acknowledgment or execution receipts. A disconnected node can only search history already synchronized to it.
 
-SQLite schema 9 introduced transactional rebuilding of agent/message indexes from verified signed bytes; migration corruption rolls back. The current schema is 13 and live synchronization requires protocol v9 peers. Agent withdrawal leaves previous messages visible but provisional. Since v8, the private audience creator can accept an exact agent writer frontier without renewing its permissions.
+SQLite schema 9 introduced transactional rebuilding of agent/message indexes from verified signed bytes; migration corruption rolls back. The current schema is 14 and live synchronization requires protocol v10 peers. Agent withdrawal leaves previous messages visible but provisional. Since v8, the private audience creator can accept an exact agent writer frontier without renewing its permissions.
 
 ## Optional public workstreams and tasks (v6)
 
@@ -203,7 +214,7 @@ The Electron viewer is a separate ephemeral session and sandboxed renderer with 
 
 ## Storage, synchronization and artifacts
 
-SQLite schema version 13 uses WAL and FULL synchronization. Versions 3–5 add separate audience indexes, delivery progress, admission/contact state, network preferences and conservative revocation notices; version 6 adds discovery caches, signed withdrawals and local notification queues. Existing version 2 Main histories migrate without changing their signed bytes. Version 1 migrates transactionally by rebuilding the message index from verified signed bytes; an invalid record rolls back the migration. Message and mission pages also bound encoded JSON size, so escaped content cannot exhaust an IPC response. Each valid event and its membership/artifact projection commit in one transaction. Duplicate delivery is idempotent. A batch can preserve valid predecessors before rejecting an invalid child; retrying does not create duplicate events. Missing dependencies are rejected for retry rather than accepted as authority. Unknown newer schema versions are refused without migration.
+SQLite schema version 14 uses WAL and FULL synchronization. Versions 3–5 add separate audience indexes, delivery progress, admission/contact state, network preferences and conservative revocation notices; version 6 adds discovery caches, signed withdrawals and local notification queues. Existing version 2 Main histories migrate without changing their signed bytes. Version 1 migrates transactionally by rebuilding the message index from verified signed bytes; an invalid record rolls back the migration. Message and mission pages also bound encoded JSON size, so escaped content cannot exhaust an IPC response. Each valid event and its membership/artifact projection commit in one transaction. Duplicate delivery is idempotent. A batch can preserve valid predecessors before rejecting an invalid child; retrying does not create duplicate events. Missing dependencies are rejected for retry rather than accepted as authority. Unknown newer schema versions are refused without migration.
 
 Two different signed events at the same writer sequence are preserved as fork evidence. A Main fork suspends mission writes and artifact serving; a private fork freezes that audience without changing Main counts or activity. A conflicting private audience root does not grant new readers access. Admissions at or beyond an owner fork lose read authority. Earlier authorized members can still obtain conflict history. Fork evidence bypasses a newer synchronization cursor; it cannot be silently hidden behind already received history. There is no timestamp winner or automatic fork recovery.
 
@@ -377,4 +388,4 @@ Limits reserve room for reconciliation: 128 allocations, 256 permissions, 512 re
 
 `Close`, `Archive` and `Restore` retain all signed history. Local archived writes and admission are denied; accounting reconciliation, invitation revocation and private-frontier review remain available. Restoration stays paused or closed. Historical/concurrent records retain attribution; a partition cannot instantly notify or stop an unreachable process.
 
-Schema 12 rebuilds the disposable governance index transactionally from verified signed records. Signed v1–7 events remain readable; live peers now use `harakiri/sync/9`. The desktop draft store is separate, local and versioned by node identity/mission/conversation. Private frontier decisions stay in their audience; v8 supports both revoked human members and withdrawn/revoked hosted agent identities.
+Schema 12 rebuilds the disposable governance index transactionally from verified signed records. Signed v1–7 events remain readable; live peers now use `harakiri/sync/10`. The desktop draft store is separate, local and versioned by node identity/mission/conversation. Private frontier decisions stay in their audience; v8 supports both revoked human members and withdrawn/revoked hosted agent identities.

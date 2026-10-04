@@ -159,6 +159,28 @@ impl Store {
             ),
             "agent cannot receive a direction"
         );
+        let key = author.public_key();
+        ensure!(
+            key == self.owner(mission)?
+                || current
+                    .lifecycle
+                    .coordinator
+                    .as_ref()
+                    .is_some_and(|c| c.identity.author == key),
+            "mission owner or current Coordinator required"
+        );
+        // Retrying the exact current instruction must not invalidate a running
+        // permission or its acknowledgment. Different scope still creates a
+        // new signed direction and requires fresh execution consent.
+        if let Some(direction) = &view.direction
+            && direction.source == "individual"
+            && direction.author == key
+            && direction.text == text
+            && let Some(event) = self.event(&direction.id)?
+            && matches!(&event.body.payload, Payload::AgentDirected { control, .. } if control == revision)
+        {
+            return Ok(event);
+        }
         self.append(
             author,
             mission,

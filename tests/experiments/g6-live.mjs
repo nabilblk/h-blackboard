@@ -1,7 +1,7 @@
 // Run with Electron for real OS-protected node identities. Requires explicit
 // --run, three already authenticated disposable guests, and paid subscription
 // use. A single operator/Mac rehearsal cannot satisfy the distributed G6 gate.
-import { app, safeStorage } from "electron";
+import { app, safeStorage, protocol } from "electron";
 import assert from "node:assert/strict";
 import {
   appendFileSync,
@@ -18,6 +18,7 @@ import { ExecutionStore } from "../../desktop/execution/store.mjs";
 import { ExecutionManager } from "../../desktop/execution/manager.mjs";
 import { LimaProvider } from "../../desktop/execution/lima.mjs";
 import { exportWorkspace } from "../../desktop/execution/files.mjs";
+import { createArtifactViewer } from "../../desktop/artifact-viewer.mjs";
 import {
   runtimePolicy,
   policyDigest,
@@ -86,6 +87,13 @@ if (previousManifest) {
 mkdirSync(join(root, "app"), { recursive: true, mode: 0o700 });
 app.setName("Harakiri Desktop");
 app.setPath("userData", join(root, "app"));
+app.on("window-all-closed", () => {});
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "harakiri-artifact",
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+]);
 // Do not await readiness at module top level: Electron finishes loading this
 // entry module before emitting ready. Schedule the driver after initialization.
 app
@@ -96,6 +104,8 @@ app
       peer(profileRoot, label, safeStorage),
     );
     const [a, b, c] = peers;
+    const viewer = createArtifactViewer(a.n, () => null);
+    const layoutChecks = new Map();
     const config = JSON.parse(
       readFileSync("var/experiments/g6/vms.json", "utf8"),
     );
@@ -146,6 +156,8 @@ app
       "desktop/execution/guest/bridge.py",
       "desktop/execution/guest/artifact_io.py",
       "desktop/execution/tools.mjs",
+      "desktop/artifact-viewer.mjs",
+      "desktop/artifact-layout.mjs",
     ];
     evidence.save("manifest.json", {
       ...result,
@@ -188,7 +200,7 @@ app
         void stopAll("Experiment interrupted by operator.");
       });
 
-    async function permit(p, purpose) {
+    async function permit(p, purpose, recovery = 0) {
       const context = await p.agent.channel.request({ type: "context" });
       const previous = (await ledger()).grants
         .filter((g) => g.registration === context.agent.id)
@@ -245,11 +257,33 @@ app
         grant,
         generation: journal.generation,
         receipt: journal.receipt,
+        reason: journal.reason,
+        interruption: journal.interruption ?? null,
       });
       await until(
         async () => (await ledger()).grants.find((g) => g.id === grant)?.sealed,
         "sealed permission reaches owner",
       );
+      if (journal.interruption?.code === "direction_changed") {
+        assert.ok(
+          recovery < 2,
+          "Repeated direction changes exceeded the supervised recovery limit.",
+        );
+        assert.ok(
+          journal.session,
+          "Interrupted work did not preserve a native session.",
+        );
+        evidence.record("operator_recovery_approval", {
+          peer: p.label,
+          previous_grant: grant,
+          interruption: journal.interruption,
+          session: journal.session,
+          attempt: recovery + 1,
+          reason:
+            "Supervisor explicitly approves a new bounded permission after confirmed termination. Production contributors must approve locally.",
+        });
+        return permit(p, purpose, recovery + 1);
+      }
     }
 
     async function outputFor(input, inputArtifact) {
@@ -290,13 +324,94 @@ app
           revision: artifact.revision,
           evaluation,
         });
+        if (!layoutChecks.has(artifact.revision)) {
+          const inspection = await viewer.inspect(
+            {
+              mission,
+              revision: artifact.revision,
+              path: detail.document.entrypoint,
+            },
+            detail,
+          );
+          layoutChecks.set(artifact.revision, inspection);
+          evidence.save(`layout-${artifact.revision}.json`, inspection);
+          const failed = inspection.checks.some(
+            (x) =>
+              x.documentWidth > x.viewport || x.errors.length || x.nodeAccess,
+          );
+          await a.n.handle("artifactAction", {
+            mission,
+            control: (await view()).lifecycle.revision,
+            conversation: detail.artifact.conversation,
+            action: {
+              type: "review",
+              revision: artifact.revision,
+              verdict: failed ? "changes_requested" : "inconclusive",
+              summary:
+                "Operator's bounded layout measurement. Content, interactions and visual quality need separate review.",
+              conditions: `${inspection.engine}. ${inspection.limitations}`,
+              checks: inspection.checks.map((x) => ({
+                method: "browser_check",
+                result:
+                  x.documentWidth > x.viewport ||
+                  x.errors.length ||
+                  x.nodeAccess
+                    ? "failed"
+                    : "passed",
+                details: Buffer.from(
+                  `${x.viewport}px viewport; ${x.documentWidth}px document. Errors: ${x.errors.join("; ")}. Overflow: ${x.overflow.map((e) => `${e.tag} ${e.id}: ${e.text}`).join("; ")}`,
+                )
+                  .subarray(0, 1000)
+                  .toString("utf8"),
+              })),
+              evidence: [],
+            },
+          });
+          evidence.record("operator_intervention", {
+            reason:
+              "Published exact-revision desktop/phone layout measurements; no acceptance or agent browser access.",
+            revision: artifact.revision,
+            failed,
+          });
+        }
+        const layout = layoutChecks.get(artifact.revision);
+        const layoutPassed = layout.checks.every(
+          (x) =>
+            x.documentWidth <= x.viewport && !x.errors.length && !x.nodeAccess,
+        );
+        let handoff = null;
+        for (const item of page.items.filter(
+          (x) => x.kind === "report" && x.stage === "complete" && !x.stale,
+        )) {
+          const report = await a.n.handle("artifactDetail", {
+            mission,
+            revision: item.revision,
+          });
+          if (
+            report.document.inputs.includes(inputArtifact) &&
+            report.document.inputs.includes(artifact.revision)
+          ) {
+            handoff = item.revision;
+            break;
+          }
+        }
         if (
           evaluation.passed &&
+          layoutPassed &&
+          handoff &&
           detail.reviews.some(
-            (r) => r.verdict === "verified" && !r.self_review && !r.stale,
+            (r) =>
+              r.verdict === "verified" &&
+              !r.self_review &&
+              !r.stale &&
+              r.checks.some(
+                (check) =>
+                  check.method === "executed_tests" &&
+                  check.result === "passed",
+              ),
           )
         )
-          return { artifact, detail, evaluation };
+          return { artifact, detail, evaluation, handoff, layout };
       }
       return null;
     }
@@ -306,8 +421,11 @@ app
       // preserving an unlimited mission budget. Every new turn is a fresh grant.
       for (let round = 1; round <= 4; round++) {
         evidence.record("round_started", { input: input.revision, round });
+        // Direction changes invalidate work permissions. Let the Coordinator
+        // finish directing the round before approving parallel worker turns.
+        await permit(a, "work");
         const runs = await Promise.allSettled(
-          peers.map(async (p) => {
+          [b, c].map(async (p) => {
             try {
               await permit(p, "work");
             } catch (error) {
@@ -326,7 +444,7 @@ app
         if (output) return output;
         await a.n.handle("postMessage", {
           mission,
-          text: "Experiment checkpoint: continue the current plan. Final application must include schedule.json, budget.json, its offline HTML entrypoint and a Python checker, cite the current input artifact, and receive an independent exact-version review. Report any blocker honestly.",
+          text: "Experiment checkpoint: continue the current plan. Final application must include schedule.json, budget.json, offline HTML and a Python checker, cite the current input artifact, and receive an independent exact-version review with executed_tests scope and honest environment/results. Read the operator's exact-revision layout findings and fix any overflow or browser errors. Publish a complete report handoff whose inputs include both current input and application revisions. Keep human-facing times and costs readable, technical IDs secondary. Use messages for updated review targets within the existing direction. Report blockers honestly.",
         });
         evidence.record("operator_intervention", {
           reason:
@@ -414,11 +532,34 @@ app
           );
         p.claimed = true;
         await p.provider.boot(fixture.contribution.id);
+        const guestState = await p.provider.inspect({
+          contribution: fixture.contribution,
+        });
         assert.ok(
-          (await p.provider.inspect({ contribution: fixture.contribution }))
-            .authenticated,
+          guestState.stopped,
+          `${p.label}: guest execution must be stopped before preparation.`,
+        );
+        assert.ok(
+          guestState.authenticated,
           `${p.label}: sign in inside its test guest first.`,
         );
+        if (!previousRoot) {
+          // Keep the guest's own login but never seed a fresh trial with the
+          // earlier agents' output. Preserve that workspace inside the guest.
+          const archive = `/var/lib/harakiri/test-workspaces/${root.split("/").at(-1)}`;
+          await p.provider.guest(fixture.contribution.id, [
+            "python3",
+            "-c",
+            "import os,pwd,stat,sys\np='/workspace'; d=sys.argv[1]\nassert stat.S_ISDIR(os.lstat(p).st_mode)\nos.makedirs(os.path.dirname(d), mode=0o700, exist_ok=True)\nassert not os.path.exists(d)\nos.rename(p,d)\nos.mkdir(p,0o700)\nu=pwd.getpwnam('hb-worker'); os.chown(p,u.pw_uid,u.pw_gid)",
+            archive,
+          ]);
+          evidence.record("previous_workspace_preserved", {
+            peer: p.label,
+            guest_archive: archive,
+            new_workspace: "empty",
+            native_session: "new",
+          });
+        }
         await p.provider.terminate({ contribution: fixture.contribution });
         const launch = p.provider.launch.bind(p.provider);
         let loggedBytes = 0;
@@ -618,6 +759,8 @@ app
         revision: baseline.artifact.revision,
         objective_checks: "passed",
         independent_agent_review: true,
+        layout_checks: "passed",
+        handoff: baseline.handoff,
       });
       const revisedInput = await publish(a.n, mission, {
         title: "Event inputs · venue changed",
@@ -646,6 +789,8 @@ app
         revision: final.artifact.revision,
         objective_checks: "passed",
         independent_agent_review: true,
+        layout_checks: "passed",
+        handoff: final.handoff,
       });
       result.outcome = "awaiting_human_visual_review";
       result.final_revision = final.artifact.revision;
@@ -657,6 +802,7 @@ app
       console.error(error);
       process.exitCode = 1;
     } finally {
+      viewer.close();
       await stopAll("Local rehearsal finished; retain all evidence.");
       if (mission) {
         await saveArtifacts().catch((error) =>

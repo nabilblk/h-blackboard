@@ -238,7 +238,7 @@ pub fn is_audience(value: &str) -> bool {
 
 impl EventBody {
     pub fn validate(&self) -> Result<()> {
-        if ![1, 2, 3, 4, 5, 6, 7, 8, limits::VERSION].contains(&self.version)
+        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, limits::VERSION].contains(&self.version)
             || (self.version < 3
                 && matches!(
                     self.payload,
@@ -333,6 +333,11 @@ impl EventBody {
                         }) =>
                     {
                         action.validate()?;
+                        if self.version < 10
+                            && matches!(action, crate::artifacts::ArtifactAction::Review { checks, .. } if !checks.is_empty())
+                        {
+                            return Err(Error::Invalid("scoped artifact checks require v10"));
+                        }
                     }
                     Payload::WorkRecorded {
                         control,

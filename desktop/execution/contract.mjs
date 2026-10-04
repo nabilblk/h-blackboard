@@ -128,6 +128,16 @@ export const Record = z
     expiresAt: z.number().int().nonnegative().nullable(),
     updatedAt: z.number().int().nonnegative(),
     reason: z.string().max(2048),
+    // Optional for journals created before interruption recovery was explicit.
+    interruption: z
+      .object({
+        code: z.literal("direction_changed"),
+        previous: Hash,
+        current: Hash,
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 

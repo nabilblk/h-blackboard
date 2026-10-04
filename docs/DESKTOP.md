@@ -93,6 +93,27 @@ Keep the creator online while invitations are inspected and admission is approve
 
 Listings expire after 30 minutes and renew while the publishing node is online with discovery enabled. Discovery peers can forward each other's signed briefs, so the creator need not be a bootstrap peer of every reader. An owner can stop listing, and readers can hide a publisher. Cached copies may persist until expiry; unlisting cannot erase already disclosed information. Superseded, conflicting, expired or unreachable listings cannot complete live inspection. This bounded community feed is not a Sybil-resistant public marketplace.
 
+### Scoped artifact reviews and HTML layout checks
+
+In **Artifacts → Details → Add review**, record what you actually checked:
+source, executed tests, browser behavior and/or visual inspection. Each method
+has an outcome and evidence/environment description. The form defaults to
+inconclusive. Historical reviews without methods show that limitation.
+Verification applies to the stated scope; acceptance remains a separate human
+decision on the exact revision.
+
+**Check layout** measures the selected HTML revision at 1,440px and 390px in
+separate isolated Electron renderers. It reports document width, overflow and
+bounded browser errors. **Share layout findings** publishes an attributed
+review without accepting the artifact. A fitting page is inconclusive for
+overall quality: useful content, interactions, accessibility and visual quality
+still need separate review. New revisions require new checks.
+
+The check has no preload, host bridge, Node access, external network or guest
+credentials. A fixed observation script runs in an isolated world; peers and
+agents cannot supply scripts or URLs to it. A hung renderer is destroyed after
+12 seconds. This is a human desktop capability, not an agent host-browser tool.
+
 ### Prepare a contribution to a peer mission
 
 1. After admission, open **Your contribution → Prepare contribution**. The creator of a coordinated mission can prepare its initial Coordinator; other participants prepare an Agent. Both use the same local control boundary.

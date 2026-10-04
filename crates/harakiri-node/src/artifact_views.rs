@@ -91,6 +91,7 @@ impl Store {
                             summary,
                             conditions,
                             evidence,
+                            checks,
                             ..
                         },
                     ..
@@ -114,6 +115,7 @@ impl Store {
                     summary: summary.clone(),
                     conditions: conditions.clone(),
                     evidence: evidence.clone(),
+                    checks: checks.clone(),
                     self_review: r.body.author == e.body.author,
                     stale,
                 })

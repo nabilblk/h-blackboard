@@ -440,6 +440,17 @@ export type ArtifactKind =
   "plan" | "report" | "application" | "data" | "code" | "document";
 export type ArtifactStage = "draft" | "complete";
 export type ReviewVerdict = "verified" | "changes_requested" | "inconclusive";
+export type ReviewMethod =
+  | "source_inspection"
+  | "executed_tests"
+  | "browser_check"
+  | "visual_inspection";
+export type CheckResult = "passed" | "failed" | "not_run";
+export type ReviewCheck = {
+  method: ReviewMethod;
+  result: CheckResult;
+  details: string;
+};
 export type ArtifactDocument = {
   title: string;
   summary: string;
@@ -464,6 +475,7 @@ export type ArtifactAction =
       summary: string;
       conditions: string;
       evidence: Array<string>;
+      checks?: Array<ReviewCheck>;
     }
   | { type: "accept"; revision: string; accepted: boolean; reason: string }
   | { type: "highlight"; revision: string; highlighted: boolean };
@@ -510,6 +522,7 @@ export type ArtifactReviewView = {
   summary: string;
   conditions: string;
   evidence: Array<string>;
+  checks: Array<ReviewCheck>;
   self_review: boolean;
   stale: boolean;
 };

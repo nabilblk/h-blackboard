@@ -46,6 +46,23 @@ const action = z.discriminatedUnion("type", [
       summary: text(4096),
       conditions: text(4096),
       evidence: ids(16),
+      checks: z
+        .array(
+          z
+            .object({
+              method: z.enum([
+                "source_inspection",
+                "executed_tests",
+                "browser_check",
+                "visual_inspection",
+              ]),
+              result: z.enum(["passed", "failed", "not_run"]),
+              details: text(1024),
+            })
+            .strict(),
+        )
+        .max(8)
+        .optional(),
     })
     .strict(),
   z
@@ -131,6 +148,7 @@ export const ArtifactRequests = {
     .object({ mission: id, transfer: artifactTransfer })
     .strict(),
   artifactOpen: z.object({ mission: id, revision: id, path }).strict(),
+  artifactInspect: z.object({ mission: id, revision: id, path }).strict(),
   artifactSave: z.object({ mission: id, revision: id, path }).strict(),
 };
 export const ArtifactAgentOperations = [

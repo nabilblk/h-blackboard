@@ -121,6 +121,11 @@ fn revisions_reviews_acceptance_and_exact_inputs_stay_separate() {
             &f.m,
             "main",
             ArtifactAction::Review {
+                checks: vec![ReviewCheck {
+                    method: ReviewMethod::SourceInspection,
+                    result: CheckResult::Passed,
+                    details: "Inspected the fixture's schedule; no browser was run.".into(),
+                }],
                 revision: page.id.clone(),
                 verdict: ReviewVerdict::Verified,
                 summary: "Opened and checked the times".into(),
@@ -133,6 +138,12 @@ fn revisions_reviews_acceptance_and_exact_inputs_stay_separate() {
     assert_eq!(d.artifact.review_status, "reviewed");
     assert!(!d.artifact.accepted);
     assert!(!d.reviews[0].self_review);
+    assert_eq!(d.reviews[0].checks.len(), 1);
+    assert_eq!(
+        d.reviews[0].checks[0].method,
+        ReviewMethod::SourceInspection
+    );
+    assert_eq!(d.reviews[0].checks[0].result, CheckResult::Passed);
     assert!(
         f.s.artifact_action(
             &f.b,

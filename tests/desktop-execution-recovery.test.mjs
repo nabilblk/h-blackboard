@@ -306,3 +306,55 @@ test("quit stops an idle prepared VM as well as active jobs", async (t) => {
   assert.equal(f.flags.launches, 0);
   assert.equal(f.store.read(f.id).status, "stopped");
 });
+
+test("direction interruption survives shutdown and resumes only with a fresh consented generation", async (t) => {
+  const { DirectionChanged } =
+    await import("../desktop/execution/permissions.mjs");
+  const f = fixture(t);
+  f.grant.purpose = "work";
+  const original = f.node.executionContext;
+  let changed = false;
+  f.node.executionContext = async (id, grant) => {
+    if (changed && grant === "c".repeat(64))
+      throw new DirectionChanged("1".repeat(64), "2".repeat(64));
+    return original(id, grant);
+  };
+  await f.manager.start(f.id, f.grant.id);
+  await waitFor(() => f.flags.running);
+  changed = true;
+  await waitFor(() => f.store.read(f.id).status === "stopped");
+  assert.equal(f.store.read(f.id).interruption.code, "direction_changed");
+  assert.equal(f.store.read(f.id).session, "saved-session");
+  assert.equal(f.reservations[0].stopped, true);
+  assert.equal(f.flags.launches, 1);
+  await f.manager.close();
+  assert.match(f.store.read(f.id).reason, /Direction changed/);
+  const resumed = new ExecutionManager({
+    store: f.store,
+    provider: f.provider,
+    node: f.node,
+    pollMs: 10,
+  });
+  Object.assign(f.grant, {
+    id: "3".repeat(64),
+    generation: 2,
+    sealed: false,
+    charged: 0,
+    reserved: 0,
+    consent: null,
+  });
+  await assert.rejects(resumed.start(f.id, f.grant.id), /consent|expired/);
+  assert.equal(f.flags.launches, 1);
+  f.grant.consent = "fresh-local-approval";
+  const resume = f.provider.resume.bind(f.provider);
+  f.provider.resume = (request) => {
+    assert.equal(request.session, "saved-session");
+    return resume(request);
+  };
+  await resumed.start(f.id, f.grant.id);
+  await waitFor(() => f.flags.launches === 2);
+  assert.equal(f.store.read(f.id).interruption, null);
+  await resumed.stop(f.id);
+  assert.equal(f.reservations.length, 2);
+  assert.ok(f.reservations.every((r) => r.stopped && r.used === 1));
+});

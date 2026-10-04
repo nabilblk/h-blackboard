@@ -1,4 +1,18 @@
 export type Runtime = "claude" | "codex" | "grok";
+export type ArtifactInspection = {
+  revision: string;
+  path: string;
+  engine: string;
+  limitations: string;
+  checks: {
+    viewport: number;
+    documentWidth: number;
+    errors: string[];
+    nodeAccess: boolean;
+    sampledElements: number;
+    overflow: { tag: string; id: string; text: string }[];
+  }[];
+};
 export type Limits =
   | { mode: "bounded"; concurrency: number; turns: number; minutes: number }
   | { mode: "unlimited"; concurrency: number };
@@ -136,6 +150,11 @@ export type NodeAPI = {
     size?: number;
   }>;
   artifactOpen(mission: string, revision: string, path: string): Promise<void>;
+  artifactInspect(
+    mission: string,
+    revision: string,
+    path: string,
+  ): Promise<ArtifactInspection>;
   artifactSave(
     mission: string,
     revision: string,

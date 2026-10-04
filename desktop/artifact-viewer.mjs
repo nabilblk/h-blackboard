@@ -4,6 +4,7 @@ import { BrowserWindow, session, dialog, app } from "electron";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
+import { layoutObservation, layoutLimitations } from "./artifact-layout.mjs";
 
 export const ARTIFACT_CSP = [
   "default-src 'none'",
@@ -87,7 +88,7 @@ export function createArtifactViewer(nodeService, ownerWindow) {
   ).then((parts) => parts.join(""));
   // Build failures surface when a reader is opened, without an unhandled rejection.
   void readerFonts.catch(() => {});
-  const open = async (input, detail) => {
+  const open = async (input, detail, observation = null) => {
     if (windows.size >= 6)
       throw new Error("Close an artifact window before opening another.");
     const file = detail.document.files.find((f) => f.path === input.path);
@@ -176,9 +177,10 @@ export function createArtifactViewer(nodeService, ownerWindow) {
       }
     });
     const win = new BrowserWindow({
-      width: 1100,
-      height: 820,
-      minWidth: 500,
+      width: observation?.width ?? 1100,
+      height: observation ? 900 : 820,
+      useContentSize: !!observation,
+      minWidth: observation ? 0 : 500,
       minHeight: 400,
       show: false,
       autoHideMenuBar: true,
@@ -207,16 +209,68 @@ export function createArtifactViewer(nodeService, ownerWindow) {
       void partition.closeAllConnections();
       void partition.clearStorageData();
     });
+    let timer;
+    const errors = [];
+    if (observation)
+      win.webContents.on("console-message", (details) => {
+        if (errors.length < 8 && details.level === "error")
+          errors.push(String(details.message).slice(0, 240));
+      });
     try {
-      await win.loadURL(
+      const loaded = win.loadURL(
         `${origin}/${html ? input.path.split("/").map(encodeURIComponent).join("/") : readerPath}`,
       );
+      if (observation)
+        return await Promise.race([
+          (async () => {
+            await loaded;
+            // The observation runs in an isolated JS world, separate from page
+            // globals. It is still a limited measurement, not a trust verdict.
+            const measured =
+              await win.webContents.executeJavaScriptInIsolatedWorld(999, [
+                { code: layoutObservation },
+              ]);
+            return { ...measured, errors };
+          })(),
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Artifact layout check timed out.")),
+              12000,
+            );
+          }),
+        ]);
+      await loaded;
       win.show();
     } catch (error) {
-      win.close();
+      if (!win.isDestroyed()) win.destroy();
       throw error;
+    } finally {
+      clearTimeout(timer);
+      if (observation && !win.isDestroyed()) win.destroy();
     }
     return null;
+  };
+  let inspecting = false;
+  const inspect = async (input, detail) => {
+    if (inspecting)
+      throw new Error("An artifact layout check is already running.");
+    if (!/\.html?$/i.test(input.path))
+      throw new Error("Choose an HTML artifact for a layout check.");
+    inspecting = true;
+    try {
+      const checks = [];
+      for (const width of [1440, 390])
+        checks.push(await open(input, detail, { width }));
+      return {
+        revision: input.revision,
+        path: input.path,
+        engine: `Chromium ${process.versions.chrome}`,
+        checks,
+        limitations: layoutLimitations,
+      };
+    } finally {
+      inspecting = false;
+    }
   };
   const save = async (input) => {
     const data = await nodeService.readArtifactFile(input);
@@ -231,6 +285,7 @@ export function createArtifactViewer(nodeService, ownerWindow) {
   };
   return {
     open,
+    inspect,
     save,
     close: () => {
       for (const win of windows) win.close();

@@ -93,7 +93,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(2))?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(
-            version <= 13,
+            version <= 14,
             "unsupported node database version; preserve this profile"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -331,6 +331,11 @@ impl Store {
         // with a v8 binary even though the disposable SQL indexes are unchanged.
         if version < 13 {
             connection.pragma_update(None, "user_version", 13)?;
+        }
+        // Scoped reviews need protocol v10. No table or signed-byte rewrite is
+        // needed, but old executables must refuse this profile before writing.
+        if version < 14 {
+            connection.pragma_update(None, "user_version", 14)?;
         }
         Ok(Self {
             artifact_cache: Default::default(),

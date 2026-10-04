@@ -101,7 +101,8 @@ Main history locally. Authentication directories and VM images are never copied
 into the evidence report.
 
 It waits for actual Coordinator readiness, records the operator's Start,
-executes parallel authorized turns, checks a reviewed baseline deliverable,
+lets the Coordinator finish its direction turn before parallel worker turns,
+checks a reviewed baseline deliverable,
 injects the input change, and checks the revised deliverable. Each turn uses a
 new permission generation. The mission budget remains unlimited; the runner
 has at most four observation rounds per phase and stops on a failed runtime or
@@ -112,6 +113,23 @@ silently repair agent output or manually mark an unsuccessful result complete.
 The final result remains **awaiting human visual review**, with no automatic
 human acceptance. Read `result.json` for observed outcomes, not the existence of
 an HTML file alone. Runtime failures and provider limits are experiment results.
+
+The repeat-run rubric also requires a scoped independent executed-test review,
+a current handoff referencing the exact input/application revisions, and bounded
+desktop/phone layout checks. The supervisor publishes those measurements as
+attributed findings; agents still have to repair their own artifacts. This is
+operator assistance, not autonomous guest browser access or proof of visual
+quality. If a direction changes during a turn, the supervisor may explicitly
+approve at most two replacement generations after confirmed stop, recording
+each intervention and preserving the session. Production contributors must
+approve each generation themselves.
+
+A fresh run starts new mission, participant and native-session identities.
+Before reuse, the stopped test guest's previous `/workspace` is moved into a
+private guest archive and a new empty workspace is created. Its own provider
+login remains in that same VM. No prior solution is seeded into the new run;
+the previous evidence and workspace are preserved. Continuations below retain
+their original workspace/session and must not be described as fresh trials.
 
 To stop test guests explicitly:
 

@@ -13,6 +13,38 @@ fn definition() -> MissionDefinition {
 }
 
 #[test]
+fn scoped_review_upgrade_preserves_v9_history_and_sets_downgrade_barrier() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("upgrade.sqlite");
+    let owner = Identity::from_seed([71; 32]);
+    let mut store = Store::open(&path).unwrap();
+    let template = store.create(&owner, "71".repeat(32), definition()).unwrap();
+    let legacy = owner
+        .sign(EventBody {
+            version: 9,
+            ..template.body.clone()
+        })
+        .unwrap();
+    store.import(&[legacy.bytes().to_vec()]).unwrap();
+    drop(store);
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.pragma_update(None, "user_version", 13).unwrap();
+    drop(db);
+    let store = Store::open(&path).unwrap();
+    assert_eq!(
+        store.event(&legacy.id).unwrap().unwrap().bytes(),
+        legacy.bytes()
+    );
+    drop(store);
+    let db = rusqlite::Connection::open(path).unwrap();
+    assert_eq!(
+        db.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
+            .unwrap(),
+        14
+    );
+}
+
+#[test]
 fn restart_reordered_import_and_duplicates_preserve_mission() {
     let root = tempfile::tempdir().unwrap();
     let owner = Identity::from_seed([1; 32]);

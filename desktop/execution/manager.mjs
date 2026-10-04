@@ -9,6 +9,7 @@ import {
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Id } from "../model.mjs";
+import { currentPermissions } from "./permissions.mjs";
 import {
   newRecord,
   permissionLease,
@@ -134,8 +135,23 @@ export class ExecutionManager {
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
     }
+    let permissions = [],
+      direction = null,
+      permissionProblem = null;
+    if (!this.closed && !this.busy.has(id)) {
+      try {
+        const current = await this.node.executionContext(id);
+        permissions = currentPermissions(current, record);
+        direction = current.context.agent.direction ?? null;
+      } catch (error) {
+        permissionProblem = error.message;
+      }
+    }
     return {
       record,
+      permissions,
+      direction,
+      permissionProblem,
       policy: runtimePolicy(contribution.runtime),
       capacity: this.provider.maximum ?? 1,
       busy: this.busy.has(id),
@@ -242,6 +258,7 @@ export class ExecutionManager {
         receipt: null,
         dispatched: false,
         expiresAt: lease.deadline,
+        interruption: null,
         reason:
           current.grant.purpose === "planning"
             ? "Coordinator planning only; waiting for human Start."
@@ -257,7 +274,7 @@ export class ExecutionManager {
       this.jobs.set(id, job);
       job.finished = this.run(id, job).catch(async (error) => {
         this.log(id, "failure", error.message);
-        await this.finish(id, job, error.message);
+        await this.finish(id, job, error);
       });
       return this.state(id);
     });
@@ -312,7 +329,7 @@ export class ExecutionManager {
       try {
         await this.check(id, job);
       } catch (error) {
-        void this.finish(id, job, error.message);
+        void this.finish(id, job, error);
       } finally {
         monitoring = false;
       }
@@ -464,12 +481,22 @@ export class ExecutionManager {
   }
   async finish(id, job, reason) {
     if (job.stopping) return job.stopping;
+    if (reason?.code === "direction_changed") {
+      this.store.update(id, {
+        interruption: {
+          code: reason.code,
+          previous: reason.previous,
+          current: reason.current,
+        },
+      });
+    }
+    const message = reason instanceof Error ? reason.message : reason;
     job.controller.abort();
     job.stopping = (async () => {
       // A delayed VM boot may finish after Stop was clicked. Fence the launch
       // promise before terminating, so no process can appear after the receipt.
       await job.launching?.catch(() => {});
-      await this.settle(id, reason);
+      await this.settle(id, message);
     })().finally(() => this.jobs.delete(id));
     return job.stopping;
   }
@@ -477,6 +504,9 @@ export class ExecutionManager {
     const contribution = this.contribution(id);
     let record = this.store.read(id);
     if (!record) return;
+    // Repeated Stop/desktop close must not erase the reason for a settled
+    // interruption. A new generation clears it only after current authorization.
+    if (record.status === "stopped") reason = record.reason;
     this.store.update(id, {
       status: "stopping",
       reason: reason.slice(0, 2048),

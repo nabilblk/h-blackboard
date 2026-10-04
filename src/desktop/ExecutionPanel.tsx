@@ -10,7 +10,15 @@ type ExecutionState = {
     session: string | null;
     generation: number | null;
     expiresAt: number | null;
+    interruption?: {
+      code: "direction_changed";
+      previous: string;
+      current: string;
+    } | null;
   };
+  permissions: GrantView[];
+  direction: { id: string; text: string } | null;
+  permissionProblem: string | null;
   capacity: number;
   busy: boolean;
   events: { at: number; type: string; message: string }[];
@@ -65,22 +73,10 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const [execution, ledger] = await Promise.all([
-          api.state(item.id),
-          item.sharedAgent
-            ? node.governance(item.mission.missionId)
-            : Promise.resolve(null),
-        ]);
+        const execution = await api.state(item.id);
         if (!cancelled) {
           setState(execution);
-          setGrants(
-            ledger?.grants.filter(
-              (g) =>
-                g.registration === item.sharedAgent?.registration &&
-                !g.sealed &&
-                Math.min(g.expires_ms, g.issued_ms + g.offline_ms) > Date.now(),
-            ) ?? [],
-          );
+          setGrants(execution.permissions);
         }
       } catch (e) {
         if (!cancelled)
@@ -102,7 +98,9 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
     setNotice("");
     try {
       await operation();
-      setState(await api.state(item.id));
+      const execution = await api.state(item.id);
+      setState(execution);
+      setGrants(execution.permissions);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Execution operation failed.");
     } finally {
@@ -135,6 +133,26 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
             ? `Prepare an isolated environment for this contribution, then sign in to ${runtimeLabel} inside it.`
             : "Prepare a contribution to a peer mission to use isolated execution on Apple Silicon with Lima.")}
       </p>
+      {status === "stopped" && state?.record?.interruption ? (
+        <div className="d-panel" role="status">
+          <h4>Direction changed · review before resuming</h4>
+          <p>
+            Your agent’s session and files are saved. Its previous permission is
+            settled. The mission owner must issue a permission for the current
+            direction; you approve it here.
+          </p>
+          {state.direction ? (
+            <p>
+              <strong>Current direction</strong>
+              <br />
+              {state.direction.text}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {state?.permissionProblem ? (
+        <p className="d-field-help">{state.permissionProblem}</p>
+      ) : null}
       <dl className="d-facts">
         <div>
           <dt>Environment</dt>
@@ -279,7 +297,9 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
                 <Play size={14} />{" "}
                 {permission?.purpose === "planning"
                   ? "Approve and plan"
-                  : "Approve and run"}
+                  : state?.record?.session
+                    ? "Approve and resume"
+                    : "Approve and run"}
               </button>
             </>
           ) : null}

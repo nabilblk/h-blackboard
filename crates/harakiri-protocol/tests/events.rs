@@ -295,6 +295,7 @@ fn artifact_v7_vectors_preserve_private_scope_files_and_exact_reviews() {
         (
             private.clone(),
             ArtifactAction::Review {
+                checks: vec![],
                 revision: "07".repeat(32),
                 verdict: ReviewVerdict::Verified,
                 summary: "Private checks".into(),
@@ -440,4 +441,57 @@ fn governance_v8_vectors_bind_allocations_and_exact_artifact_plans() {
     let expected: serde_json::Value =
         serde_json::from_slice(&std::fs::read(path).expect("checked-in protocol vector")).unwrap();
     assert_eq!(serde_json::to_value(actual).unwrap(), expected);
+}
+
+#[test]
+fn scoped_reviews_preserve_legacy_bytes_and_reject_contradictory_claims() {
+    use harakiri_protocol::artifacts::*;
+    let legacy = serde_json::json!({"type":"review","revision":"ab".repeat(32),"verdict":"verified","summary":"Read source","conditions":"No browser","evidence":[]});
+    let mut action: ArtifactAction = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&action).unwrap(), legacy);
+    if let ArtifactAction::Review { checks, .. } = &mut action {
+        checks.push(ReviewCheck {
+            method: ReviewMethod::SourceInspection,
+            result: CheckResult::Passed,
+            details: "Inspected index.html; no runtime test.".into(),
+        });
+        checks.push(ReviewCheck {
+            method: ReviewMethod::BrowserCheck,
+            result: CheckResult::NotRun,
+            details: "Browser unavailable.".into(),
+        });
+    }
+    action.validate().unwrap();
+    let identity = Identity::from_seed([7; 32]);
+    let body = EventBody {
+        version: 10,
+        mission: Some(genesis().id),
+        author: identity.public_key(),
+        audience: "main".into(),
+        sequence: 0,
+        previous: None,
+        authority: Some("09".repeat(32)),
+        created_at_ms: None,
+        payload: Payload::ArtifactRecorded {
+            control: "01".repeat(32),
+            authorization: None,
+            conversation: "main".into(),
+            action: action.clone(),
+        },
+    };
+    let signed = identity.sign(body.clone()).unwrap();
+    Event::verify(signed.bytes()).unwrap();
+    assert!(identity.sign(EventBody { version: 9, ..body }).is_err());
+    if let ArtifactAction::Review { checks, .. } = &mut action {
+        checks[1].result = CheckResult::Failed;
+    }
+    assert!(action.validate().is_err());
+    if let ArtifactAction::Review { verdict, .. } = &mut action {
+        *verdict = ReviewVerdict::ChangesRequested;
+    }
+    action.validate().unwrap();
+    if let ArtifactAction::Review { checks, .. } = &mut action {
+        checks[0].details = "x".repeat(1025);
+    }
+    assert!(action.validate().is_err());
 }

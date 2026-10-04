@@ -153,6 +153,7 @@ else {
       const artifacts = createArtifactViewer(nodeService, () => window);
       nodeService.openArtifact = artifacts.open;
       nodeService.saveArtifact = artifacts.save;
+      nodeService.inspectArtifact = artifacts.inspect;
       window.on("closed", () => artifacts.close());
       window.webContents.on("will-navigate", (event) => event.preventDefault());
       window.webContents.on("will-attach-webview", (event) =>

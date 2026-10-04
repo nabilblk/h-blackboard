@@ -199,7 +199,45 @@ export async function artifactProof(
     browser("screenshot", join(evidence, "artifact-text-reader.png"));
     await closePreview(reader, b.port);
     browser("tab", "0");
+    b.button("Check layout");
+    // Agent-browser follows newly created targets, including hidden inspection
+    // windows which are destroyed immediately. Rebind to the workspace while
+    // both bounded inspections complete; never change the artifact's page.
+    let layoutVisible = false;
+    const inspectionDeadline = Date.now() + 30000;
+    while (Date.now() < inspectionDeadline) {
+      try {
+        browser("tab", "0");
+        layoutVisible = b.evaluate(
+          "document.querySelector('.n-artifacts')?.textContent.includes('390px viewport')",
+        );
+        if (layoutVisible) break;
+      } catch (error) {
+        if (!error.message.includes("Session with given id not found"))
+          throw error;
+      }
+      await wait(200);
+    }
+    assert.ok(layoutVisible, "Exact revision layout measurement missing");
+    browser("tab", "0");
+    b.button("Share layout findings");
+    await a.wait(
+      "document.querySelector('.n-artifact-reviews')?.textContent.includes('Automated layout check')",
+      "Layout findings did not replicate",
+    );
+    assert.equal(networkHits, 0);
     b.button("Add review");
+    assert.equal(
+      b.evaluate("document.querySelector('select[name=verdict]').value"),
+      "inconclusive",
+    );
+    b.browser("select", "select[name=verdict]", "verified");
+    b.browser("select", "select[name=check_browser_check]", "passed");
+    b.browser(
+      "fill",
+      "textarea[name=details_browser_check]",
+      "Electron native preview: activity button and relative CSS passed. Network, host bridge, frame and popup probes denied. No visual or accessibility review.",
+    );
     b.browser(
       "fill",
       "textarea[name=summary]",
@@ -214,6 +252,11 @@ export async function artifactProof(
     await a.wait(
       "document.querySelector('.n-artifact-reviews')?.textContent.includes('Checked the exact guide')",
       "Review did not replicate",
+    );
+    assert.ok(
+      a
+        .evaluate("document.querySelector('.n-artifact-reviews').textContent")
+        .includes("Browser checks · passed"),
     );
     a.button("Record acceptance");
     a.browser(

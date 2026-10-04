@@ -37,6 +37,32 @@ pub enum ReviewVerdict {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewMethod {
+    SourceInspection,
+    ExecutedTests,
+    BrowserCheck,
+    VisualInspection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckResult {
+    Passed,
+    Failed,
+    NotRun,
+}
+
+/// An attributed report of what was checked, not a host execution attestation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewCheck {
+    pub method: ReviewMethod,
+    pub result: CheckResult,
+    pub details: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactDocument {
     pub title: String,
@@ -63,6 +89,8 @@ pub enum ArtifactAction {
         summary: String,
         conditions: String,
         evidence: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        checks: Vec<ReviewCheck>,
     },
     Accept {
         revision: String,
@@ -143,12 +171,20 @@ impl ArtifactAction {
                 summary,
                 conditions,
                 evidence,
+                verdict,
+                checks,
                 ..
             } => {
                 is_hash(revision)
                     && text(summary, 4096, false)
                     && text(conditions, 4096, false)
                     && ids(evidence, 16)
+                    && checks.len() <= 8
+                    && checks.iter().all(|c| text(&c.details, 1024, false))
+                    && (*verdict != ReviewVerdict::Verified
+                        || checks.is_empty()
+                        || (checks.iter().any(|c| c.result == CheckResult::Passed)
+                            && checks.iter().all(|c| c.result != CheckResult::Failed)))
             }
             Self::Accept {
                 revision, reason, ..
@@ -232,6 +268,7 @@ pub struct ArtifactReviewView {
     pub summary: String,
     pub conditions: String,
     pub evidence: Vec<String>,
+    pub checks: Vec<ReviewCheck>,
     pub self_review: bool,
     pub stale: bool,
 }

@@ -40,7 +40,7 @@ pub fn activity(payload: &Payload) -> Option<(&'static str, String)> {
             harakiri_protocol::work::WorkAction::AssignTask { approach, .. } => format!("Task attempt assigned.\n\n{approach}"),
             harakiri_protocol::work::WorkAction::ReportAttempt { summary, .. } => format!("Task progress reported.\n\n{summary}"),
         })),
-        Payload::AgentAcknowledged { .. } => Some(("acknowledgment", "Acknowledged the assigned direction. This confirms receipt; execution is not enabled.".into())),
+        Payload::AgentAcknowledged { .. } => Some(("acknowledgment", "Acknowledged the assigned direction. Receipt is recorded; execution status is tracked separately.".into())),
         Payload::GovernanceRecorded {action,..} => Some(("governance", match action {
             harakiri_protocol::governance::GovernanceAction::Criterion{wording,met,summary,..}=>format!("Criterion {}: {wording}\n\n{summary}",if *met {"reported met"}else{"not yet met"}),
             _=>"Resource permission or allowance updated. Open Budget & permissions for the signed ledger.".into(),

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.1";
+const desktopVersion = "0.4.2";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
 const desktopGuide = `${repository}/blob/pivot/renting-the-rent/docs/DESKTOP.md#run-on-macos`;
@@ -29,6 +29,7 @@ function DownloadDetails() {
     <div className="download-details">
       <p className="mono">v{desktopVersion} · Apple Silicon (M1 or later)</p>
       <p>Developer preview · not notarized.</p>
+      <p>Upgrading from v0.4.1? Update every connected desktop.</p>
       <div className="download-links">
         <a href={desktopGuide}>Installation &amp; setup</a>
         <a
@@ -438,7 +439,7 @@ const features = [
   {
     icon: Layers3,
     title: "Coordination stays visible",
-    body: "The product model keeps optional workstreams, tasks, budgets and versioned artifacts. Bringing this full model to replicated desktop state is the next stage.",
+    body: "Optional workstreams, tasks, budgets and versioned artifacts live beside the conversation. Peers retain their authorized shared history; people inspect the evidence and decide what is complete.",
   },
   {
     icon: ShieldCheck,
@@ -448,6 +449,10 @@ const features = [
 ];
 
 const questions = [
+  {
+    title: "What’s new in v0.4.2?",
+    body: "Interrupted agent sessions can resume with a fresh execution approval. Artifact reviews distinguish source reading, executed tests, browser checks and visual inspection. People can check saved HTML layouts at desktop and phone sizes, then share the findings in the mission.",
+  },
   {
     title: "Can I run the decentralized product today?",
     body: "It is a developer preview. Local missions, approved peer exchange, discovery, workstreams, tasks, artifacts and budgets are implemented. Claude Code, Codex and Grok Build have isolated execution paths on Apple Silicon, verified locally with guest logins and real mission artifacts. The original trusted-local Blackboard experiment remains available in the repository.",

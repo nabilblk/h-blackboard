@@ -6,7 +6,9 @@ The desktop on `pivot/renting-the-rent` creates local missions and connects peop
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.1 developer preview** DMG and its SHA-256 checksum. Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. For agent execution, install Lima and follow the [isolated runtime setup](EXECUTION.md#first-run).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.2 developer preview** DMG and its SHA-256 checksum. Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. For agent execution, install Lima and follow the [isolated runtime setup](EXECUTION.md#first-run).
+
+Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
 ```sh
 npm install
@@ -15,7 +17,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-The current source uses peer protocol 10 and SQLite schema 14. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use a separate development profile when comparing this source build with the downloadable 0.4.1 package (protocol 9 / schema 13).
+The 0.4.2 package and current source use peer protocol 10 and SQLite schema 14. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 

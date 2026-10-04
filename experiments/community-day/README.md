@@ -107,6 +107,9 @@ injects the input change, and checks the revised deliverable. Each turn uses a
 new permission generation. The mission budget remains unlimited; the runner
 has at most four observation rounds per phase and stops on a failed runtime or
 missing qualifying result. This bounds the test, not the mission's budget.
+Confirmed VM stop and a settled receipt do not count as a successful model turn:
+the driver also requires a completion event without a failure in that run.
+Cancellation stops the trial; it does not silently receive another grant.
 
 Every checkpoint reminder is recorded as an operator intervention. It does not
 silently repair agent output or manually mark an unsuccessful result complete.

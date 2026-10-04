@@ -1,6 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+// Confirmed termination is a safety fact, not a successful model turn. The
+// supervisor checks this after stop/settlement, using the current run's log.
+export function hasCompletedTurn(events, startedAt) {
+  const current = events.filter((event) => event.at >= startedAt);
+  return (
+    current.some((event) => event.type === "turn_completed") &&
+    !current.some((event) => event.type === "failure")
+  );
+}
+
 // Experiment rubric only, not a product acceptance rule. A completed artifact
 // with an outstanding objection is not independently verified for this trial.
 export function hasIndependentReview(reviews, method) {

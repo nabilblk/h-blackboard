@@ -6,7 +6,20 @@ import {
   checkPlan,
   deliveryPaths,
   hasIndependentReview,
+  hasCompletedTurn,
 } from "../experiments/community-day/check.mjs";
+
+test("a safely stopped or cancelled runtime is not a successful experiment turn", () => {
+  const prior = { at: 10, type: "turn_completed" };
+  const stopped = { at: 30, type: "stopped" };
+  const completed = { at: 25, type: "turn_completed" };
+  const failure = { at: 26, type: "failure" };
+  assert.equal(hasCompletedTurn([prior, stopped], 20), false);
+  assert.equal(hasCompletedTurn([prior, failure, stopped], 20), false);
+  assert.equal(hasCompletedTurn([completed, stopped], 20), true);
+  assert.equal(hasCompletedTurn([completed, failure, stopped], 20), false);
+  assert.equal(hasCompletedTurn([{ ...failure, at: 5 }, completed], 20), true);
+});
 
 test("handoff review cannot be replaced by publication, self-review or stale evidence", () => {
   const review = {

@@ -28,6 +28,7 @@ import {
   checkPlan,
   deliveryPaths,
   hasIndependentReview,
+  hasCompletedTurn,
 } from "../../experiments/community-day/check.mjs";
 import {
   evidenceAt,
@@ -258,6 +259,7 @@ app
         contributionId: p.agent.contribution.id,
       });
       evidence.record("execution_permitted", { peer: p.label, grant, purpose });
+      const startedAt = Date.now();
       await p.manager.start(p.agent.contribution.id, grant);
       await until(
         async () => {
@@ -303,6 +305,11 @@ app
         });
         return permit(p, purpose, recovery + 1);
       }
+      const { events } = await p.manager.state(p.agent.contribution.id);
+      assert.ok(
+        hasCompletedTurn(events, startedAt),
+        `${p.label} stopped without a successful current turn: ${journal.reason}`,
+      );
     }
 
     async function outputFor(input, inputArtifact) {

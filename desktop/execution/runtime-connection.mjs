@@ -6,6 +6,7 @@ const toolNames = [
   "workspace_exec",
   "workspace_read",
   "workspace_write",
+  "import_artifact",
   "publish_artifact",
 ];
 const scopedClaudeTool = (name) =>

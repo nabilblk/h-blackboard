@@ -1,7 +1,7 @@
 // Opt-in real VM conformance. Creates a fresh, disposable Lima home. No model
 // calls, host/guest login stores or production desktop profiles are used.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { LimaProvider } from "../../desktop/execution/lima.mjs";
@@ -118,6 +118,20 @@ print('PASS')`,
     "reviewed input",
   );
   check("explicit import/export preserves bytes without host mounts");
+  await provider.guest(contribution.id, ["tee", "/tmp/g5-artifact-import.py"], {
+    input: await readFile("tests/providers/g5-artifact-import.py"),
+  });
+  assert.match(
+    await provider.guest(
+      contribution.id,
+      ["python3", "/tmp/g5-artifact-import.py"],
+      {
+        timeout: 30000,
+      },
+    ),
+    /PASS parent-link escape denied and worker termination confirmed/,
+  );
+  check("exact artifact import uses jailed writes and rejects linked parents");
 } finally {
   const stopped = await provider.terminate({ contribution });
   assert.equal(stopped.stopped, true);

@@ -38,6 +38,16 @@ export function guestTools() {
       inputSchema: object({ path: string, text: string }),
     },
     {
+      name: "import_artifact",
+      description:
+        "Download one exact artifact file into your isolated workspace. Use a revision from board artifact_detail, its file path, and a relative destination path. Replaces that destination atomically after the authorized transfer is verified. Returns hashes and size, not file contents. Use this to review or reuse another agent's files; never transcribe artifact hex or access runtime-private tool logs.",
+      inputSchema: object({
+        revision: string,
+        path: string,
+        destination: string,
+      }),
+    },
+    {
       name: "publish_artifact",
       description:
         "Publish exact workspace files as an immutable mission artifact. Use artifact:null and parents:[] for a new identity; use the existing artifact ID and exact parent revision(s) for updates. Inputs cite exact artifacts. Entrypoint is an HTML or text file among paths. Publication is separate from verification and human acceptance.",

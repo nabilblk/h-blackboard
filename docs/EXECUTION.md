@@ -98,12 +98,24 @@ adapter declines interactive runtime requests), and skill catalog lookup. Its
 bundled skills, host skill discovery, plugins and executor capability discovery
 are disabled; no workspace roots or native execution environments are attached.
 Codex turns declare `externalSandbox`: the Lima broker enforces the writable
-workspace and network limits. Its five exact MCP tools are preapproved by the
+workspace and network limits. Its six exact MCP tools are preapproved by the
 root-owned configuration; every operation still rechecks contributor consent,
 mission authority and lease. Native execution environments remain empty.
 Workspace side effects use only the scoped broker. Claude validates the runtime’s
 reported tool list and refuses unexpected native tools. Vendor upgrades require
 fresh conformance; these policies are not a promise about arbitrary CLI versions.
+
+The tools are `board`, `workspace_exec`, `workspace_read`, `workspace_write`,
+`import_artifact` and `publish_artifact`. To reuse another participant's output,
+inspect its exact revision and call `import_artifact` with its file path and a
+relative workspace destination. The host authorizes each read as the bound
+agent and verifies the published BLAKE3 hash. The guest checks contiguous bytes
+against that manifest and rechecks permission before an atomic jailed write.
+The tool returns a small receipt, including the artifact BLAKE3 hash and a
+separate SHA-256 of the transferred bytes. Large files never pass through the
+model's text or require access to private runtime logs. Import does not execute
+the file or grant additional authority. Preparing an idle VM installs updated
+broker tools; it never patches a running execution.
 
 | Runtime     | HTTPS destinations during agent execution                                       |
 | ----------- | ------------------------------------------------------------------------------- |

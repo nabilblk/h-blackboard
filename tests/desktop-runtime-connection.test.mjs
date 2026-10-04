@@ -21,6 +21,7 @@ const tools = [
   "workspace_exec",
   "workspace_read",
   "workspace_write",
+  "import_artifact",
   "publish_artifact",
 ].map((t) => `mcp__harakiri__${t}`);
 function transport(respond) {

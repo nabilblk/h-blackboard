@@ -73,6 +73,7 @@ export async function buildDesktop() {
   for (const name of [
     "agent.md",
     "bridge.py",
+    "artifact_io.py",
     "control.py",
     "files.py",
     "mcp.py",

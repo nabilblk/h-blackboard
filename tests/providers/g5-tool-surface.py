@@ -125,7 +125,7 @@ try:
         assert tool.get("type", "function") in ("function", "custom"), tool
         names.append(tool["name"])
     prefix = "mcp__harakiri__" if runtime == "claude" else "mcp__harakiri."
-    scoped = {prefix + name for name in ("board", "workspace_exec", "workspace_read", "workspace_write", "publish_artifact")}
+    scoped = {prefix + name for name in ("board", "workspace_exec", "workspace_read", "workspace_write", "import_artifact", "publish_artifact")}
     allowed = scoped | ({"EndConversation"} if runtime == "claude" else {"update_plan", "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource", "request_user_input", "skills.list", "skills.read"})
     assert scoped <= set(names), names
     assert set(names) <= allowed, names

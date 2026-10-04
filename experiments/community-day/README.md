@@ -126,6 +126,21 @@ serve two runs. A killed driver or unconfirmed stop leaves the lock in place.
 Inspect its `owner.json`, the execution journals and the three VM states; confirm
 termination before manually removing that experiment lock and starting again.
 
+After a controlled stop during an unfinished baseline, continue the same
+mission, contribution identities, native sessions and settled journals:
+
+```sh
+env -u ELECTRON_RUN_AS_NODE ./node_modules/.bin/electron tests/experiments/g6-live.mjs --run --continue-from var/experiments/g6/live-REPLACE-WITH-RUN-ID
+```
+
+This explicitly prepares the idle guests with the current broker, issues new
+permission generations, and records the intervention in Main. A new evidence
+bundle links to the earlier attempt; it does not erase that attempt or reset
+usage. The existing baseline artifacts remain authoritative. Continuation
+currently supports a baseline interrupted before the disruption, and requires
+confirmed termination of every previous execution. It is not an unattended
+retry policy or a clean comparison between different software versions.
+
 ## 3. Independent-computer G6 trial
 
 Repeat with three people on three Apple Silicon Macs using the normal desktop,

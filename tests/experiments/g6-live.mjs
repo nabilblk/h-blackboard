@@ -5,6 +5,7 @@ import { app, safeStorage } from "electron";
 import assert from "node:assert/strict";
 import {
   appendFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -44,6 +45,33 @@ assert.ok(
   "Use --run to opt into real Grok subscription calls.",
 );
 const root = resolve(`var/experiments/g6/live-${randomUUID()}`);
+const resumeIndex = process.argv.indexOf("--continue-from");
+const previousRoot =
+  resumeIndex === -1 ? null : resolve(process.argv[resumeIndex + 1] || ".");
+if (previousRoot) {
+  assert.equal(dirname(previousRoot), resolve("var/experiments/g6"));
+  assert.match(previousRoot.split("/").at(-1), /^live-[a-f0-9-]{36}$/);
+  assert.ok(
+    existsSync(join(previousRoot, "result.json")),
+    "Previous driver must have finished cleanup.",
+  );
+}
+// Continuations keep identities, journals and native sessions, but write a new
+// evidence bundle. Never splice a changed implementation into an earlier run.
+const previousManifest = previousRoot
+  ? JSON.parse(readFileSync(join(previousRoot, "manifest.json")))
+  : null;
+const profileRoot = previousManifest?.profile_root ?? previousRoot ?? root;
+if (previousManifest) {
+  assert.equal(previousManifest.kind, "single-mac-live-rehearsal");
+  assert.equal(dirname(profileRoot), resolve("var/experiments/g6"));
+  assert.match(profileRoot.split("/").at(-1), /^live-[a-f0-9-]{36}$/);
+  assert.equal(
+    JSON.parse(readFileSync(join(previousRoot, "result.json"))).phases.length,
+    0,
+    "Continuation currently supports an unfinished baseline only.",
+  );
+}
 mkdirSync(join(root, "app"), { recursive: true, mode: 0o700 });
 app.setName("Harakiri Desktop");
 app.setPath("userData", join(root, "app"));
@@ -54,7 +82,7 @@ app
   .then(async () => {
     const evidence = evidenceAt(root);
     const peers = ["A", "B", "C"].map((label) =>
-      peer(root, label, safeStorage),
+      peer(profileRoot, label, safeStorage),
     );
     const [a, b, c] = peers;
     const config = JSON.parse(
@@ -86,6 +114,7 @@ app
       budget: "unlimited",
       g6_exit: "pending",
       phases: [],
+      continuation_of: previousRoot,
     };
     const view = (p = a) => current(p.n, mission);
     const ledger = (p = a) => p.n.handle("governance", { mission });
@@ -102,9 +131,14 @@ app
       "experiments/community-day/check.mjs",
       "tests/experiments/g6-live.mjs",
       "tests/experiments/g6-support.mjs",
+      "desktop/execution/guest/agent.md",
+      "desktop/execution/guest/bridge.py",
+      "desktop/execution/guest/artifact_io.py",
+      "desktop/execution/tools.mjs",
     ];
     evidence.save("manifest.json", {
       ...result,
+      profile_root: profileRoot,
       at: new Date().toISOString(),
       node: process.version,
       electron: process.versions.electron,
@@ -361,6 +395,8 @@ app
       );
       // Authentication is checked before creating a mission or making a paid call.
       for (const p of peers) {
+        const logs = join(root, p.label);
+        mkdirSync(logs, { recursive: true, mode: 0o700 });
         const fixture = config.participants.find((v) => v.label === p.label);
         assert.equal(fixture.contribution.runtime, "grok");
         p.provider = new LimaProvider({ directory: config.directory });
@@ -384,7 +420,7 @@ app
         let loggedBytes = 0;
         p.provider.launch = async (request) => {
           appendFileSync(
-            join(p.directory, "prompts.jsonl"),
+            join(logs, "prompts.jsonl"),
             JSON.stringify({
               at: new Date().toISOString(),
               prompt: request.prompt,
@@ -401,7 +437,7 @@ app
                 throw new Error(
                   "Raw evidence cap reached; stop instead of discarding runtime logs.",
                 );
-              appendFileSync(join(p.directory, "runtime-events.jsonl"), line, {
+              appendFileSync(join(logs, "runtime-events.jsonl"), line, {
                 mode: 0o600,
               });
               request.onEvent(event);
@@ -417,44 +453,82 @@ app
         await p.n.handle("configureDiscovery", {
           config: { ...discovery, bootstrap: [ticket] },
         });
-      ({ mission } = await a.n.handle("createMission", {
-        definition: {
-          name: "Community Science Day · Grok live rehearsal",
-          objective:
-            "Plan the Community Science Day from the authoritative Event inputs artifact. Deliver schedule.json, budget.json, a tested Python checker, and an independently reviewed offline HTML guide.",
-          scope: brief,
-          criteria: [
-            "All eight activities satisfy the current scheduling constraints",
-            "Accurate event budget with reserve stays within $900",
-            "Python checker rejects invalid schedules and documents testing",
-            "Usable offline HTML guide contains exact JSON and checker files",
-            "Independent review and current artifact lineage after the venue change",
-          ],
-          policy: {
-            coordination: "coordinated",
-            participation: "approval",
-            budget: { mode: "unlimited" },
-          },
-        },
-      }));
-      await a.n.handle("publishListing", {
-        mission,
-        summary: "Local community-day rehearsal",
-        capabilities: ["Scheduling", "Validation", "HTML"],
-        active: true,
-      });
-      for (const p of [b, c]) await joinDiscovered(a, p, mission);
-      const input = await publish(a.n, mission, {
-        title: "Event inputs",
-        path: "input.json",
-        bytes: Buffer.from(JSON.stringify(inputs, null, 2)),
-      });
-      for (const p of peers) {
-        p.agent = await prepareAgent(
-          p,
-          mission,
-          p === a ? "coordinator" : "agent",
+      if (previousRoot) {
+        mission = JSON.parse(readFileSync(join(previousRoot, "final-A.json")))
+          .mission.id;
+        assert.equal(
+          (await view()).lifecycle.phase,
+          "active",
+          "Continue an active unfinished rehearsal only.",
         );
+      } else
+        ({ mission } = await a.n.handle("createMission", {
+          definition: {
+            name: "Community Science Day · Grok live rehearsal",
+            objective:
+              "Plan the Community Science Day from the authoritative Event inputs artifact. Deliver schedule.json, budget.json, a tested Python checker, and an independently reviewed offline HTML guide.",
+            scope: brief,
+            criteria: [
+              "All eight activities satisfy the current scheduling constraints",
+              "Accurate event budget with reserve stays within $900",
+              "Python checker rejects invalid schedules and documents testing",
+              "Usable offline HTML guide contains exact JSON and checker files",
+              "Independent review and current artifact lineage after the venue change",
+            ],
+            policy: {
+              coordination: "coordinated",
+              participation: "approval",
+              budget: { mode: "unlimited" },
+            },
+          },
+        }));
+      if (!previousRoot)
+        await a.n.handle("publishListing", {
+          mission,
+          summary: "Local community-day rehearsal",
+          capabilities: ["Scheduling", "Validation", "HTML"],
+          active: true,
+        });
+      if (!previousRoot)
+        for (const p of [b, c]) await joinDiscovered(a, p, mission);
+      const savedInputs = previousRoot
+        ? JSON.parse(
+            readFileSync(join(previousRoot, "final-A.json")),
+          ).artifacts.filter((x) => x.title === "Event inputs")
+        : [];
+      if (previousRoot)
+        assert.equal(
+          savedInputs.length,
+          1,
+          "Continue only an unfinished baseline; do not silently replace revised input.",
+        );
+      const input = previousRoot
+        ? savedInputs[0].revision
+        : await publish(a.n, mission, {
+            title: "Event inputs",
+            path: "input.json",
+            bytes: Buffer.from(JSON.stringify(inputs, null, 2)),
+          });
+      for (const p of peers) {
+        if (previousRoot) {
+          const contributions = p.contributors.store
+            .read()
+            .contributions.filter((c) => c.mission.missionId === mission);
+          assert.equal(
+            contributions.length,
+            1,
+            "Expected one original contribution per participant.",
+          );
+          p.agent = {
+            contribution: contributions[0],
+            channel: p.n.openAgentChannel(contributions[0].id),
+          };
+        } else
+          p.agent = await prepareAgent(
+            p,
+            mission,
+            p === a ? "coordinator" : "agent",
+          );
         p.store = new ExecutionStore(join(p.directory, "execution"));
         p.manager = new ExecutionManager({
           store: p.store,
@@ -464,14 +538,35 @@ app
           pollMs: 1000,
         });
         p.n.executions = p.manager;
-        p.allocation = (
-          await govern(a, {
-            type: "allocate",
-            node: (await p.n.state()).identity.owner,
-            turns: null,
-            slots: 1,
-          })
-        ).event;
+        if (previousRoot) {
+          const identity = (await p.n.state()).identity.owner;
+          const allocations = (await ledger()).allocations.filter(
+            (x) => x.node === identity,
+          );
+          assert.equal(allocations.length, 1);
+          p.allocation = allocations[0].id;
+          const prior = p.store.read(p.agent.contribution.id);
+          assert.equal(
+            prior.status,
+            "stopped",
+            "Confirm prior termination before upgrading the guest.",
+          );
+          evidence.record("contribution_continued", {
+            peer: p.label,
+            contribution: p.agent.contribution.id,
+            session: prior.session,
+            generation: prior.generation,
+            receipt: prior.receipt,
+          });
+        } else
+          p.allocation = (
+            await govern(a, {
+              type: "allocate",
+              node: (await p.n.state()).identity.owner,
+              turns: null,
+              slots: 1,
+            })
+          ).event;
         await p.manager.prepare(p.agent.contribution.id);
         assert.equal(p.store.read(p.agent.contribution.id).status, "ready");
       }
@@ -480,27 +575,39 @@ app
           (await a.n.handle("agents", { mission })).items.length === 3,
         "three Grok contributions shared",
       );
-      await a.n.handle("appointCoordinator", {
-        mission,
-        revision: (await view()).lifecycle.revision,
-        contributionId: a.agent.contribution.id,
-      });
-      await permit(a, "planning");
-      const prepared = await view();
-      assert.ok(
-        prepared.lifecycle.readiness,
-        "Real Coordinator must record its own readiness.",
-      );
-      await a.n.handle("startMission", {
-        mission,
-        revision: prepared.lifecycle.revision,
-        readiness: prepared.lifecycle.readiness.id,
-      });
-      for (const p of [b, c])
-        await until(
-          async () => (await view(p)).lifecycle.phase === "active",
-          "human Start replication",
+      if (!previousRoot) {
+        await a.n.handle("appointCoordinator", {
+          mission,
+          revision: (await view()).lifecycle.revision,
+          contributionId: a.agent.contribution.id,
+        });
+        await permit(a, "planning");
+        const prepared = await view();
+        assert.ok(
+          prepared.lifecycle.readiness,
+          "Real Coordinator must record its own readiness.",
         );
+        await a.n.handle("startMission", {
+          mission,
+          revision: prepared.lifecycle.revision,
+          readiness: prepared.lifecycle.readiness.id,
+        });
+        for (const p of [b, c])
+          await until(
+            async () => (await view(p)).lifecycle.phase === "active",
+            "human Start replication",
+          );
+      } else {
+        await a.n.handle("postMessage", {
+          mission,
+          text: "Operator continuation after a confirmed stop: the scoped import_artifact tool is now available. Use the exact artifact revision, path and workspace destination to download shared files without copying hex or accessing private runtime logs. Preserve existing artifact identities and continue the current plan. All previous outputs and this intervention remain in the experiment evidence.",
+        });
+        evidence.record("operator_intervention", {
+          reason:
+            "Resume the same mission after upgrading the idle guest broker with exact artifact import.",
+          previous: previousRoot,
+        });
+      }
       const baseline = await workPhase(inputs, input);
       result.phases.push({
         input: "baseline",

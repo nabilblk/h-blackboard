@@ -18,6 +18,7 @@ import time
 import uuid
 from control import ENV, files, worker, runtime_properties
 from runtimes import command, environment
+from artifact_io import import_artifact
 
 MAX_LINE = 2 * 1024 * 1024
 output_lock = threading.Lock()
@@ -86,6 +87,8 @@ def serve_tool(connection):
             elif tool == "workspace_write":
                 value = files({"action": "write", "path": args["path"],
                                "base64": base64.b64encode(args["text"].encode()).decode()})
+            elif tool == "import_artifact":
+                value = import_artifact(args, board, files)
             elif tool == "publish_artifact":
                 paths = args["paths"]
                 if not isinstance(paths, list) or not 1 <= len(paths) <= 32 or len(set(paths)) != len(paths):

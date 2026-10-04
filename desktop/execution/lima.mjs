@@ -262,6 +262,7 @@ export class LimaProvider {
     for (const file of [
       "agent.md",
       "bridge.py",
+      "artifact_io.py",
       "mcp.py",
       "control.py",
       "files.py",

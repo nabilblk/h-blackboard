@@ -367,8 +367,7 @@ app
               type: "review",
               revision: artifact.revision,
               verdict: failed ? "changes_requested" : "inconclusive",
-              summary:
-                "Operator's independent schedule/budget validation and bounded layout measurement. Delivered checker execution, interactions and visual quality need separate review.",
+              summary: `Independent schedule/budget validation ${evaluation.passed ? "passed" : "failed"}. Layout: ${inspection.checks.map((x) => `${x.viewport}px viewport, ${x.documentWidth}px document, ${x.errors.length} errors`).join("; ")}. Wide elements can be inside scroll areas and do not alone mean page overflow. Delivered checker execution, interactions and visual quality need separate review.`,
               conditions: `Community Science Day independent JSON evaluator. ${inspection.engine}. ${inspection.limitations}`,
               checks: [
                 {
@@ -389,7 +388,7 @@ app
                       ? "failed"
                       : "passed",
                   details: Buffer.from(
-                    `${x.viewport}px viewport; ${x.documentWidth}px document. Errors: ${x.errors.join("; ")}. Overflow: ${x.overflow.map((e) => `${e.tag} ${e.id}: ${e.text}`).join("; ")}`,
+                    `${x.viewport}px viewport; ${x.documentWidth}px document. Errors: ${x.errors.join("; ") || "none"}. Wide elements (may be clipped inside scroll areas): ${x.overflow.map((e) => `${e.tag} ${e.id}: ${e.text}`).join("; ") || "none"}`,
                   )
                     .subarray(0, 1000)
                     .toString("utf8"),

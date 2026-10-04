@@ -12,7 +12,10 @@ import { join, resolve } from "node:path";
 import { NodeService } from "../../desktop/node-service.mjs";
 import { secureStorage } from "../helpers/secure-storage.mjs";
 
-const binary = resolve("var/node/target/debug/harakiri-node");
+const binary = resolve(
+  process.env.HARAKIRI_NODE_TEST_BINARY ||
+    "var/node/target/debug/harakiri-node",
+);
 const definition = {
   name: "Local test mission",
   objective: "Test offline preparation and recovery",

@@ -273,11 +273,20 @@ export function ArtifactPanel({
                             : `Overflows to ${check.documentWidth}px`}
                         </strong>
                         {check.errors.length ? (
-                          <p>{check.errors.length} browser error(s).</p>
+                          <details>
+                            <summary>
+                              {check.errors.length} browser error(s)
+                            </summary>
+                            {check.errors.map((error, index) => (
+                              <p key={index}>{error}</p>
+                            ))}
+                          </details>
                         ) : null}
                         {check.overflow.length ? (
                           <details>
-                            <summary>Overflowing content</summary>
+                            <summary>
+                              Wide elements · may be inside a scroll area
+                            </summary>
                             {check.overflow.map((item, index) => (
                               <p key={index}>
                                 {item.tag}
@@ -315,7 +324,13 @@ export function ArtifactPanel({
                               c.nodeAccess
                                 ? "failed"
                                 : "passed",
-                            details: `${c.viewport}px viewport, ${c.documentWidth}px document. ${c.errors.length} browser errors. Layout measurement only; interactions and visual quality were not tested.`,
+                            details: new TextDecoder().decode(
+                              new TextEncoder()
+                                .encode(
+                                  `${c.viewport}px viewport, ${c.documentWidth}px document. Layout measurement only; interactions and visual quality untested. Errors: ${c.errors.join("; ") || "none"}. Wide elements (may be in scroll areas): ${c.overflow.map((x) => `${x.tag}${x.id ? ` #${x.id}` : ""}: ${x.text}`).join("; ") || "none"}.`,
+                                )
+                                .subarray(0, 1000),
+                            ),
                           })),
                           evidence: [],
                         })

@@ -7,7 +7,9 @@ services are needed.
 
 Deliver:
 
-1. `schedule.json` with an `input_revision` and `sessions` array. Each session
+1. `schedule.json` with an `input_revision` and `sessions` array. `input_revision`
+   must equal the supplied JSON's `revision` value (for example, `baseline`),
+   not its Blackboard artifact ID. Each session
    has exactly `activity`, `room` and `start` (integer minutes after midnight).
    Schedule each activity once. Preserve durations, capacity, room eligibility,
    room closures, facilitator availability, setup time, volunteer and equipment
@@ -27,6 +29,10 @@ Deliver:
    the exact JSON files and checker with the final deliverable.
 5. An independently reviewed final handoff that cites exact input and output
    artifact revisions. Keep superseded revisions readable.
+
+Use the full Blackboard artifact revision ID in the artifact document's
+`inputs` list. This is distinct from the JSON data's `input_revision` field;
+both `schedule.json` and `budget.json` follow that same data convention.
 
 ## Collaboration
 

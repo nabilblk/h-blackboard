@@ -201,7 +201,25 @@ app
       });
 
     async function permit(p, purpose, recovery = 0) {
-      const context = await p.agent.channel.request({ type: "context" });
+      // A completed Coordinator turn does not imply that its newest direction
+      // has reached a worker. Wait for the signed state before granting it.
+      const { value: context } = await until(async () => {
+        const context = await p.agent.channel.request({ type: "context" });
+        const owner = await view();
+        if (context.lifecycle.revision !== owner.lifecycle.revision)
+          return null;
+        if (purpose === "work") {
+          const assigned = (await a.n.handle("agents", { mission })).items.find(
+            (agent) => agent.id === context.agent.id,
+          );
+          if (
+            !assigned?.direction ||
+            context.agent.direction?.id !== assigned.direction.id
+          )
+            return null;
+        }
+        return context;
+      }, "current control and direction reach contributor");
       const previous = (await ledger()).grants
         .filter((g) => g.registration === context.agent.id)
         .at(-1);
@@ -335,10 +353,12 @@ app
           );
           layoutChecks.set(artifact.revision, inspection);
           evidence.save(`layout-${artifact.revision}.json`, inspection);
-          const failed = inspection.checks.some(
-            (x) =>
-              x.documentWidth > x.viewport || x.errors.length || x.nodeAccess,
-          );
+          const failed =
+            !evaluation.passed ||
+            inspection.checks.some(
+              (x) =>
+                x.documentWidth > x.viewport || x.errors.length || x.nodeAccess,
+            );
           await a.n.handle("artifactAction", {
             mission,
             control: (await view()).lifecycle.revision,
@@ -348,28 +368,39 @@ app
               revision: artifact.revision,
               verdict: failed ? "changes_requested" : "inconclusive",
               summary:
-                "Operator's bounded layout measurement. Content, interactions and visual quality need separate review.",
-              conditions: `${inspection.engine}. ${inspection.limitations}`,
-              checks: inspection.checks.map((x) => ({
-                method: "browser_check",
-                result:
-                  x.documentWidth > x.viewport ||
-                  x.errors.length ||
-                  x.nodeAccess
-                    ? "failed"
-                    : "passed",
-                details: Buffer.from(
-                  `${x.viewport}px viewport; ${x.documentWidth}px document. Errors: ${x.errors.join("; ")}. Overflow: ${x.overflow.map((e) => `${e.tag} ${e.id}: ${e.text}`).join("; ")}`,
-                )
-                  .subarray(0, 1000)
-                  .toString("utf8"),
-              })),
+                "Operator's independent schedule/budget validation and bounded layout measurement. Delivered checker execution, interactions and visual quality need separate review.",
+              conditions: `Community Science Day independent JSON evaluator. ${inspection.engine}. ${inspection.limitations}`,
+              checks: [
+                {
+                  method: "executed_tests",
+                  result: evaluation.passed ? "passed" : "failed",
+                  details: Buffer.from(
+                    `Independent checkPlan(input, schedule, budget): ${evaluation.passed ? "passed" : JSON.stringify(evaluation.errors.slice(0, 6))}. This did not execute the delivered Python checker.`,
+                  )
+                    .subarray(0, 1000)
+                    .toString("utf8"),
+                },
+                ...inspection.checks.map((x) => ({
+                  method: "browser_check",
+                  result:
+                    x.documentWidth > x.viewport ||
+                    x.errors.length ||
+                    x.nodeAccess
+                      ? "failed"
+                      : "passed",
+                  details: Buffer.from(
+                    `${x.viewport}px viewport; ${x.documentWidth}px document. Errors: ${x.errors.join("; ")}. Overflow: ${x.overflow.map((e) => `${e.tag} ${e.id}: ${e.text}`).join("; ")}`,
+                  )
+                    .subarray(0, 1000)
+                    .toString("utf8"),
+                })),
+              ],
               evidence: [],
             },
           });
           evidence.record("operator_intervention", {
             reason:
-              "Published exact-revision desktop/phone layout measurements; no acceptance or agent browser access.",
+              "Published exact-revision data validation and desktop/phone layout measurements; no acceptance or agent browser access.",
             revision: artifact.revision,
             failed,
           });

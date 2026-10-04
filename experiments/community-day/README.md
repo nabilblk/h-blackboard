@@ -116,7 +116,8 @@ an HTML file alone. Runtime failures and provider limits are experiment results.
 
 The repeat-run rubric also requires a scoped independent executed-test review,
 a current handoff referencing the exact input/application revisions, and bounded
-desktop/phone layout checks. The supervisor publishes those measurements as
+desktop/phone layout checks. The supervisor publishes the independent JSON
+validation and layout measurements as
 attributed findings; agents still have to repair their own artifacts. This is
 operator assistance, not autonomous guest browser access or proof of visual
 quality. If a direction changes during a turn, the supervisor may explicitly

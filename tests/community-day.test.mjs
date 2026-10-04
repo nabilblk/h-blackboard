@@ -4,7 +4,59 @@ import { readFileSync } from "node:fs";
 import {
   applyDisruption,
   checkPlan,
+  deliveryPaths,
 } from "../experiments/community-day/check.mjs";
+
+test("delivery evaluation accepts data beside a nested HTML entrypoint without selecting unrelated files", () => {
+  const doc = (entrypoint, paths) => ({
+    entrypoint,
+    files: paths.map((path) => ({ path })),
+  });
+  assert.deepEqual(
+    deliveryPaths(
+      doc("guide/index.html", [
+        "guide/index.html",
+        "guide/schedule.json",
+        "guide/budget.json",
+        "guide/check.py",
+      ]),
+    ),
+    { schedule: "guide/schedule.json", budget: "guide/budget.json" },
+  );
+  assert.deepEqual(
+    deliveryPaths(
+      doc("index.html", [
+        "index.html",
+        "schedule.json",
+        "budget.json",
+        "check.py",
+      ]),
+    ),
+    { schedule: "schedule.json", budget: "budget.json" },
+  );
+  assert.equal(
+    deliveryPaths(
+      doc("guide/index.html", [
+        "guide/index.html",
+        "unrelated/schedule.json",
+        "budget.json",
+        "check.py",
+      ]),
+    ),
+    null,
+  );
+  assert.equal(
+    deliveryPaths(
+      doc("missing.html", [
+        "index.html",
+        "schedule.json",
+        "budget.json",
+        "check.py",
+      ]),
+    ),
+    null,
+  );
+});
 
 const baseline = JSON.parse(
   readFileSync(

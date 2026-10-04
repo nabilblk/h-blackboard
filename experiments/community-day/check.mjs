@@ -1,6 +1,28 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+// Data may sit beside a nested HTML entrypoint or at the bundle root. Never
+// pick a similarly named file from an unrelated directory or another artifact.
+export function deliveryPaths(document) {
+  const names = new Set(document.files.map((f) => f.path));
+  if (
+    !document.entrypoint?.endsWith(".html") ||
+    !names.has(document.entrypoint)
+  )
+    return null;
+  const directory = document.entrypoint.slice(
+    0,
+    document.entrypoint.lastIndexOf("/") + 1,
+  );
+  const choose = (name) =>
+    [directory + name, name].find((path) => names.has(path));
+  const schedule = choose("schedule.json"),
+    budget = choose("budget.json");
+  if (!schedule || !budget || ![...names].some((p) => p.endsWith(".py")))
+    return null;
+  return { schedule, budget };
+}
+
 export function applyDisruption(input, change) {
   if (input.revision !== change.supersedes)
     throw new Error("The disruption does not apply to this input revision.");

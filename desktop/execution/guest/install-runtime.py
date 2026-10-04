@@ -103,6 +103,8 @@ approval_mode = "approve"
 approval_mode = "approve"
 [mcp_servers.harakiri.tools.workspace_write]
 approval_mode = "approve"
+[mcp_servers.harakiri.tools.import_artifact]
+approval_mode = "approve"
 [mcp_servers.harakiri.tools.publish_artifact]
 approval_mode = "approve"
 ''')

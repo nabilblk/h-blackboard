@@ -25,6 +25,7 @@ import {
 import {
   applyDisruption,
   checkPlan,
+  deliveryPaths,
 } from "../../experiments/community-day/check.mjs";
 import {
   evidenceAt,
@@ -62,6 +63,16 @@ const previousManifest = previousRoot
   ? JSON.parse(readFileSync(join(previousRoot, "manifest.json")))
   : null;
 const profileRoot = previousManifest?.profile_root ?? previousRoot ?? root;
+const reasonIndex = process.argv.indexOf("--continuation-reason");
+const continuationReason =
+  reasonIndex === -1
+    ? "Resume after updating the idle guest broker with exact artifact import."
+    : process.argv[reasonIndex + 1];
+assert.ok(
+  typeof continuationReason === "string" &&
+    continuationReason.length > 0 &&
+    continuationReason.length <= 2048,
+);
 if (previousManifest) {
   assert.equal(previousManifest.kind, "single-mac-live-rehearsal");
   assert.equal(dirname(profileRoot), resolve("var/experiments/g6"));
@@ -250,29 +261,22 @@ app
           mission,
           revision: artifact.revision,
         });
-        const names = detail.document.files.map((f) => f.path);
-        if (
-          !artifact.entrypoint?.endsWith(".html") ||
-          !detail.document.inputs.includes(inputArtifact) ||
-          !names.some((name) => name.endsWith(".py")) ||
-          !names.includes("schedule.json") ||
-          !names.includes("budget.json")
-        )
-          continue;
+        const paths = deliveryPaths(detail.document);
+        if (!paths || !detail.document.inputs.includes(inputArtifact)) continue;
         let evaluation;
         try {
           const schedule = JSON.parse(
             await a.n.readArtifactFile({
               mission,
               revision: artifact.revision,
-              path: "schedule.json",
+              path: paths.schedule,
             }),
           );
           const budget = JSON.parse(
             await a.n.readArtifactFile({
               mission,
               revision: artifact.revision,
-              path: "budget.json",
+              path: paths.budget,
             }),
           );
           evaluation = checkPlan(input, schedule, budget);
@@ -600,15 +604,15 @@ app
       } else {
         await a.n.handle("postMessage", {
           mission,
-          text: "Operator continuation after a confirmed stop: the scoped import_artifact tool is now available. Use the exact artifact revision, path and workspace destination to download shared files without copying hex or accessing private runtime logs. Preserve existing artifact identities and continue the current plan. All previous outputs and this intervention remain in the experiment evidence.",
+          text: `Operator continuation after a confirmed stop: ${continuationReason} The scoped import_artifact tool transfers exact files into the workspace. Preserve existing artifact identities and continue the current plan. All previous outputs and this intervention remain in the experiment evidence.`,
         });
         evidence.record("operator_intervention", {
-          reason:
-            "Resume the same mission after upgrading the idle guest broker with exact artifact import.",
+          reason: continuationReason,
           previous: previousRoot,
         });
       }
-      const baseline = await workPhase(inputs, input);
+      const baseline =
+        (await outputFor(inputs, input)) ?? (await workPhase(inputs, input));
       result.phases.push({
         input: "baseline",
         revision: baseline.artifact.revision,

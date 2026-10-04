@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import uuid
 
 sys.path.insert(0, "/opt/harakiri")
@@ -54,6 +55,12 @@ if runtime == "claude":
     variables.update({"CLAUDE_CONFIG_DIR": directory, "ANTHROPIC_API_KEY": "fixture-not-a-secret", "ANTHROPIC_BASE_URL": base})
 else:
     variables["CODEX_HOME"] = directory
+    with open(private_directory() + "/config.toml", "rb") as f:
+        approvals = tomllib.load(f)["mcp_servers"]["harakiri"]["tools"]
+    with open("/opt/harakiri/tools.json") as f:
+        expected_tools = {tool["name"] for tool in json.load(f)}
+    assert set(approvals) == expected_tools, "Every scoped tool needs an explicit noninteractive policy"
+    assert all(value == {"approval_mode": "approve"} for value in approvals.values())
     shutil.copyfile(private_directory() + "/config.toml", directory + "/config.toml")
     with open(directory + "/config.toml", "r+") as f:
         original = f.read()

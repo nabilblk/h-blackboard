@@ -247,10 +247,31 @@ strong {
   background: var(--color-surface-hover);
   border-color: var(--color-border-hover);
 }
-.hero-footnote {
-  font-size: 10px;
+.download-details {
+  margin-top: 18px;
+  font-size: 13px;
+  line-height: 1.7;
   color: var(--color-text-secondary);
-  margin-top: 21px;
+}
+.download-details p {
+  font-size: inherit;
+  line-height: inherit;
+}
+.download-details .mono {
+  font-size: 12px;
+}
+.download-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 6px;
+}
+.download-links a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.download-links a:hover {
+  color: var(--color-accent-default);
 }
 
 .network {
@@ -973,12 +994,6 @@ strong {
 .invitation-content .button {
   margin-top: 23px;
 }
-.invitation-note {
-  display: block;
-  font-size: 10px;
-  color: var(--color-text-secondary);
-  margin-top: 13px;
-}
 .site-footer {
   padding-block: 28px 36px;
   border-top: 1px solid var(--color-border-default);
@@ -1347,10 +1362,6 @@ strong {
     padding: 12px 14px;
     gap: 14px;
   }
-  .hero-footnote {
-    font-size: 11px;
-    line-height: 1.7;
-  }
   .network-map {
     height: 430px;
   }
@@ -1577,10 +1588,6 @@ strong {
     font-size: 13px;
     padding-inline: 14px;
     gap: 12px;
-  }
-  .invitation-note {
-    font-size: 10px;
-    line-height: 1.7;
   }
   .site-footer {
     gap: 20px;

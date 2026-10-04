@@ -6,6 +6,8 @@ The desktop on `pivot/renting-the-rent` creates local missions and connects peop
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.1 developer preview** DMG and its SHA-256 checksum. Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. For agent execution, install Lima and follow the [isolated runtime setup](EXECUTION.md#first-run).
+
 ```sh
 npm install
 npm run desktop

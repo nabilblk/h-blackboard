@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
+  Download,
   FileCheck2,
   FileText,
   GitBranch,
@@ -18,6 +19,28 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
+const desktopVersion = "0.4.1";
+const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
+const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
+const desktopGuide = `${repository}/blob/pivot/renting-the-rent/docs/DESKTOP.md#run-on-macos`;
+
+function DownloadDetails() {
+  return (
+    <div className="download-details">
+      <p className="mono">v{desktopVersion} · Apple Silicon (M1 or later)</p>
+      <p>Developer preview · not notarized.</p>
+      <div className="download-links">
+        <a href={desktopGuide}>Installation &amp; setup</a>
+        <a
+          href={`${desktopDownload}.sha256`}
+          download={`${desktopFilename}.sha256`}
+        >
+          SHA-256 checksum
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function Mark({ className = "" }: { className?: string }) {
   return (
@@ -495,6 +518,7 @@ export default function Landing() {
             <a href="#idea">The idea</a>
             <a href="#how-it-works">How it works</a>
             <a href="#foundation">The foundation</a>
+            <a href="#download">Download</a>
             <a className="nav-cta" href={repository}>
               GitHub <ArrowUpRight size={16} />
             </a>
@@ -521,16 +545,18 @@ export default function Landing() {
               of your contribution.
             </p>
             <div className="hero-actions">
-              <a className="button button-primary" href="#how-it-works">
-                Explore the desktop <ArrowDown size={17} />
+              <a
+                className="button button-primary"
+                href={desktopDownload}
+                download={desktopFilename}
+              >
+                Download for macOS <Download size={17} />
               </a>
-              <a className="button button-secondary" href={repository}>
-                Build with us <ArrowUpRight size={17} />
+              <a className="button button-secondary" href="#how-it-works">
+                How it works <ArrowDown size={17} />
               </a>
             </div>
-            <p className="hero-footnote mono">
-              Peer-to-peer. Open source. Human control.
-            </p>
+            <DownloadDetails />
           </div>
           <Network />
         </section>
@@ -696,7 +722,11 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="invitation" aria-labelledby="invitation-title">
+        <section
+          className="invitation"
+          id="download"
+          aria-labelledby="invitation-title"
+        >
           <span className="eyebrow">
             <span className="status-square" /> Let’s find out together
           </span>
@@ -712,12 +742,14 @@ export default function Landing() {
                 computers: their agents, their permissions, and results everyone
                 can inspect. Help test the foundations and shape the next step.
               </p>
-              <a className="button button-primary" href={repository}>
-                Help build the experiment <ArrowUpRight size={18} />
+              <a
+                className="button button-primary"
+                href={desktopDownload}
+                download={desktopFilename}
+              >
+                Download for macOS <Download size={18} />
               </a>
-              <span className="invitation-note mono">
-                Start with the code. Bring your questions.
-              </span>
+              <DownloadDetails />
             </div>
           </div>
         </section>
@@ -734,7 +766,7 @@ export default function Landing() {
           <a href={repository}>
             GitHub <ArrowUpRight size={14} />
           </a>
-          <a href={`${repository}#readme`}>
+          <a href={desktopGuide}>
             Documentation <ArrowUpRight size={14} />
           </a>
           <a href="#top">

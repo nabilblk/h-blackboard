@@ -124,6 +124,10 @@ test(
       grant,
       contributionId: contribution.id,
     });
+    assert.equal(
+      (await n.executionContext(contribution.id, grant)).grant.id,
+      grant,
+    );
     const receipt = await cap.reserve({ grant, nonce: "bb".repeat(32) });
     assert.equal(receipt.execution_available, false);
     assert.deepEqual(
@@ -184,6 +188,21 @@ test(
     ledger = await n.handle("governance", { mission });
     assert.equal(ledger.allocations[0].charged, 1);
     assert.equal(ledger.execution_available, false);
+    const redirected = await n.handle("directAgent", {
+      mission,
+      revision: control,
+      registration: context.agent.id,
+      text: "Review the changed delivery requirements.",
+    });
+    await assert.rejects(
+      n.executionContext(contribution.id, grant),
+      (error) => {
+        assert.equal(error.code, "direction_changed");
+        assert.equal(error.previous, context.agent.direction.id);
+        assert.equal(error.current, redirected.event);
+        return true;
+      },
+    );
     await n.handle("missionAction", {
       mission,
       revision: control,

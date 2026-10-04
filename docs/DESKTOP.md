@@ -15,7 +15,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-The current source uses peer protocol 9 and SQLite schema 13. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use a separate development profile when comparing this source build with an earlier installed package.
+The current source uses peer protocol 10 and SQLite schema 14. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use a separate development profile when comparing this source build with the downloadable 0.4.1 package (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 
@@ -68,7 +68,7 @@ Open **Mission controls** within the channel. Main/private conversation remains 
 
 Only the mission owner controls these mission-wide actions. Other contributors can discuss setup, read the current state and withdraw their own participation. No global launcher or harness configuration changes. Readiness is an attestation about the plan, not a heartbeat or proof of runtime liveness. Shared agent direction, including the late-arrival rule, is implemented. Scoped runtime execution and exact agent acknowledgments are implemented. Owner-authorized handover is explicit; it never grants another device execution consent.
 
-Wire protocol **9** requires all connected desktops to upgrade. Existing histories remain readable; old pending join requests need another review. Approved membership is preserved. Inspecting an invitation now returns a fresh owner-signed current brief rather than only the original definition. If instructions change before approval, the contributor must inspect and request again. A fresh join request never authorizes execution.
+Wire protocol **10** requires all connected desktops to upgrade. Existing histories remain readable; old pending join requests need another review. Approved membership is preserved. Inspecting an invitation now returns a fresh owner-signed current brief rather than only the original definition. If instructions change before approval, the contributor must inspect and request again. A fresh join request never authorizes execution.
 
 ### Share a mission between desktops
 

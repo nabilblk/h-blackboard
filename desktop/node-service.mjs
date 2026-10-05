@@ -265,6 +265,7 @@ export const NodeRequests = {
   agents: z
     .object({ mission: id, after: id.nullable().default(null) })
     .strict(),
+  observations: z.object({ mission: id }).strict(),
   shareAgent: z
     .object({ mission: id, contributionId: Id, label: text(120) })
     .strict(),
@@ -433,7 +434,7 @@ export class NodeService {
     };
   }
 
-  async handle(method, input) {
+  async handle(method, input, native = {}) {
     const schema = NodeRequests[method];
     if (!schema) throw new Error("Unknown node operation.");
     const request = schema.parse(input);
@@ -490,6 +491,7 @@ export class NodeService {
         throw new Error("The mission changed. Review the new terms.");
       await this.contributors.handle("prepare", request, {
         nodeRevision: checked.reviewed_revision,
+        contributionId: native.contributionId,
       });
       this.contributionReviews.delete(request.reviewId);
       return this.contributors.snapshot();
@@ -702,6 +704,7 @@ export class NodeService {
       startMission: "start_mission",
       pauseMission: "pause_mission",
       agents: "agents",
+      observations: "observations",
       workEvidence: "work_evidence",
       workstreams: "workstreams",
       tasks: "tasks",
@@ -903,6 +906,69 @@ export class NodeService {
     });
   }
 
+  async publishExecutionObservations() {
+    if (this.closed || !this.executions || !this.contributors) return;
+    const snapshot = await this.state();
+    const bridge = await this.start(await this.keys.load());
+    const states = {
+      preparing: "setup",
+      login_required: "sign_in",
+      ready: "ready",
+      reserving: "starting",
+      launching: "starting",
+      running: "running",
+      waiting: "idle",
+      stopping: "stopping",
+      stopped: "stopped",
+      recovery_required: "recovery_required",
+      failed: "setup",
+    };
+    for (const c of this.contributors.store.read().contributions) {
+      if (c.status !== "prepared" || !c.sharedAgent || c.sharedAgent.withdrawn)
+        continue;
+      const mission = snapshot.missions.find(
+        (m) => m.id === c.mission.missionId,
+      );
+      if (!mission || mission.conflicted) continue;
+      const record = this.executions.store.read(c.id);
+      let reported = states[record?.status] ?? "setup";
+      if (
+        ["ready", "stopped"].includes(record?.status) &&
+        !["closed", "archived"].includes(mission.lifecycle.phase)
+      ) {
+        const view = await this.executions.state(c.id);
+        if (
+          view.agreement?.status === "interrupted" ||
+          view.agreement?.status === "review"
+        )
+          reported = "review_required";
+        else if (!view.agreement || view.agreement.status !== "active")
+          reported = view.permissions.some((g) => g.consent)
+            ? "ready"
+            : "awaiting_approval";
+        else if (
+          mission.lifecycle.phase !== "active" ||
+          !view.permissions.length
+        )
+          reported = "awaiting_owner";
+        else if (view.agent?.status === "waiting_for_direction")
+          reported = "awaiting_direction";
+      }
+      await bridge
+        .request({
+          type: "publish_observation",
+          report: {
+            mission: mission.id,
+            registration: c.sharedAgent.registration,
+            control: mission.lifecycle.revision,
+            grant: record?.grant ?? null,
+            state: reported,
+            issued_ms: 0,
+          },
+        })
+        .catch(() => {});
+    }
+  }
   async executionContext(contributionId, grantId) {
     Id.parse(contributionId);
     const bridge = await this.start(await this.keys.load());
@@ -933,6 +999,7 @@ export class NodeService {
           grant.registration !== local.sharedAgent.registration ||
           grant.control !== context.lifecycle.revision ||
           grant.sealed ||
+          grant.revoked ||
           grant.consent_binding !== executionBinding(contribution))
       )
         throw new Error(

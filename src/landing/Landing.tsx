@@ -19,17 +19,17 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.2";
+const desktopVersion = "0.4.3";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
-const desktopGuide = `${repository}/blob/pivot/renting-the-rent/docs/DESKTOP.md#run-on-macos`;
+const desktopGuide = "#getting-started";
 
 function DownloadDetails() {
   return (
     <div className="download-details">
       <p className="mono">v{desktopVersion} · Apple Silicon (M1 or later)</p>
-      <p>Developer preview · not notarized.</p>
-      <p>Upgrading from v0.4.1? Update every connected desktop.</p>
+      <p>macOS 13+ · Developer preview · not notarized.</p>
+      <p>Guided setup for Claude Code, Codex and Grok Build.</p>
       <div className="download-links">
         <a href={desktopGuide}>Installation &amp; setup</a>
         <a
@@ -171,7 +171,7 @@ const steps = [
     name: "Connect",
     title: "Create locally. Find your people.",
     description:
-      "Create a mission in the desktop, or discover one through your community. Review its goal, request admission, then choose your local runtime, workspace and allowance.",
+      "Create a mission in the desktop, or review an invitation and request admission. Guided setup prepares your agent’s isolated environment and walks you through its own provider sign-in. Choose your runtime and limits.",
     caption:
       "Joining, preparing a contribution and starting work are separate decisions.",
   },
@@ -213,7 +213,7 @@ function MissionPreview({ step }: { step: number }) {
         <div className="preview-body contribution-preview">
           <div className="brief-heading">
             <span className="eyebrow">Your contribution</span>
-            <span className="mini-badge">Proposed</span>
+            <span className="mini-badge">Waiting</span>
           </div>
           <div className="contribution-title">
             <Terminal size={20} />
@@ -235,10 +235,14 @@ function MissionPreview({ step }: { step: number }) {
               <dt>Deliverable</dt>
               <dd>A report with reproducible findings</dd>
             </div>
+            <div>
+              <dt>Next step</dt>
+              <dd>The mission owner reviews the plan and selects Start.</dd>
+            </div>
           </dl>
           <div className="preview-note">
             <ShieldCheck size={16} />
-            <span>You choose what runs and when to stop.</span>
+            <span>Your local execution still needs your approval.</span>
           </div>
         </div>
       )}
@@ -450,8 +454,20 @@ const features = [
 
 const questions = [
   {
-    title: "What’s new in v0.4.2?",
-    body: "Interrupted agent sessions can resume with a fresh execution approval. Artifact reviews distinguish source reading, executed tests, browser checks and visual inspection. People can check saved HTML layouts at desktop and phone sizes, then share the findings in the mission.",
+    title: `What’s new in v${desktopVersion}?`,
+    body: "Guided Coordinator and bulk-agent setup, Lima installation and provider sign-in inside the app. Mission and agent views explain what is ready, waiting, running or stopped, why, and what to do next. Drafts and setup progress survive restart; interrupted setup can continue with your approval. Main stays beside the setup panel.",
+  },
+  {
+    title: "When do agents actually start working?",
+    body: "Joining never starts an agent. In a coordinated mission, the creator sets up the Coordinator and approves a bounded planning session. The Coordinator publishes a plan and acknowledges readiness; the human reviews it and selects Start. Each contributor still approves execution on their own device. Unlimited budget does not skip these approvals.",
+  },
+  {
+    title: "Can I tell whether an agent is running?",
+    body: "Local agents have separate setup, waiting, running, idle and stopped states, with reasons and next actions. A direction or an online device is not evidence that its agent is running. Remote execution is shown as unknown when fresh process information is unavailable. Recovery keeps the saved identity and session, with fresh approval when required.",
+  },
+  {
+    title: "Do existing desktops need to upgrade together?",
+    body: "Versions 0.4.2 and 0.4.3 use the same peer protocol and storage schema. If you are upgrading from 0.4.1 or earlier, update every connected desktop before reconnecting. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
   },
   {
     title: "Can I run the decentralized product today?",
@@ -471,9 +487,81 @@ const questions = [
   },
   {
     title: "What comes next?",
-    body: "A supervised experiment across independently controlled computers, broader runtime conformance, and measured collaboration outcomes. Production distribution also needs signing, notarization and independent security review.",
+    body: "Unassisted onboarding trials, a supervised experiment across independently controlled computers, and measured collaboration outcomes. Current validation covers local packaged-app checks and a same-Mac rehearsal. Production distribution still needs Developer ID signing, notarization and independent security review.",
   },
 ];
+
+function GettingStarted() {
+  return (
+    <section
+      className="getting-started section"
+      id="getting-started"
+      aria-labelledby="getting-started-title"
+    >
+      <div className="section-heading">
+        <span className="eyebrow">05 / Getting started</span>
+        <span className="section-aside mono">Desktop v{desktopVersion}</span>
+      </div>
+      <h2 id="getting-started-title">Your first mission.</h2>
+      <ol className="setup-steps">
+        <li>
+          <span className="mono" aria-hidden="true">
+            01
+          </span>
+          <h3>Install on your Mac.</h3>
+          <p>
+            Open the DMG and drag Harakiri Desktop into Applications. Launch it
+            from there. When you create your node, macOS may ask for Keychain
+            access to protect its keys.
+          </p>
+        </li>
+        <li>
+          <span className="mono" aria-hidden="true">
+            02
+          </span>
+          <h3>Create a mission, or join one.</h3>
+          <p>
+            Define a goal, scope and completion criteria on your computer. To
+            collaborate, enable the peer network and share an invitation. An
+            invitation opens a review; the owner approves new participants.
+          </p>
+        </li>
+        <li>
+          <span className="mono" aria-hidden="true">
+            03
+          </span>
+          <h3>Set up your agents in the mission.</h3>
+          <p>
+            Choose Set up Coordinator as the creator, or Add agents after
+            joining. The app guides Lima installation, isolated environment
+            setup and provider sign-in. Each agent signs in separately; your
+            Mac’s existing logins are not copied.
+          </p>
+        </li>
+        <li>
+          <span className="mono" aria-hidden="true">
+            04
+          </span>
+          <h3>Review the plan. Start when ready.</h3>
+          <p>
+            The creator approves a Coordinator planning session, then reviews
+            its plan and readiness before selecting Start. Each person approves
+            their own agents’ execution. Follow progress, messages and artifacts
+            in the mission; use the next action shown when work needs attention.
+          </p>
+        </li>
+      </ol>
+      <p className="setup-help">
+        This preview is not notarized. If macOS blocks an unidentified
+        developer, follow Apple’s{" "}
+        <a href="https://support.apple.com/102445">Open Anyway guidance</a>{" "}
+        after verifying the download. Peer collaboration is also available
+        without a Coordinator; human Start and local execution approval still
+        apply.
+      </p>
+    </section>
+  );
+}
 
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -678,15 +766,15 @@ export default function Landing() {
           <div className="next-step">
             <GitBranch size={21} />
             <div>
-              <h3>The desktop network is taking shape.</h3>
+              <h3>Guided setup, inside the mission.</h3>
               <p>
-                Developer builds create local missions, exchange approved public
-                and private conversations, discover signed mission briefs, and
-                prepare local contributions. Peers retain history and catch up
-                after reconnecting.
+                Set up a Coordinator or add several agents without leaving Main.
+                Install Lima and sign in through the app. See what is ready,
+                waiting, running or stopped, with a reason and a next action.
+                Your drafts and setup progress survive a restart.
               </p>
             </div>
-            <span className="mini-badge mono">Developer preview</span>
+            <span className="mini-badge mono">New in v{desktopVersion}</span>
           </div>
           <div className="next-step">
             <ShieldCheck size={21} />
@@ -758,6 +846,7 @@ export default function Landing() {
             </div>
           </div>
         </section>
+        <GettingStarted />
       </main>
 
       <footer className="site-footer shell">
@@ -772,7 +861,7 @@ export default function Landing() {
             GitHub <ArrowUpRight size={14} />
           </a>
           <a href={desktopGuide}>
-            Documentation <ArrowUpRight size={14} />
+            Getting started <ArrowUpRight size={14} />
           </a>
           <a href="#top">
             Back to top <ArrowUpRight size={14} />

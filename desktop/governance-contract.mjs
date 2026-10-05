@@ -49,6 +49,9 @@ export const governAction = z.discriminatedUnion("type", [
     .object({ type: z.literal("retire_grant"), grant: id, reason: text(2048) })
     .strict(),
   z
+    .object({ type: z.literal("stop_grant"), grant: id, reason: text(2048) })
+    .strict(),
+  z
     .object({ type: z.literal("resolve"), reservation: id, reason: text(2048) })
     .strict(),
   z

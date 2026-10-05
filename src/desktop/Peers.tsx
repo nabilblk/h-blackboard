@@ -142,7 +142,7 @@ export function JoinMission({
   perform: Perform;
   updated: () => Promise<void>;
   back: () => void;
-  open: (mission: string) => void;
+  open: (mission: string, contribute?: boolean) => void;
   initialTicket?: string;
   initialReview?: InvitationReview | null;
 }) {
@@ -150,9 +150,27 @@ export function JoinMission({
   const [review, setReview] = useState<InvitationReview | null>(initialReview);
   const [submitted, setSubmitted] = useState(false);
   const [reviewedAgain, setReviewedAgain] = useState(false);
+  const [advancedNetwork, setAdvancedNetwork] = useState(false);
+  const inspect = async () => {
+    if (!state?.connection?.running) {
+      if (state?.status !== "ready") await node.enroll();
+      await node.configureNetwork({
+        mode: "public_relays",
+        allow_lan: false,
+        relays: [],
+      });
+      await updated();
+    }
+    setReview(await node.inspectInvitation(ticket.trim()));
+    setSubmitted(false);
+    setReviewedAgain(true);
+  };
   const status = state?.joins.find(
     (j) => j.mission === review?.mission,
   )?.status;
+  useEffect(() => {
+    if (status) setSubmitted(true);
+  }, [status]);
   return (
     <>
       <button className="d-back" disabled={busy} onClick={back}>
@@ -164,12 +182,49 @@ export function JoinMission({
         place.
       </Heading>
       {!state?.connection?.running ? (
-        <NetworkSettings
-          state={state}
-          busy={busy}
-          perform={perform}
-          updated={updated}
-        />
+        <section className="d-panel">
+          <h2>Connect to the mission</h2>
+          <p>
+            Enable encrypted peer connections to inspect this invitation. Public
+            Iroh relays can help your computers connect and can observe
+            connection metadata. This does not join, publish a mission or start
+            an agent.
+          </p>
+          {!ticket.trim() ? (
+            <button
+              className="d-button primary"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  if (state?.status !== "ready") await node.enroll();
+                  await node.configureNetwork({
+                    mode: "public_relays",
+                    allow_lan: false,
+                    relays: [],
+                  });
+                  await updated();
+                })
+              }
+            >
+              Enable peer connections
+            </button>
+          ) : null}
+          <button
+            className="d-button"
+            onClick={() => setAdvancedNetwork((v) => !v)}
+            aria-expanded={advancedNetwork}
+          >
+            Connection options
+          </button>
+          {advancedNetwork ? (
+            <NetworkSettings
+              state={state}
+              busy={busy}
+              perform={perform}
+              updated={updated}
+            />
+          ) : null}
+        </section>
       ) : null}
       {!initialReview ? (
         <section className="d-panel n-join" aria-label="Mission invitation">
@@ -180,11 +235,7 @@ export function JoinMission({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void perform(async () => {
-                setReview(await node.inspectInvitation(ticket.trim()));
-                setSubmitted(false);
-                setReviewedAgain(true);
-              });
+              void perform(inspect);
             }}
           >
             <label className="d-field">
@@ -211,10 +262,14 @@ export function JoinMission({
             </p>
             <button
               className="d-button primary"
-              disabled={busy || !ticket.trim() || !state?.connection?.running}
+              disabled={busy || !ticket.trim()}
               type="submit"
             >
-              {busy ? "Inspecting…" : "Inspect invitation"}
+              {busy
+                ? "Inspecting…"
+                : state?.connection?.running
+                  ? "Inspect invitation"
+                  : "Connect and review"}
             </button>
           </form>
           <div className="d-explainer">
@@ -244,28 +299,31 @@ export function JoinMission({
               ))}
             </ul>
           ) : null}
-          <dl className="d-facts">
-            <div>
-              <dt>Owner public key</dt>
-              <dd className="d-mono n-key">{review.owner}</dd>
-            </div>
-            <div>
-              <dt>Mission identity</dt>
-              <dd className="d-mono n-key">{review.mission}</dd>
-            </div>
-            <div>
-              <dt>Current review expires</dt>
-              <dd>{date(new Date(review.expires_ms).toISOString())}</dd>
-            </div>
-            <div>
-              <dt>Budget</dt>
-              <dd>
-                {review.definition.policy?.budget.mode === "unlimited"
-                  ? "No budget · Unlimited"
-                  : "Limited · no execution is authorized by joining"}
-              </dd>
-            </div>
-          </dl>
+          <details>
+            <summary>Owner and mission verification</summary>
+            <dl className="d-facts">
+              <div>
+                <dt>Owner public key</dt>
+                <dd className="d-mono n-key">{review.owner}</dd>
+              </div>
+              <div>
+                <dt>Mission identity</dt>
+                <dd className="d-mono n-key">{review.mission}</dd>
+              </div>
+              <div>
+                <dt>Current review expires</dt>
+                <dd>{date(new Date(review.expires_ms).toISOString())}</dd>
+              </div>
+              <div>
+                <dt>Budget</dt>
+                <dd>
+                  {review.definition.policy?.budget.mode === "unlimited"
+                    ? "No budget · Unlimited"
+                    : "Limited · no execution is authorized by joining"}
+                </dd>
+              </div>
+            </dl>
+          </details>
           <p className="d-field-help">
             A verified signature identifies a key, not a person. Compare the
             owner key through a channel you trust. Requesting to join shares
@@ -340,15 +398,36 @@ export function JoinMission({
             <div className="n-action-row">
               <button
                 className="d-button primary"
-                onClick={() => open(review.mission)}
+                onClick={() => open(review.mission, true)}
               >
+                Contribute an agent
+              </button>
+              <button className="d-button" onClick={() => open(review.mission)}>
                 Open mission
               </button>
+              <p className="d-field-help">
+                You can join the conversation without contributing an agent.
+              </p>
             </div>
           ) : null}
+          {status === "pending" ? (
+            <button
+              className="d-button"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  await node.withdrawMission(review.mission);
+                  await updated();
+                })
+              }
+            >
+              Withdraw join request
+            </button>
+          ) : null}
           <p className="d-field-help">
-            Joining synchronizes authorized mission history. Prepare a local
-            contribution and approve a permission separately to run an agent.
+            Joining synchronizes authorized mission history. Open the mission
+            and choose Add agents when you want to contribute. You can also
+            participate as a human without running an agent.
           </p>
         </section>
       ) : null}
@@ -422,10 +501,33 @@ export function People({
         never authorizes an agent to run.
       </p>
       {!enabled ? (
-        <div className="n-action-row">
-          <button className="d-button" onClick={network}>
-            Set up peer connections
-          </button>
+        <div>
+          <p>
+            Enable encrypted peer connections using public Iroh relays to invite
+            people. Relays can observe connection metadata; this does not
+            publish your mission.
+          </p>
+          <div className="n-action-row">
+            <button
+              className="d-button primary"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  await node.configureNetwork({
+                    mode: "public_relays",
+                    allow_lan: false,
+                    relays: [],
+                  });
+                  await refresh();
+                })
+              }
+            >
+              Enable peer connections
+            </button>
+            <button className="d-button" onClick={network}>
+              Advanced connection options
+            </button>
+          </div>
         </div>
       ) : own ? (
         <div className="n-action-row">

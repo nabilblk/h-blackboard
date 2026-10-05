@@ -155,6 +155,7 @@ impl Ledger {
                         consent: None,
                         consent_binding: None,
                         risk_accepted: None,
+                        revoked: false,
                         sealed: false,
                         seal: None,
                         charged: 0,
@@ -171,6 +172,7 @@ impl Ledger {
                     !validate
                         || &g.node == actor
                             && !g.sealed
+                            && !g.revoked
                             && g.consent.is_none()
                             && self.allocations[&g.allocation].sealed.is_none(),
                     "grant consent unavailable"
@@ -192,6 +194,7 @@ impl Ledger {
                     !validate
                         || &g.node == actor
                             && !g.sealed
+                            && !g.revoked
                             && a.sealed.is_none()
                             && g.consent.as_ref() == Some(consent),
                     "grant is not consented or is closed"
@@ -273,6 +276,14 @@ impl Ledger {
                 g.sealed = true;
                 g.seal = Some(e.id.clone());
                 g.risk_accepted = Some(reason.clone());
+            }
+            GovernanceAction::StopGrant { grant, .. } => {
+                let g = self
+                    .grants
+                    .get_mut(grant)
+                    .ok_or_else(|| anyhow!("grant unavailable"))?;
+                ensure!(!validate || !g.sealed, "permission already settled");
+                g.revoked = true;
             }
             GovernanceAction::SealGrant { grant, .. } => {
                 let g = self
@@ -516,7 +527,7 @@ impl Store {
                 "permission direction changed"
             );
             ensure!(
-                !g.sealed && ledger.allocations[&g.allocation].sealed.is_none(),
+                !g.sealed && !g.revoked && ledger.allocations[&g.allocation].sealed.is_none(),
                 "permission was sealed or retired"
             );
         }
@@ -746,6 +757,7 @@ impl Store {
                 );
             }
             GovernanceAction::Reclaim { .. }
+            | GovernanceAction::StopGrant { .. }
             | GovernanceAction::Resolve { .. }
             | GovernanceAction::RetireGrant { .. } => {
                 ensure!(is_owner, "owner reconciliation required")

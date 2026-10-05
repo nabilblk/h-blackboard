@@ -52,6 +52,12 @@ pub struct Request {
 #[derive(Deserialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    PublishObservation {
+        report: crate::observations::Observation,
+    },
+    Observations {
+        mission: String,
+    },
     ReserveLocal {
         mission: String,
         control: String,
@@ -469,6 +475,8 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
                 }
                 command => with_store(&store,|store| match command {
                     Command::ReserveLocal{mission,control,registration,grant,consent,nonce,limits}=>{let e=store.reserve_local(&identity,&mission,&control,&registration,&grant,&consent,&nonce,limits)?;Ok(serde_json::json!({"event":e.id,"execution_available":false}))},
+                    Command::PublishObservation{report}=>{store.publish_observation(&identity,report)?;Ok(serde_json::Value::Null)},
+                    Command::Observations{mission}=>Ok(serde_json::to_value(store.observation_views(&mission)?)?),
                     Command::Governance{mission}=>Ok(serde_json::to_value(store.governance(&mission,&identity.public_key())?)?),
                     Command::Govern{mission,control,action}=>{let e=store.govern(&identity,&mission,&control,action)?;Ok(serde_json::json!({"event":e.id}))},
                     Command::MissionAction{mission,revision,action}=>{let e=store.control(&identity,&mission,&revision,action)?;Ok(serde_json::json!({"event":e.id}))},
@@ -648,6 +656,9 @@ pub fn typescript() -> String {
         crate::communication::MessageQuery::decl(&cfg),
         crate::communication::AgentOperation::decl(&cfg),
         crate::communication::AgentContext::decl(&cfg),
+        crate::observations::Observation::decl(&cfg),
+        crate::observations::ObservedState::decl(&cfg),
+        crate::observations::ObservationView::decl(&cfg),
         harakiri_protocol::ArtifactFile::decl(&cfg),
         harakiri_protocol::work::WorkEvidence::decl(&cfg),
         harakiri_protocol::work::WorkLink::decl(&cfg),

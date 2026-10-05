@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
   statSync,
@@ -10,6 +10,12 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Id } from "../model.mjs";
 import { currentPermissions } from "./permissions.mjs";
+import {
+  cleanLoginOutput,
+  loginPresentation,
+  loginURL,
+} from "./authentication.mjs";
+import { createWakeTracker } from "./wake.mjs";
 import {
   newRecord,
   permissionLease,
@@ -27,19 +33,6 @@ const inflight = new Set([
   "recovery_required",
 ]);
 const hash = () => randomBytes(32).toString("hex");
-const fingerprint = (value) =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const wakeFingerprint = (value) => {
-  const author = value.context?.agent?.identity?.author;
-  const incoming = (page) =>
-    page?.items?.filter((m) => m.author !== author) ?? [];
-  return fingerprint({
-    ...value,
-    main: incoming(value.main),
-    inbox: incoming(value.inbox),
-    workstream: incoming(value.workstream),
-  });
-};
 
 /** Owns local intent and process truth; the replicated ledger owns allowance.
  * Neither peer messages nor renderer fields can instantiate a provider. */
@@ -47,6 +40,8 @@ export class ExecutionManager {
   jobs = new Map();
   busy = new Set();
   operations = new Map();
+  preparations = new Map();
+  authentications = new Map();
   closed = false;
   constructor({
     store,
@@ -88,6 +83,13 @@ export class ExecutionManager {
   async state(id) {
     const contribution = this.contribution(id);
     let record = this.store.read(id);
+    if (record?.status === "stopped" && !record.grant && !record.session) {
+      record = this.store.update(id, {
+        status: "failed",
+        reason:
+          "This environment was closed before its first run. Prepare it again to verify setup and guest sign-in; its files are retained.",
+      });
+    }
     if (record?.status === "preparing" && !this.busy.has(id)) {
       record = this.store.update(id, {
         status: "failed",
@@ -107,7 +109,8 @@ export class ExecutionManager {
     if (
       record &&
       ["ready", "login_required"].includes(record.status) &&
-      !this.busy.has(id)
+      !this.busy.has(id) &&
+      !this.authentications.get(id)?.handle
     ) {
       try {
         const current = await this.provider.inspect({ contribution });
@@ -135,20 +138,24 @@ export class ExecutionManager {
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
     }
-    let permissions = [],
+    let agent = null,
+      permissions = [],
       direction = null,
       permissionProblem = null;
     if (!this.closed && !this.busy.has(id)) {
       try {
         const current = await this.node.executionContext(id);
         permissions = currentPermissions(current, record);
+        agent = current.context.agent;
         direction = current.context.agent.direction ?? null;
       } catch (error) {
         permissionProblem = error.message;
       }
     }
     return {
+      observedAt: Date.now(),
       record,
+      agent,
       permissions,
       direction,
       permissionProblem,
@@ -156,7 +163,37 @@ export class ExecutionManager {
       capacity: this.provider.maximum ?? 1,
       busy: this.busy.has(id),
       events,
+      authentication: this.authentications.get(id)?.view ?? null,
+      agreement: this.agreements?.local(id) ?? null,
     };
+  }
+  async overview(mission) {
+    const items = this.node.contributors.store
+      .read()
+      .contributions.filter((c) => c.mission.missionId === mission);
+    const result = {};
+    // Bound VM inspection concurrency; one failing environment cannot hide
+    // another agent's status.
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(4, items.length) }, async () => {
+        while (cursor < items.length) {
+          const item = items[cursor++];
+          try {
+            result[item.id] = await this.state(item.id);
+          } catch (error) {
+            result[item.id] = {
+              observedAt: Date.now(),
+              error: error.message,
+              record: null,
+              permissions: [],
+              events: [],
+            };
+          }
+        }
+      }),
+    );
+    return result;
   }
   async exclusive(id, action) {
     if (this.closed) throw new Error("Execution service is closing.");
@@ -174,42 +211,242 @@ export class ExecutionManager {
   }
   async prepare(id) {
     return this.exclusive(id, async () => {
-      const { contribution } = await this.node.executionContext(id);
-      const old = this.store.read(id);
-      if (old && old.policy !== policyDigest(contribution.runtime))
-        throw new Error("Runtime policy changed; create a new contribution.");
-      if (old && inflight.has(old.status))
-        throw new Error("Recover and stop the previous execution first.");
-      this.store.write(
-        old
-          ? {
-              ...old,
-              status: "preparing",
-              reason: "Preparing isolated environment.",
-            }
-          : newRecord(id, Date.now(), contribution.runtime),
-      );
+      const controller = new AbortController();
+      this.preparations.set(id, controller);
       try {
-        const result = await this.provider.prepare({ contribution });
-        this.store.update(id, {
-          status: result.authenticated ? "ready" : "login_required",
-          reason: result.authenticated
-            ? "Isolated environment prepared."
-            : "Sign in to the selected runtime inside this guest.",
-        });
-        this.log(
-          id,
-          "prepared",
-          "Lima VM prepared with separate runtime and worker accounts.",
+        if (this.authentications.get(id)?.handle)
+          throw new Error("Finish or cancel sign-in first.");
+        const { contribution } = await this.node.executionContext(id);
+        controller.signal.throwIfAborted();
+        const old = this.store.read(id);
+        if (old && old.policy !== policyDigest(contribution.runtime))
+          throw new Error("Runtime policy changed; create a new contribution.");
+        if (old && inflight.has(old.status))
+          throw new Error("Recover and stop the previous execution first.");
+        this.store.write(
+          old
+            ? {
+                ...old,
+                status: "preparing",
+                reason: "Preparing isolated environment.",
+              }
+            : newRecord(id, Date.now(), contribution.runtime),
         );
-      } catch (error) {
-        this.store.update(id, {
-          status: "failed",
-          reason: error.message.slice(0, 2048),
-        });
-        throw error;
+        try {
+          const result = await this.provider.prepare({
+            contribution,
+            signal: controller.signal,
+            onProgress: (reason) =>
+              this.store.update(id, { reason: String(reason).slice(0, 2048) }),
+          });
+          controller.signal.throwIfAborted();
+          this.store.update(id, {
+            status: result.authenticated ? "ready" : "login_required",
+            reason: result.authenticated
+              ? "Isolated environment prepared."
+              : "Sign in to the selected runtime inside this guest.",
+          });
+          this.log(
+            id,
+            "prepared",
+            "Lima VM prepared with separate runtime and worker accounts.",
+          );
+        } catch (error) {
+          let stopped = false;
+          try {
+            stopped = (await this.provider.terminate({ contribution })).stopped;
+          } catch {
+            /* Preserve uncertainty until recovery can confirm termination. */
+          }
+          this.store.update(id, {
+            status: stopped ? "failed" : "recovery_required",
+            reason: !stopped
+              ? "Setup was interrupted and the environment’s stop is not confirmed. Recover it before retrying."
+              : controller.signal.aborted
+                ? "Setup cancelled. Saved files are retained; prepare again to continue safely."
+                : error.message.slice(0, 2048),
+          });
+          throw error;
+        }
+      } finally {
+        this.preparations.delete(id);
       }
     });
+  }
+  async cancelSetup(id) {
+    this.contribution(id);
+    this.preparations.get(id)?.abort();
+    await this.operations.get(id)?.catch(() => {});
+    // Killing a provisioning client is not proof the VM stopped.
+    await this.stop(id, "Setup cancelled by this device’s human.");
+    if (this.store.read(id)?.status === "stopped")
+      this.store.update(id, {
+        status: "failed",
+        reason:
+          "Setup cancelled. Prepare again to verify every component. Files are retained.",
+      });
+  }
+  async signIn(id) {
+    this.contribution(id);
+    if (this.closed) throw new Error("Execution service is closing.");
+    if (this.authentications.get(id)?.handle) return;
+    if (
+      [...this.authentications].some(
+        ([other, a]) =>
+          other !== id && (a.handle || a.view.status === "starting"),
+      )
+    )
+      throw new Error(
+        "Finish or cancel the other agent’s provider sign-in first. Your setup is saved.",
+      );
+    if (this.jobs.has(id) || this.busy.has(id))
+      throw new Error("Wait for setup or stop the agent before signing in.");
+    const record = this.store.read(id);
+    if (
+      !record ||
+      !["ready", "login_required", "stopped"].includes(record.status)
+    )
+      throw new Error("Prepare and recover the environment first.");
+    const auth = {
+      view: {
+        status: "starting",
+        text: "Starting provider sign-in…",
+        urls: [],
+        startedAt: Date.now(),
+      },
+      handle: null,
+      cancelled: false,
+      starting: null,
+      finished: null,
+    };
+    this.authentications.set(id, auth);
+    this.busy.add(id);
+    auth.starting = Promise.resolve().then(async () => {
+      try {
+        const { contribution } = await this.node.executionContext(id);
+        if (auth.cancelled) return;
+        const handle = await this.provider.authenticate({
+          contribution,
+          onOutput: (chunk) => {
+            if (auth.cancelled) return;
+            const previous =
+              auth.view.status === "starting" ? "" : auth.view.text;
+            auth.view.text = cleanLoginOutput(previous + chunk).slice(-32768);
+            Object.assign(
+              auth.view,
+              loginPresentation(
+                contribution.runtime,
+                auth.view.text,
+                auth.view.startedAt,
+                auth.view,
+              ),
+            );
+            auth.view.status = "waiting";
+          },
+        });
+        auth.handle = handle;
+        auth.finished = handle.done
+          .then(async () => {
+            if (auth.cancelled) return;
+            const current = await this.provider.inspect({ contribution });
+            if (auth.cancelled) return;
+            if (!current.authenticated)
+              throw new Error("Sign-in did not complete. Try again.");
+            auth.view = {
+              status: "complete",
+              text: "Provider sign-in completed in this isolated environment.",
+              urls: [],
+            };
+          })
+          .catch((error) => {
+            if (!auth.cancelled)
+              auth.view = {
+                ...auth.view,
+                status: "failed",
+                text: "Provider sign-in did not complete. Retry or use the diagnostic command.",
+                urls: [],
+                error: error.message,
+              };
+          })
+          .finally(async () => {
+            // Sign-in occupies VM capacity, but must never leave a hidden guest
+            // running after cancellation, failure, or successful authentication.
+            try {
+              const stopped = await this.provider.terminate({ contribution });
+              if (!stopped.stopped)
+                throw new Error("Environment stop is unconfirmed.");
+              if (auth.view.status === "complete")
+                this.store.update(id, {
+                  status: record.status === "stopped" ? "stopped" : "ready",
+                  reason:
+                    "Guest sign-in completed. Review permission before execution.",
+                });
+            } catch {
+              this.store.update(id, {
+                status: "recovery_required",
+                reason:
+                  "Sign-in ended, but the environment’s stop is not confirmed. Recover it before continuing.",
+              });
+            }
+            auth.handle = null;
+            this.busy.delete(id);
+          });
+      } catch (error) {
+        auth.view = { status: "failed", text: error.message, urls: [] };
+        try {
+          if (
+            !(
+              await this.provider.terminate({
+                contribution: this.contribution(id),
+              })
+            ).stopped
+          )
+            throw new Error("Unconfirmed stop");
+        } catch {
+          this.store.update(id, {
+            status: "recovery_required",
+            reason:
+              "Sign-in setup failed and the environment’s stop is not confirmed. Recover it before continuing.",
+          });
+        }
+        this.busy.delete(id);
+        throw error;
+      } finally {
+        if (!auth.handle) this.busy.delete(id);
+      }
+    });
+    await auth.starting;
+  }
+  async loginInput(id, text) {
+    const auth = this.authentications.get(id);
+    if (!auth?.handle) throw new Error("Start sign-in first.");
+    auth.handle.input(text);
+  }
+  async cancelLogin(id) {
+    this.contribution(id);
+    const auth = this.authentications.get(id);
+    if (!auth) return;
+    auth.cancelled = true;
+    auth.view = {
+      status: "cancelled",
+      text: "Sign-in cancelled. No agent work was started.",
+      urls: [],
+    };
+    // Cancellation can arrive while a guest is still booting, before a login
+    // handle exists. Wait for that exact operation, then stop its login unit.
+    await auth.starting?.catch(() => {});
+    if (auth.handle) await auth.handle.cancel();
+    await auth.finished;
+    this.busy.delete(id);
+  }
+  async openLogin(id, url, open) {
+    const contribution = this.contribution(id);
+    if (
+      !this.authentications.get(id)?.view.urls.includes(url) ||
+      !loginURL(contribution.runtime, url)
+    )
+      throw new Error("This link is not a current provider sign-in link.");
+    await open(url);
   }
   async login(id) {
     return this.exclusive(id, async () => {
@@ -226,7 +463,8 @@ export class ExecutionManager {
         throw new Error(
           "Prepare, sign in and recover any previous execution first.",
         );
-      const current = await this.node.executionContext(id, grantId);
+      const raw = await this.node.executionContext(id, grantId);
+      const current = this.agreements?.constrain(id, raw) ?? raw;
       if (
         old.policy !== policyDigest(current.contribution.runtime) ||
         (this.provider.policies?.[current.contribution.runtime] ??
@@ -294,15 +532,17 @@ export class ExecutionManager {
       job.lease.remaining() <= 0
     )
       throw new Error("Local execution stopped or permission expired.");
-    return result;
+    return this.agreements?.constrain(id, result) ?? result;
   }
   async wakeState(channel) {
-    const [context, messages, tasks, workstreams] = await Promise.all([
-      channel.request({ type: "context" }),
-      channel.request({ type: "messages", query: { view: "inbox" } }),
-      channel.request({ type: "tasks", query: {} }),
-      channel.request({ type: "workstreams" }),
-    ]);
+    const [context, messages, tasks, workstreams, governance] =
+      await Promise.all([
+        channel.request({ type: "context" }),
+        channel.request({ type: "messages", query: { view: "inbox" } }),
+        channel.request({ type: "tasks", query: {} }),
+        channel.request({ type: "workstreams" }),
+        channel.request({ type: "governance" }),
+      ]);
     // Main discussion can redirect work without a task or private message.
     const main = await channel.request({
       type: "messages",
@@ -317,11 +557,33 @@ export class ExecutionManager {
           },
         })
       : null;
-    return { context, inbox: messages, main, workstream, tasks, workstreams };
+    return {
+      context,
+      inbox: messages,
+      main,
+      workstream,
+      tasks,
+      workstreams,
+      criteria: governance.criteria ?? [],
+    };
+  }
+  async hasNewWork(id) {
+    const record = this.store.read(id);
+    if (!record?.wake || !record.session) return true;
+    const channel = this.node.openAgentChannel(id);
+    try {
+      return (
+        createWakeTracker(record.wake)(await this.wakeState(channel)) !==
+        record.wake.fingerprint
+      );
+    } finally {
+      channel.close();
+    }
   }
   async run(id, job) {
     const ledger = this.node.openResourceLedger(id);
     const channel = this.node.openAgentChannel(id);
+    const wakeFingerprint = createWakeTracker(this.store.read(id)?.wake);
     let monitoring = false;
     const monitor = setInterval(async () => {
       if (monitoring || job.stopping) return;
@@ -391,6 +653,7 @@ export class ExecutionManager {
           }
         };
         const request = {
+          signal: job.controller.signal,
           contribution: job.contribution,
           seconds: Math.max(1, Math.floor(job.lease.remaining() / 1000)),
           remaining: () => job.lease.remaining(),
@@ -443,6 +706,7 @@ export class ExecutionManager {
         });
         this.store.update(id, {
           receipt: receipt.event,
+          wake: { fingerprint: baseline, ...wakeFingerprint.snapshot() },
           status: "waiting",
           reason:
             "Turn complete. Waiting for new mission messages or direction.",
@@ -542,9 +806,18 @@ export class ExecutionManager {
       } finally {
         ledger.close();
       }
+      const setupOnly = !record.grant && !record.session;
       this.store.update(id, {
-        status: "stopped",
-        reason: reason.slice(0, 2048),
+        status: setupOnly
+          ? ["ready", "login_required", "failed"].includes(record.status)
+            ? record.status
+            : "failed"
+          : "stopped",
+        reason: setupOnly
+          ? ["ready", "login_required", "failed"].includes(record.status)
+            ? record.reason
+            : "Environment stopped. Prepare it again to verify setup; saved files are retained."
+          : reason.slice(0, 2048),
       });
       this.log(
         id,
@@ -605,6 +878,10 @@ export class ExecutionManager {
   }
   async close() {
     this.closed = true;
+    for (const controller of this.preparations.values()) controller.abort();
+    await Promise.allSettled(
+      [...this.authentications.keys()].map((id) => this.cancelLogin(id)),
+    );
     await Promise.allSettled([...this.operations.values()]);
     await Promise.allSettled(
       this.node.contributors.store

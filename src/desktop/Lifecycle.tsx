@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pause, Play, Plus, X } from "lucide-react";
 import { node, type Contribution } from "./bridge";
-import type { Coordination, MissionView } from "./node-contract";
+import type { Coordination, MissionView, AgentView } from "./node-contract";
 import { Status, type Perform } from "./ui";
+import { StartMissionReview } from "./ContributionApproval";
+import type { StartJob } from "./onboarding-types";
 
 export const phaseLabel = (mission: MissionView) =>
   mission.conflicted
@@ -44,6 +46,9 @@ type Props = {
   perform: Perform;
   updated: () => Promise<void>;
   prepare: () => void;
+  nextAction?: { label: string; act: () => void };
+  agents?: AgentView[];
+  reviewStart?: boolean;
 };
 type Edit = {
   kind: "instructions" | "plan" | "coordination";
@@ -61,10 +66,38 @@ export function MissionControl({
   perform,
   updated,
   prepare,
+  nextAction,
+  agents = [],
+  reviewStart = false,
 }: Props) {
   const { lifecycle: l, definition } = mission;
   const [edit, setEdit] = useState<Edit | null>(null);
   const [choice, setChoice] = useState("");
+  const [startReview, setStartReview] = useState<string | null>(
+    reviewStart &&
+      !l.start_blockers.length &&
+      ["preparing", "paused"].includes(l.phase)
+      ? l.revision
+      : null,
+  );
+  const [pendingStart, setPendingStart] = useState<StartJob | null>(null);
+  useEffect(() => {
+    if (!isOwner) return;
+    let cancelled = false;
+    void window.blackboardSetup
+      .startState(mission.id)
+      .then((jobs) => {
+        const pending = jobs.find(
+          (j) => !["complete", "cancelled"].includes(j.phase),
+        );
+        if (!cancelled) setPendingStart(pending ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [mission.id, isOwner]);
+  const [planReview, setPlanReview] = useState<string | null>(null);
   const coordinated = definition.policy?.coordination === "coordinated";
   const candidates = contributions.filter(
     (c) =>
@@ -88,6 +121,7 @@ export function MissionControl({
       await operation();
       await updated();
       setEdit(null);
+      setPlanReview(null);
     });
   const reason =
     l.phase === "active"
@@ -126,26 +160,110 @@ export function MissionControl({
                   <Pause size={15} />
                   Pause mission
                 </button>
+              ) : l.phase === "paused" &&
+                l.plan &&
+                l.start_blockers.includes("coordinator_not_ready") ? (
+                <button
+                  className="d-button primary"
+                  disabled={busy || blocked}
+                  onClick={() => setPlanReview(l.revision)}
+                >
+                  Review plan to resume
+                </button>
+              ) : l.start_blockers.length && nextAction ? (
+                <button
+                  className="d-button primary"
+                  disabled={busy || blocked}
+                  onClick={nextAction.act}
+                >
+                  {nextAction.label}
+                </button>
               ) : (
                 <button
                   className="d-button primary"
                   disabled={busy || blocked || l.start_blockers.length > 0}
-                  onClick={() =>
-                    change(() =>
-                      node.startMission(
-                        mission.id,
-                        l.revision,
-                        l.readiness?.id ?? null,
-                      ),
-                    )
-                  }
+                  onClick={() => setStartReview(l.revision)}
                 >
                   <Play size={15} />
-                  {l.phase === "paused" ? "Resume mission" : "Start mission"}
+                  {l.phase === "paused"
+                    ? "Review and resume"
+                    : "Review and start"}
                 </button>
               )
             ) : null}
           </div>
+          {planReview && l.phase === "paused" && l.plan ? (
+            <section
+              className="d-panel"
+              aria-label="Review paused mission plan"
+            >
+              <h3>Prepare to resume this mission</h3>
+              <p className="n-preserve">{l.plan.text}</p>
+              {l.plan.artifact ? (
+                <p className="d-field-help">Plan revision: {l.plan.artifact}</p>
+              ) : null}
+              <p>
+                Confirming returns the mission to Preparing with this plan.
+                Review a new Coordinator planning session next. Agents wait for
+                the Coordinator’s readiness and your Start.
+              </p>
+              {planReview !== l.revision ? (
+                <p role="alert">
+                  The mission changed. Reopen this review to inspect the current
+                  plan.
+                </p>
+              ) : null}
+              <div className="n-action-row">
+                <button
+                  className="d-button"
+                  onClick={() => setPlanReview(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="d-button primary"
+                  disabled={busy || blocked || planReview !== l.revision}
+                  onClick={() =>
+                    change(() =>
+                      l.plan!.artifact
+                        ? node.missionAction(mission.id, l.revision, {
+                            type: "set_plan_artifact",
+                            revision: l.plan!.artifact,
+                          })
+                        : node.setPlan(mission.id, l.revision, l.plan!.text),
+                    )
+                  }
+                >
+                  Confirm plan and prepare
+                </button>
+              </div>
+            </section>
+          ) : null}
+          {pendingStart && !startReview ? (
+            <p role="status">
+              An earlier Start review has an unfinished step.{" "}
+              <button
+                className="d-button"
+                onClick={() => setStartReview(pendingStart.request.revision)}
+              >
+                Continue saved Start review
+              </button>
+            </p>
+          ) : null}
+          {startReview ? (
+            <StartMissionReview
+              saved={pendingStart}
+              mission={mission}
+              agents={agents}
+              contributions={contributions}
+              cancel={() => setStartReview(null)}
+              done={async () => {
+                await updated();
+                setStartReview(null);
+                setPendingStart(null);
+              }}
+            />
+          ) : null}
           <p className="d-field-help">
             Contributors control execution on their devices. Mission state is
             separate from confirmed process status.
@@ -213,9 +331,9 @@ export function MissionControl({
           )}
           {coordinated && !l.readiness ? (
             <p className="d-field-help">
-              A prepared contribution is not a running Coordinator. It can
-              acknowledge readiness once the isolated runtime integration is
-              available.
+              The appointed Coordinator must run a planning session, publish the
+              shared plan and acknowledge readiness. Open its agent details to
+              continue setup or approve planning.
             </p>
           ) : null}
           {isOwner && !blocked && !["closed", "archived"].includes(l.phase) ? (

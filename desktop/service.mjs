@@ -3,6 +3,7 @@ import { mkdirSync, realpathSync, rmdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   executionReadiness,
+  Id,
   MissionPreview,
   Requests,
   REVIEW_TTL_MS,
@@ -38,12 +39,14 @@ export class ContributorService {
     revealDirectory,
     inspect = inspectInvitation,
     now = Date.now,
+    exportDirectory,
   }) {
     this.store = store;
     this.chooseDirectory = chooseDirectory;
     this.revealDirectory = revealDirectory;
     this.inspect = inspect;
     this.now = now;
+    this.exportDirectory = exportDirectory;
     this.reviews = new Map();
     this.choices = new Map();
     this.inspecting = false;
@@ -78,6 +81,28 @@ export class ContributorService {
         return { ...publicItem, execution };
       }),
     };
+  }
+  managedWorkspace() {
+    if (!this.exportDirectory)
+      throw new Error("Managed export storage is unavailable.");
+    mkdirSync(this.exportDirectory, { recursive: true, mode: 0o700 });
+    const path = realpathSync(this.exportDirectory);
+    return {
+      id: this.cache(this.choices, { path, parentIdentity: identity(path) }),
+      path,
+    };
+  }
+  resumeWorkspace(choice) {
+    // Only the native setup journal can supply this saved binding. The
+    // renderer still receives an expiring capability, never a writable path.
+    if (
+      realpathSync(choice.path) !== choice.path ||
+      !sameIdentity(identity(choice.path), choice.parentIdentity)
+    )
+      throw new Error(
+        "The reviewed export folder moved or was replaced. Choose and review a new location.",
+      );
+    return this.cache(this.choices, choice);
   }
 
   observeNodeTerms(missions) {
@@ -276,7 +301,7 @@ export class ContributorService {
           throw new Error(
             "The chosen folder changed. Select it again before saving.",
           );
-        const id = randomUUID();
+        const id = Id.parse(native.contributionId ?? randomUUID());
         const workspace = join(choice.path, `harakiri-${id}`);
         mkdirSync(workspace, { mode: 0o700 });
         try {
@@ -313,7 +338,8 @@ export class ContributorService {
           throw error;
         }
         this.reviews.delete(input.reviewId);
-        this.choices.delete(input.workspaceChoiceId);
+        if (!native.contributionId)
+          this.choices.delete(input.workspaceChoiceId);
         return this.snapshot();
       }
       case "revoke": {

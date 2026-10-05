@@ -41,10 +41,10 @@ export class ExecutionStore {
         constants.O_RDONLY | constants.O_NOFOLLOW,
       );
       const info = fstatSync(fd);
-      if (!info.isFile() || info.nlink !== 1 || info.size > 16384)
+      if (!info.isFile() || info.nlink !== 1 || info.size > 262144)
         throw new Error("Invalid execution record.");
       const raw = readFileSync(fd);
-      if (raw.length > 16384) throw new Error("Invalid execution record.");
+      if (raw.length > 262144) throw new Error("Invalid execution record.");
       const record = Record.parse(JSON.parse(raw));
       if (record.contribution !== contribution)
         throw new Error("Execution identity mismatch.");
@@ -81,6 +81,18 @@ export class ExecutionStore {
     return this.write({
       ...value,
       ...change,
+      transitions:
+        change.status && change.status !== value.status
+          ? [
+              ...(value.transitions || []),
+              {
+                at: Date.now(),
+                from: value.status,
+                to: change.status,
+                reason: change.reason ?? value.reason,
+              },
+            ].slice(-50)
+          : value.transitions,
       contribution,
       updatedAt: Date.now(),
     });

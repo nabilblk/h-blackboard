@@ -149,6 +149,89 @@ function fixture(t, runtime = "grok") {
   return { id, manager, store, flags, grant, reservations, provider, node };
 }
 
+test("sign-in cancellation during guest boot waits for and stops that login, without recording its secrets", async (t) => {
+  const f = fixture(t);
+  const boot = deferred(),
+    login = deferred();
+  let started = false,
+    cancelled = 0;
+  f.provider.authenticate = async ({ onOutput }) => {
+    started = true;
+    await boot.promise;
+    onOutput("Visit https://accounts.x.ai/device?private-code=not-for-history");
+    return {
+      done: login.promise,
+      input() {},
+      cancel: async () => {
+        cancelled++;
+        login.reject(new Error("Cancelled"));
+      },
+    };
+  };
+  const start = f.manager.signIn(f.id);
+  await waitFor(() => started);
+  const stop = f.manager.cancelLogin(f.id);
+  boot.resolve();
+  await Promise.all([start, stop]);
+  assert.equal(cancelled, 1);
+  assert.equal(f.manager.busy.has(f.id), false);
+  assert.equal(f.manager.authentications.get(f.id).view.status, "cancelled");
+  assert.deepEqual(f.manager.authentications.get(f.id).view.urls, []);
+  assert.ok(f.flags.stops > 0);
+  assert.doesNotMatch(
+    JSON.stringify(f.store.read(f.id)),
+    /private-code|not-for-history/,
+  );
+  assert.equal(f.flags.launches, 0);
+});
+
+test("successful guest sign-in frees capacity and does not grant or start work", async (t) => {
+  const f = fixture(t);
+  const login = deferred();
+  f.provider.authenticate = async ({ onOutput }) => {
+    onOutput("Open https://accounts.x.ai/device?private-code=guest-only\n");
+    onOutput("Waiting for authorization…");
+    return {
+      done: login.promise,
+      input() {},
+      cancel: async () => {},
+    };
+  };
+  f.provider.inspect = async () => ({ authenticated: true, stopped: true });
+  await f.manager.signIn(f.id);
+  const waiting = f.manager.authentications.get(f.id).view;
+  assert.equal(waiting.status, "waiting");
+  assert.doesNotMatch(waiting.text, /Starting provider/);
+  assert.match(waiting.text, /guest-only\nWaiting for authorization/);
+  assert.deepEqual(waiting.urls, [
+    "https://accounts.x.ai/device?private-code=guest-only",
+  ]);
+  login.resolve();
+  await waitFor(() => !f.manager.busy.has(f.id));
+  assert.equal(f.store.read(f.id).status, "ready");
+  assert.equal(f.manager.authentications.get(f.id).view.status, "complete");
+  assert.equal(f.flags.launches, 0);
+  assert.equal(f.flags.stops, 1);
+  assert.equal(f.reservations.length, 0);
+  assert.doesNotMatch(JSON.stringify(f.store.read(f.id)), /guest-only/);
+});
+
+test("failed sign-in with unconfirmed VM termination stays recovery-required", async (t) => {
+  const f = fixture(t);
+  const login = deferred();
+  f.flags.unknownStop = true;
+  f.provider.authenticate = async () => ({
+    done: login.promise,
+    input() {},
+    cancel: async () => {},
+  });
+  await f.manager.signIn(f.id);
+  login.reject(new Error("Provider rejected login"));
+  await waitFor(() => !f.manager.busy.has(f.id));
+  assert.equal(f.store.read(f.id).status, "recovery_required");
+  assert.equal(f.manager.authentications.get(f.id).view.status, "failed");
+});
+
 for (const runtime of ["claude", "codex"])
   test(`${runtime} uses its own policy; changed consent cannot reserve or launch`, async (t) => {
     const f = fixture(t, runtime);
@@ -298,13 +381,110 @@ test("peer messages arriving during a turn wake saved work; own messages do not 
   assert.equal(f.grant.charged, 3);
 });
 
-test("quit stops an idle prepared VM as well as active jobs", async (t) => {
+test("a real-shaped receipt feed stays idle until a human criterion report changes", async (t) => {
+  const f = fixture(t);
+  f.grant.purpose = "work";
+  const messages = [];
+  const criteria = [];
+  let unread = 0;
+  f.node.openAgentChannel = () => ({
+    close() {},
+    request: async (op) => {
+      if (op.type === "context")
+        return {
+          agent: { identity: { author: "own" } },
+          conversations: [{ id: "main", unread, writable: true }],
+        };
+      if (op.type === "messages") return { items: messages };
+      if (op.type === "governance") return { criteria };
+      if (op.type === "workstreams") return [{ id: "stream", unread }];
+      return {};
+    },
+  });
+  const ledger = f.node.openResourceLedger();
+  const receipt = ledger.receipt.bind(ledger);
+  ledger.receipt = async (...args) => {
+    const result = await receipt(...args);
+    messages.push({
+      id: `receipt-${++unread}`,
+      author: "host-human",
+      kind: "governance",
+    });
+    return result;
+  };
+  f.provider.launch = async ({ onSession }) => {
+    f.flags.running = true;
+    f.flags.launches++;
+    await onSession("saved-session");
+    return { done: Promise.resolve({}) };
+  };
+  await f.manager.start(f.id, f.grant.id);
+  await waitFor(() => f.store.read(f.id).status === "waiting");
+  await delay(80);
+  assert.equal(
+    f.flags.launches,
+    1,
+    "accounting must not buy another model turn",
+  );
+  criteria.push({
+    index: 0,
+    author: "human",
+    report: "correction",
+    met: false,
+  });
+  await waitFor(
+    () => f.flags.launches === 2 && f.store.read(f.id).status === "waiting",
+  );
+  await delay(80);
+  assert.equal(f.flags.launches, 2);
+  await f.manager.stop(f.id);
+  assert.equal(f.grant.charged, 2);
+  assert.equal(f.flags.running, false);
+});
+
+test("quit stops an idle prepared VM and preserves environment readiness separately", async (t) => {
   const f = fixture(t);
   f.flags.running = true;
   await f.manager.close();
   assert.equal(f.flags.running, false);
   assert.equal(f.flags.launches, 0);
-  assert.equal(f.store.read(f.id).status, "stopped");
+  assert.equal(f.store.read(f.id).status, "ready");
+});
+
+test("closing before guest sign-in preserves the outstanding login step", async (t) => {
+  const f = fixture(t);
+  f.store.update(f.id, {
+    status: "login_required",
+    reason: "Sign in to Grok inside this environment.",
+  });
+  await f.manager.close();
+  assert.equal(f.store.read(f.id).status, "login_required");
+  assert.match(f.store.read(f.id).reason, /Sign in/);
+  assert.equal(f.flags.launches, 0);
+});
+
+test("cancelling setup during its authority check never begins provisioning", async (t) => {
+  const f = fixture(t),
+    context = deferred();
+  const original = f.node.executionContext;
+  let prepared = false;
+  f.node.executionContext = async (...args) => {
+    await context.promise;
+    return original(...args);
+  };
+  f.provider.prepare = async () => {
+    prepared = true;
+    return { authenticated: false };
+  };
+  const start = f.manager.prepare(f.id);
+  const failure = assert.rejects(start, /abort/i);
+  await waitFor(() => f.manager.preparations.has(f.id));
+  const cancel = f.manager.cancelSetup(f.id);
+  context.resolve();
+  await Promise.all([failure, cancel]);
+  assert.equal(prepared, false);
+  assert.equal(f.manager.busy.has(f.id), false);
+  assert.equal(f.flags.running, false);
 });
 
 test("direction interruption survives shutdown and resumes only with a fresh consented generation", async (t) => {

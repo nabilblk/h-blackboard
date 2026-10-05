@@ -27,8 +27,10 @@ export function currentPermissions(
     if (
       grant.registration !== contribution.sharedAgent?.registration ||
       grant.control !== context.lifecycle.revision ||
-      grant.consent_binding !== executionBinding(contribution) ||
+      ((grant.consent || grant.consent_binding != null) &&
+        grant.consent_binding !== executionBinding(contribution)) ||
       grant.sealed ||
+      grant.revoked ||
       grant.id === record?.grant ||
       grant.turns <= grant.charged + grant.reserved ||
       Math.min(grant.expires_ms, grant.issued_ms + grant.offline_ms) <= now ||

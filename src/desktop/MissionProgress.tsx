@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CompleteMission } from "./CompleteMission";
 import { node } from "./bridge";
 import type { AgentView, MissionView, ArtifactSummary } from "./node-contract";
 import type { Perform } from "./ui";
@@ -54,6 +55,8 @@ export function MissionProgress({
   }, [mission.id, edit]);
   const own = owner === mission.owner;
   const archived = mission.lifecycle.phase === "archived";
+  const readyForReview =
+    !!data?.criteria.length && data.criteria.every((c) => c.met && !c.stale);
   const act = (action: Parameters<typeof node.missionAction>[2]) =>
     void perform(async () => {
       await node.missionAction(mission.id, mission.lifecycle.revision, action);
@@ -64,7 +67,37 @@ export function MissionProgress({
     });
   return (
     <section className="n-governance">
+      {readyForReview &&
+      !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+        <section
+          className="d-panel"
+          aria-label="Results ready for human review"
+        >
+          <h3>Criteria reported met · ready for your review</h3>
+          <p>
+            Inspect the current evidence and artifacts before accepting results.
+            Only the mission owner closes the mission.
+          </p>
+          {[...new Set(data!.criteria.flatMap((c) => c.evidence))].map((id) => (
+            <button
+              key={id}
+              className="d-button"
+              onClick={() => openArtifact(id)}
+            >
+              Open result · {short(id)}
+            </button>
+          ))}
+        </section>
+      ) : null}
       <h3>Completion criteria</h3>
+      {own ? (
+        <CompleteMission
+          mission={mission}
+          artifacts={artifacts}
+          open={openArtifact}
+          updated={updated}
+        />
+      ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {data?.criteria.map((c) => (
         <div className="d-panel n-ledger-row" key={c.index}>
@@ -209,7 +242,8 @@ export function MissionProgress({
         </button>
       ) : null}
       {own && !archived && mission.lifecycle.phase !== "closed" ? (
-        <>
+        <details>
+          <summary>Plan revisions and Coordinator handover</summary>
           <h3>Shared plan</h3>
           <label className="d-field">
             <span>Select a complete plan artifact</span>
@@ -298,10 +332,15 @@ export function MissionProgress({
           >
             Hand over coordination
           </button>
-        </>
+        </details>
       ) : null}
       {own ? (
-        <>
+        <details
+          open={
+            archived || mission.lifecycle.phase === "closed" || readyForReview
+          }
+        >
+          <summary>Finish or archive the mission</summary>
           <h3>Mission lifecycle</h3>
           <div className="n-action-row">
             {archived ? (
@@ -371,7 +410,7 @@ export function MissionProgress({
               </div>
             </form>
           ) : null}
-        </>
+        </details>
       ) : null}
     </section>
   );

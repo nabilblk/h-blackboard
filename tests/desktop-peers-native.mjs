@@ -116,8 +116,8 @@ async function app(name) {
     assert.ok(ready, `${name}: app did not start`);
     browser("connect", String(port));
     await wait(
-      `document.querySelector('h1')?.textContent==='Your missions, on your computer.'`,
-      "Home did not load",
+      `document.querySelector('h1')?.textContent==='Your missions, on your computer.' || !!document.querySelector('.n-conversations')`,
+      "Mission home or saved conversation did not load",
     );
     browser("snapshot", "-i");
   };
@@ -213,7 +213,7 @@ async function rosterProof(a, b) {
     { nodeRevision: m.lifecycle.terms_revision },
   );
   await b.start();
-  b.click(".n-mission-row");
+  assert.ok(b.evaluate("!!document.querySelector('.n-conversations')"));
   b.browser("fill", "#main-message", "My unsent accessibility question");
   members(b);
   b.button("Agents");
@@ -234,7 +234,7 @@ async function rosterProof(a, b) {
   assert.ok(
     b
       .evaluate("document.querySelector('.n-agents').textContent")
-      .includes("Waiting for mission start"),
+      .includes("Setup needed"),
   );
   b.browser("screenshot", join(evidence, "agent-shared.png"));
   b.click(".n-agent-summary");
@@ -249,7 +249,7 @@ async function rosterProof(a, b) {
   assert.ok(
     b
       .evaluate("document.querySelector('.n-execution').textContent")
-      .includes(`sign in to ${runtimeLabel} inside it`),
+      .includes("Prepare this agent’s isolated environment"),
   );
   assert.equal(
     b.evaluate(
@@ -321,6 +321,15 @@ async function rosterProof(a, b) {
     a.evaluate("document.querySelectorAll('.n-agent-summary').length"),
     1,
   );
+  const remoteAgent = a.evaluate(
+    "document.querySelector('.n-agent-summary').textContent",
+  );
+  assert.match(remoteAgent, /Contributed by Participant [a-f0-9]{8}/);
+  assert.match(
+    remoteAgent,
+    /(?:Execution is controlled by Participant [a-f0-9]{8}|Participant [a-f0-9]{8} reports this status)/,
+  );
+  assert.doesNotMatch(remoteAgent, /controlled by you\b/i);
   a.browser("screenshot", join(evidence, "mission-members.png"));
   closePanel(a);
 }
@@ -328,8 +337,16 @@ async function directionProof(a, b) {
   members(a);
   a.button("Agents");
   await a.wait(
-    "document.querySelector('.n-agent-state')?.textContent==='Direction assigned'",
-    "Start did not assign shared direction",
+    "document.querySelector('.n-agent-state') && !document.querySelector('.n-agent-state').textContent.includes('Running')",
+    "A remote assignment must not masquerade as a running process",
+  );
+  const assigned = a.evaluate(
+    "(async () => window.blackboardNode.agents((await window.blackboardNode.state()).missions[0].id))()",
+  );
+  assert.equal(
+    assigned.items[0].status,
+    "direction_assigned",
+    "Start assigns authority separately from execution",
   );
   a.click(".n-agent-summary");
   a.button("Give direction");
@@ -356,6 +373,28 @@ async function directionProof(a, b) {
       .includes("Awaiting agent acknowledgment"),
   );
   a.browser("screenshot", join(evidence, "agent-direction.png"));
+  assert.equal(
+    b.evaluate(
+      "[...document.querySelectorAll('.n-agent-detail button')].some(b => b.textContent.trim() === 'Review run permission')",
+    ),
+    false,
+    "A contributor must not receive the owner's grant action",
+  );
+  a.button("Review contribution");
+  a.button("Approve contribution");
+  await a.wait(
+    "document.querySelector('.n-contribution-consent')?.textContent.includes('Work authorized')",
+    "Remote authorization did not identify the contributor's separate approval",
+  );
+  const permission = a.evaluate(
+    "(async()=>{const m=(await window.blackboardNode.state()).missions[0];return (await window.blackboardNode.governance(m.id)).grants.at(-1)})()",
+  );
+  assert.equal(permission.registration, assigned.items[0].id);
+  assert.equal(permission.turns, 5);
+  assert.equal(permission.consent, null);
+  assert.equal(permission.reserved, 0);
+  assert.equal(permission.charged, 0);
+  a.browser("screenshot", join(evidence, "remote-run-permission.png"));
   closePanel(a);
   closePanel(b);
 }
@@ -924,7 +963,7 @@ async function discoveryProof(a) {
   );
   await c.stop();
   await c.start();
-  c.click(".n-mission-row");
+  assert.ok(c.evaluate("!!document.querySelector('.n-conversations')"));
   await c.wait(
     "document.querySelector('.n-preparing')?.textContent.includes('You withdrew')",
     "Withdrawal did not survive restart",
@@ -962,10 +1001,13 @@ async function discoveryProof(a) {
 
 async function lifecycleProof(a, b, c) {
   closePanel(a);
-  a.button("Mission controls");
+  if (!a.evaluate("!!document.querySelector('.n-control')"))
+    a.button("Mission controls");
   assert.equal(
-    a.evaluate("document.querySelector('.n-control-bar button').disabled"),
-    true,
+    a.evaluate(
+      "document.querySelector('.n-control-bar button').textContent.trim()",
+    ),
+    "Set up Coordinator",
   );
   assert.equal(
     b.evaluate("!!document.querySelector('.n-control-bar button')"),
@@ -983,8 +1025,10 @@ async function lifecycleProof(a, b, c) {
     "Human plan did not save",
   );
   assert.equal(
-    a.evaluate("document.querySelector('.n-control-bar button').disabled"),
-    true,
+    a.evaluate(
+      "document.querySelector('.n-control-bar button').textContent.trim()",
+    ),
+    "Set up Coordinator",
   );
   a.browser("scrollintoview", ".n-room-header");
   a.browser("screenshot", join(evidence, "coordinator-waiting.png"));
@@ -997,10 +1041,11 @@ async function lifecycleProof(a, b, c) {
   );
   closePanel(a);
   if (rosterMode) await rosterProof(a, b);
-  a.button("Start mission");
+  a.button("Review and start", "document.querySelector('.n-journey')");
+  a.button("Start and run");
   for (const n of [a, b, c])
     await n.wait(
-      "document.querySelector('.n-control-bar .d-label')?.textContent==='Active'",
+      "(async() => (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'active')()",
       "Start did not replicate",
     );
   await c.wait(
@@ -1016,24 +1061,28 @@ async function lifecycleProof(a, b, c) {
   }
   await a.stop();
   await a.start();
-  a.click(".n-mission-row");
+  assert.ok(a.evaluate("!!document.querySelector('.n-conversations')"));
   await a.wait(
-    "document.querySelector('.n-control-bar .d-label')?.textContent==='Active'",
+    "(async() => (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'active')()",
     "Start did not survive restart",
   );
+  if (!a.evaluate("!!document.querySelector('.n-control')"))
+    a.button("Mission controls");
   a.button("Pause mission");
   for (const n of [a, b, c])
     await n.wait(
-      "document.querySelector('.n-control-bar .d-label')?.textContent==='Paused'",
+      "(async() => (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'paused')()",
       "Pause did not replicate",
     );
   a.browser("screenshot", join(evidence, "mission-paused.png"));
-  a.button("Resume mission");
+  a.button("Review and resume", "document.querySelector('.n-journey')");
+  a.button("Resume and run");
   await a.wait(
-    "document.querySelector('.n-control-bar .d-label')?.textContent==='Active'",
+    "(async() => (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'active')()",
     "Resume not applied",
   );
-  a.button("Mission controls");
+  if (!a.evaluate("!!document.querySelector('.n-control')"))
+    a.button("Mission controls");
   a.button("Edit instructions");
   a.browser(
     "fill",
@@ -1043,7 +1092,7 @@ async function lifecycleProof(a, b, c) {
   a.button("Save instructions");
   for (const n of [a, b, c])
     await n.wait(
-      "document.querySelector('.n-control-bar .d-label')?.textContent==='Preparing'",
+      "(async() => (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'preparing')()",
       "Instruction edit did not return mission to Preparing",
     );
   const updated = a.evaluate("window.blackboardNode.state()").missions[0];
@@ -1060,7 +1109,8 @@ async function lifecycleProof(a, b, c) {
       n.evaluate("window.blackboardNode.state()").execution,
       "unavailable",
     );
-  a.button("Mission controls");
+  if (!a.evaluate("!!document.querySelector('.n-control')"))
+    a.button("Mission controls");
   people(a);
 }
 
@@ -1208,7 +1258,10 @@ try {
     );
     c.browser("screenshot", join(evidence, "conversation-small.png"));
     await a.start();
-    a.click(".n-mission-row");
+    assert.ok(
+      a.evaluate("!!document.querySelector('.n-conversations')"),
+      "The owner returns directly to the saved mission after restart",
+    );
     await a.wait(
       `document.querySelector('.n-messages')?.textContent.includes('The creator is offline.')`,
       "Owner did not catch up on restart",

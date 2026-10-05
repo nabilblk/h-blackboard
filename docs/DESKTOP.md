@@ -6,7 +6,7 @@ The desktop on `pivot/renting-the-rent` creates local missions and connects peop
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.2 developer preview** DMG and its SHA-256 checksum. Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. For agent execution, install Lima and follow the [isolated runtime setup](EXECUTION.md#first-run).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.3 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.3 adds guided Coordinator and bulk-agent setup, in-app Lima installation and guest sign-in, consistent lifecycle states, and durable drafts/setup recovery. Follow the [isolated runtime setup](EXECUTION.md#first-run-043).
 
 Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
@@ -17,7 +17,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-The 0.4.2 package and current source use peer protocol 10 and SQLite schema 14. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
+Version 0.4.4 uses peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 
@@ -48,6 +48,28 @@ Copy the app into **Applications** before launching it. A generic Finder alert d
 
 A valid ad-hoc signature verifies file integrity; it does **not** establish an identified developer or Gatekeeper acceptance. If macOS specifically blocks an unidentified developer, Apple's [Open Anyway procedure](https://support.apple.com/102445) describes a per-app exception. That exception does not fix an incompatible or damaged bundle. The public release gate remains Developer ID signing, notarization and a first-launch test on a clean Mac.
 
+### Continuous onboarding (0.4.4)
+
+Main stays primary. The next action opens a contextual panel, preserving the conversation, drafts and reading position. **Invite people** brings another person's node; **Add my agents** prepares this Mac's contributions. An invitation offers **Connect and review**, followed by admission and either agent setup or conversation-only participation.
+
+The saved setup flow is **Prepare → Sign in → Prepare plan/Approve contribution → Review and Start**. A short planning approval is distinct from mission work. **Start and run** records the reviewed mission Start and eligible owner-local approvals as separate recoverable actions. If a reply is lost, **Continue saved Start review** reconciles the outcome without duplicating authority. Other contributors independently approve their own execution.
+
+A person may approve an agent for a finite availability window and turn ceiling, optionally following new directions under the same mission terms, accepted plan, Coordinator and isolation policy. Within those bounds, the host renews finite signed permissions after the prior execution is settled. Local Stop, withdrawal, changed terms/plan/Coordinator/policy or exhausted limits prevent continuation. Existing one-run consent never becomes ongoing consent. **Approve one permission at a time** remains available. Unlimited mission budgets do not imply unbounded local execution.
+
+Ordinary Pause preserves the genuinely accepted unchanged plan/readiness. **Review and resume → Resume and run** retains the human gate. A changed plan or appointment still requires fresh review. Owner Stop requests on remote grants preserve unsettled accounting; they do not claim that an offline process terminated.
+
+Members, Main's compact summary and agent conversations share operational states. Remote reports are contributor-signed, mission-scoped and expire after 30 seconds; local observations expire after 15 seconds. A stale report is **Status unknown**, never confirmed termination. Reports can identify waiting for contributor approval, owner authorization or direction. They establish attributed activity, not work quality.
+
+**Inbox** puts pending admission, plan review, local blockers and result decisions alongside messages. Reading a request does not resolve it. Routine accounting events are grouped in Main; source records and substantive findings remain available. The result review accepts exact revisions and closes the mission through separate durable records; criteria are not silently marked complete. A closed channel offers **Open accepted result** and keeps history readable.
+
+Five-agent setup preserves per-guest identities and sequential provider login. Review several local contributions together, choose a device capacity limit, and observe queued work. Existing guest login is checked before generating a fresh code. The app shows a provider expiry only when the provider reports it. Closing a panel never cancels setup. Window-close behavior is explicit: opt into **Keep contributing in the background**, with menu-bar Open/Stop/Quit controls. Quitting stops local execution through the recovery path. Sleeping requests a stop; if suspension prevents confirmation, that uncertainty remains visible after waking.
+
+Background users can separately opt into macOS decision notifications. These cover admission, Start, result review and interrupted setup/contributions, link back to the mission Inbox, and never include mission text, provider output or sign-in codes. OS notification settings still apply; the Inbox remains the source of pending decisions. Reading an alert does not approve anything.
+
+**This device** also offers optional local onboarding timings. They contain bounded sampled state transitions and elapsed durations, without message text, login output or invitation secrets. They are off by default, never uploaded, and can be cleared. These diagnostics do not measure successful first-time usability.
+
+The landing page still serves the last published preview until a new release is explicitly published. Build the 0.4.4 DMG locally with the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
+
 ## Create an offline mission
 
 1. Open **My missions → Create mission**. Define the channel name, objective, scope and optional completion criteria.
@@ -62,9 +84,10 @@ The creator's endpoint is recorded as the initial Coordinator host in coordinate
 
 Open **Mission controls** within the channel. Main/private conversation remains the working surface; tasks and extra workstreams are optional.
 
-- **Coordinator-led:** prepare a local Coordinator contribution, then select **Appoint Coordinator**. The appointment has a separate agent signing identity and a new authority revision. A prepared contribution is not a running agent. The signed protocol supports a Coordinator plan and acknowledgment of the exact plan/instructions. The owner issues a bounded planning permission in Budget; the contributor approves it in the agent’s Local execution panel. The real Coordinator publishes its plan and readiness through scoped tools. The human then starts the mission; the desktop never fabricates readiness.
+- **Coordinator-led:** select **Set up Coordinator** in the mission and review the contribution. The guided flow prepares, shares and appoints the first local Coordinator. The appointment has a separate agent signing identity and a new authority revision. A prepared contribution is not a running agent. The signed protocol supports a Coordinator plan and acknowledgment of the exact plan/instructions. An owner running the local Coordinator uses **Review planning session → Approve and prepare plan** in agent details; this groups allocation, exact permission and local consent under one explicit review. Separate distributed permissions remain available in Budget. The real Coordinator publishes its plan and readiness through scoped tools. The human then starts the mission; the desktop never fabricates readiness.
 - **Peer collaboration:** the owner can select **Start mission** without a Coordinator, tasks or a mandatory plan. This changes shared mission authorization only. The contributor separately approves a current work permission in Local execution.
 - **Pause mission:** records an owner decision shared with reachable peers. **Resume mission** requires a fresh Coordinator acknowledgment in coordinated mode. Peer mode needs only the owner. Pausing is not a receipt that a process has terminated, and an offline node cannot learn a new pause instantly.
+- **Review plan to resume:** a paused coordinated mission with a saved plan offers this recovery action when fresh readiness is missing. Confirm the plan to return to Preparing, approve the Coordinator's planning session, then review and Start again. The signed plan review preserves existing contribution terms and identities; an artifact plan retains its exact revision. A changed mission invalidates an open review. This action never starts agents or supplies their readiness.
 - **Edit instructions**, **Set shared plan** or **Change coordination** returns the mission to Preparing and clears earlier readiness. Instruction/mode changes also invalidate the local terms review. An open stale editor cannot overwrite a newer control revision. Applying Coordinator-led again removes the old appointment; it does not enable peer collaboration.
 - Human-supplied plans are clearly attributed to the owner; a Coordinator must still acknowledge them. Plans and control changes are recorded in Main. A late old plan cannot undo an owner’s already accepted Start.
 
@@ -76,9 +99,9 @@ Wire protocol **10** requires all connected desktops to upgrade. Existing histor
 
 1. On each computer, open **This device → Peer network**. Choose **Direct + public Iroh relays** for Internet connectivity, **Direct connections only**, or configure your own HTTPS relays. LAN/private contact hints require the checkbox. Save explicitly; the app remembers your choice.
 2. The creator opens a local mission → **Members → People & invitations → Create invitation** and shares the `harakiri://join/…` link. It expires after seven days; the owner can expire all outstanding links.
-3. The other person opens **Join a mission**, pastes the link and selects **Inspect invitation**. Review objective, scope, criteria, policy, owner key and exact mission identity. Compare the owner key through a trusted channel.
+3. The other person opens the invitation in the desktop (0.4.3 registers `harakiri://`), or pastes it into **Join a mission**. Opening never joins or runs anything. If networking is off, **Enable peer connections** is available here with an explicit explanation; custom routes remain under Connection options. Select **Inspect invitation**. Review objective, scope, criteria, policy, owner key and exact mission identity. Compare the owner key through a trusted channel.
 4. **Request to join** shares the joining node's signed public identity and connection hints. It stays pending until the owner selects **Approve** in **Members → People & invitations**. Approval shares membership and contact hints with admitted peers. Neither inspection nor approval launches an agent.
-5. Open the new mission channel and use **Main**. **Members → People & invitations** shows pending requests, membership, last successful exchanges and Main acknowledgment status. Acknowledgment means records were reported saved, not read or acted on.
+5. Open the new mission channel and use **Main**. Choose **Add agents** for guided individual/bulk setup, or participate as a human observer. Each agent keeps its own guest login; joining never copies credentials or starts a runtime. **Members → People & invitations** shows pending requests, membership, last successful exchanges and Main acknowledgment status. Acknowledgment means records were reported saved, not read or acted on.
 6. Use **Message privately** beside a participant, then switch conversations with the conversation selector. Only the fixed participants receive that stream, including its private metadata. The mission owner is not automatically a reader. Drafts remain separate between conversations.
 7. Close the creator's app after the participants have exchanged contacts. Remaining admitted peers continue exchanging messages; the creator catches up after reopening. Owner-only admission waits for the owner.
 8. **Revoke access…** records an owner revocation. Nodes apply it when received; the removed node conservatively blocks new writes on a valid signed notice. Already delivered history stays readable. Disable networking in **This device** to stop this node's connections.

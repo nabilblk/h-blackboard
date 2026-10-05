@@ -367,7 +367,18 @@ impl History {
                             .as_deref()
                             .ok_or(Error::Invalid("Coordinator readiness required"))?,
                     )?;
-                    self.check_coordinator(p, ready)?;
+                    // Pause retains only the readiness accepted by the previous
+                    // Start. Every terms, plan, mode or appointment edit clears
+                    // it. Resuming that exact plan needs a human Start, not a
+                    // second planning ceremony.
+                    let retained = p.lifecycle.phase == MissionPhase::Paused
+                        && p.lifecycle.readiness.as_ref().is_some_and(|r| {
+                            r.id == ready.id
+                                && p.lifecycle.plan.as_ref().is_some_and(|p| p.id == r.plan)
+                        });
+                    if !retained {
+                        self.check_coordinator(p, ready)?;
+                    }
                     let Payload::CoordinatorReadied { control, plan } = &ready.body.payload else {
                         return Err(Error::Invalid("readiness record required"));
                     };
@@ -398,7 +409,10 @@ impl History {
                 p.lifecycle.pause_reason = Some(reason.clone());
             }
         }
-        if !matches!(action, ControlAction::Start { .. }) {
+        if !matches!(
+            action,
+            ControlAction::Start { .. } | ControlAction::Pause { .. }
+        ) {
             p.lifecycle.readiness = None;
         }
         if p.lifecycle.phase == MissionPhase::Preparing {
@@ -490,6 +504,12 @@ impl History {
                     author: e.body.author.clone(),
                     control: control.clone(),
                     plan: plan.clone(),
+                })
+                .or_else(|| {
+                    p.lifecycle.readiness.clone().filter(|r| {
+                        p.lifecycle.phase == MissionPhase::Paused
+                            && p.lifecycle.plan.as_ref().is_some_and(|p| p.id == r.plan)
+                    })
                 });
         }
         p.lifecycle.start_blockers = if matches!(

@@ -1,46 +1,18 @@
+import { ContributionConsent } from "./ContributionApproval";
 import { useEffect, useState } from "react";
 import { Play, Square, Download, Upload, ShieldCheck } from "lucide-react";
 import { node, type Contribution } from "./bridge";
 import type { GrantView } from "./node-contract";
 
-type ExecutionState = {
-  record: null | {
-    status: string;
-    reason: string;
-    session: string | null;
-    generation: number | null;
-    expiresAt: number | null;
-    interruption?: {
-      code: "direction_changed";
-      previous: string;
-      current: string;
-    } | null;
-  };
-  permissions: GrantView[];
-  direction: { id: string; text: string } | null;
-  permissionProblem: string | null;
-  capacity: number;
-  busy: boolean;
-  events: { at: number; type: string; message: string }[];
-};
-type ExecutionAPI = {
-  state(id: string): Promise<ExecutionState>;
-  prepare(id: string): Promise<void>;
-  login(id: string): Promise<{ command: string }>;
-  start(id: string, grant: string): Promise<ExecutionState>;
-  stop(id: string): Promise<void>;
-  exportFiles(id: string): Promise<{ exported: number; directory: string }>;
-  importFiles(id: string): Promise<{ imported?: number; cancelled?: boolean }>;
-};
-declare global {
-  interface Window {
-    blackboardExecution: ExecutionAPI;
-  }
-}
+import type { ExecutionState } from "./execution-types";
+import type { MissionView } from "./node-contract";
+import { RunApproval, ProviderSetup } from "./ExecutionSetup";
+import { agentLifecycle } from "../../shared/agent-lifecycle.mjs";
+
 const labels: Record<string, string> = {
   preparing: "Preparing VM",
   login_required: "Sign in required",
-  ready: "Ready to run",
+  ready: "Environment ready",
   reserving: "Reserving allowance",
   launching: "Starting VM",
   running: "Running in VM",
@@ -58,7 +30,18 @@ const active = new Set([
   "stopping",
 ]);
 
-export function ExecutionPanel({ item }: { item: Contribution }) {
+export function ExecutionPanel({
+  item,
+  mission: suppliedMission,
+}: {
+  item: Contribution;
+  mission?: MissionView;
+}) {
+  const [mission, setMission] = useState(suppliedMission);
+  const [owner, setOwner] = useState("");
+  const [authInput, setAuthInput] = useState("");
+  const [reviewRun, setReviewRun] = useState(false);
+  const [manual, setManual] = useState(false);
   const [state, setState] = useState<ExecutionState | null>(null);
   const [grants, setGrants] = useState<GrantView[]>([]);
   const [selected, setSelected] = useState("");
@@ -73,16 +56,31 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const execution = await api.state(item.id);
+        const [execution, nodeState] = await Promise.all([
+          api.state(item.id),
+          node.state(),
+        ]);
+        if (!cancelled) {
+          setOwner(nodeState.identity?.owner ?? "");
+          setMission(
+            nodeState.missions.find((m) => m.id === item.mission.missionId),
+          );
+        }
         if (!cancelled) {
           setState(execution);
           setGrants(execution.permissions);
         }
       } catch (e) {
-        if (!cancelled)
+        if (!cancelled) {
+          setState((previous) =>
+            previous
+              ? { ...previous, error: "Execution observation unavailable." }
+              : null,
+          );
           setError(
             e instanceof Error ? e.message : "Unable to inspect execution.",
           );
+        }
       }
       if (!cancelled) timer = setTimeout(() => void poll(), 2500);
     };
@@ -115,7 +113,18 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
   const supported = !!runtimeLabel && !!item.nodeBinding;
   const status = state?.record?.status;
   const working = !!status && active.has(status);
-  const available = item.status === "prepared" && !item.sharedAgent?.withdrawn;
+  const available =
+    item.status === "prepared" &&
+    !item.sharedAgent?.withdrawn &&
+    !["closed", "archived"].includes(mission?.lifecycle.phase ?? "");
+  const effective = mission
+    ? agentLifecycle({
+        mission,
+        contribution: item,
+        execution: state ?? undefined,
+        agent: state?.agent ?? undefined,
+      })
+    : null;
   const permission = grants.find((g) => g.id === selected) ?? grants.at(-1);
   return (
     <section className="d-panel n-execution" aria-label="Local agent execution">
@@ -124,15 +133,24 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
           <ShieldCheck size={16} /> Local execution
         </h3>
         <span className="d-label" role="status">
-          {status ? labels[status] : "Not prepared"}
+          {effective?.label ?? (status ? labels[status] : "Checking status")}
         </span>
       </header>
       <p>
-        {state?.record?.reason ||
+        {effective?.reason ||
+          state?.record?.reason ||
           (supported
             ? `Prepare an isolated environment for this contribution, then sign in to ${runtimeLabel} inside it.`
             : "Prepare a contribution to a peer mission to use isolated execution on Apple Silicon with Lima.")}
       </p>
+      {state?.events.at(-1) ? (
+        <p className="d-field-help">
+          Last observed activity:{" "}
+          {new Date(state.events.at(-1)!.at).toLocaleTimeString()} ·{" "}
+          {state.events.at(-1)!.type.replaceAll("_", " ")}. Running confirms
+          execution, not useful progress.
+        </p>
+      ) : null}
       {status === "stopped" && state?.record?.interruption ? (
         <div className="d-panel" role="status">
           <h4>Direction changed · review before resuming</h4>
@@ -153,34 +171,37 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
       {state?.permissionProblem ? (
         <p className="d-field-help">{state.permissionProblem}</p>
       ) : null}
-      <dl className="d-facts">
-        <div>
-          <dt>Environment</dt>
-          <dd>Lima · Ubuntu 24.04 · 2 GB RAM · 2 vCPUs</dd>
-        </div>
-        <div>
-          <dt>Workspace</dt>
-          <dd>
-            <code>/workspace</code> in this agent’s VM
-          </dd>
-        </div>
-        <div>
-          <dt>Access</dt>
-          <dd>
-            Workspace tools have no network or credential access. {runtimeLabel}{" "}
-            connects to its provider.
-          </dd>
-        </div>
-        {state?.record?.generation ? (
+      <details>
+        <summary>Environment, limits and session</summary>
+        <dl className="d-facts">
           <div>
-            <dt>Generation</dt>
+            <dt>Environment</dt>
+            <dd>Lima · Ubuntu 24.04 · 2 GB RAM · 2 vCPUs</dd>
+          </div>
+          <div>
+            <dt>Workspace</dt>
             <dd>
-              {state.record.generation}
-              {state.record.session ? " · native session saved" : ""}
+              <code>/workspace</code> in this agent’s VM
             </dd>
           </div>
-        ) : null}
-      </dl>
+          <div>
+            <dt>Access</dt>
+            <dd>
+              Workspace tools have no network or credential access.{" "}
+              {runtimeLabel} connects to its provider.
+            </dd>
+          </div>
+          {state?.record?.generation ? (
+            <div>
+              <dt>Generation</dt>
+              <dd>
+                {state.record.generation}
+                {state.record.session ? " · native session saved" : ""}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      </details>
       {error ? (
         <p className="d-error" role="alert">
           {error}
@@ -202,20 +223,159 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
                 Prepare isolated environment
               </button>
             ) : null}
-            {!working && state?.record ? (
+            {!working &&
+            state?.record &&
+            !state.busy &&
+            ["ready", "login_required", "stopped"].includes(status ?? "") ? (
               <button
                 className="d-button"
                 disabled={busy}
-                onClick={() =>
-                  void act(async () => {
-                    setCommand((await api.login(item.id)).command);
-                  })
-                }
+                onClick={() => void act(() => api.signIn(item.id))}
               >
                 Sign in to {runtimeLabel}…
               </button>
             ) : null}
           </div>
+          {!state?.record || status === "failed" ? <ProviderSetup /> : null}
+          {status === "preparing" ? (
+            <>
+              <progress aria-label="Preparing isolated environment" />
+              <button
+                className="d-button"
+                onClick={() => void act(() => api.cancelSetup(item.id))}
+              >
+                Cancel environment setup
+              </button>
+            </>
+          ) : null}
+          {state?.authentication ? (
+            <section className="d-panel" aria-label="Provider sign-in">
+              <h4>Sign in inside this agent’s environment</h4>
+              {state.authentication.status === "failed" ||
+              (state.authentication.expiresAt &&
+                state.authentication.expiresAt <= Date.now()) ? (
+                <button
+                  className="d-button primary"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      await api.cancelLogin(item.id);
+                      await api.signIn(item.id);
+                    })
+                  }
+                >
+                  Get a fresh sign-in
+                </button>
+              ) : null}
+              <p role="status">
+                {state.authentication.status === "complete"
+                  ? "Signed in. Continue to contribution approval below."
+                  : state.authentication.status === "failed"
+                    ? state.authentication.failure === "expired"
+                      ? "This code expired. Get a fresh code when you are ready."
+                      : state.authentication.failure === "denied"
+                        ? "Sign-in was declined. Retry when you are ready."
+                        : "Sign-in did not complete. Retry below; your environment and files are saved."
+                    : state.authentication.status === "starting"
+                      ? "Checking your existing guest login and preparing sign-in…"
+                      : "Open the provider in your browser and complete sign-in. Keep this step open until confirmation."}
+              </p>
+              {state.authentication.code ? (
+                <label className="d-field">
+                  Provider code
+                  <input
+                    readOnly
+                    value={state.authentication.code}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                </label>
+              ) : null}
+              {state.authentication.expiresAt ? (
+                <p className="d-field-help">
+                  {state.authentication.expiresAt <= Date.now()
+                    ? "Code expired. Cancel this sign-in and retry for a new code."
+                    : `Code expires at ${new Date(state.authentication.expiresAt).toLocaleTimeString()}.`}
+                </p>
+              ) : state.authentication.status === "waiting" ? (
+                <p className="d-field-help">
+                  The provider did not report a code expiry. If it rejects the
+                  code, cancel and retry to get a fresh one.
+                </p>
+              ) : null}
+              <details>
+                <summary>Provider details</summary>
+                <pre className="n-auth-output">{state.authentication.text}</pre>
+              </details>
+              {(state.authentication.status === "waiting" &&
+              (!state.authentication.expiresAt ||
+                state.authentication.expiresAt > Date.now())
+                ? state.authentication.urls
+                : []
+              ).map((url) => (
+                <button
+                  key={url}
+                  className="d-button"
+                  onClick={() => void act(() => api.openLogin(item.id, url))}
+                >
+                  Open provider sign-in
+                </button>
+              ))}
+              {["starting", "waiting"].includes(state.authentication.status) ? (
+                <>
+                  {item.runtime === "claude" ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const code = authInput;
+                        setAuthInput("");
+                        void act(() => api.loginInput(item.id, code));
+                      }}
+                    >
+                      <label className="d-field">
+                        Code returned by the provider
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          value={authInput}
+                          onChange={(e) => setAuthInput(e.target.value)}
+                          required
+                          maxLength={4096}
+                        />
+                      </label>
+                      <button
+                        className="d-button"
+                        disabled={busy || !authInput}
+                      >
+                        Submit sign-in code
+                      </button>
+                    </form>
+                  ) : null}
+                  <button
+                    className="d-button"
+                    onClick={() => void act(() => api.cancelLogin(item.id))}
+                  >
+                    Cancel sign-in
+                  </button>
+                </>
+              ) : null}
+            </section>
+          ) : null}
+          {!working && state?.record && status !== "failed" ? (
+            <details>
+              <summary>Sign-in diagnostics</summary>
+              <button
+                className="d-button"
+                disabled={busy || state.busy}
+                onClick={() =>
+                  void act(async () =>
+                    setCommand((await api.login(item.id)).command),
+                  )
+                }
+              >
+                Show Terminal fallback
+              </button>
+            </details>
+          ) : null}
           {command ? (
             <div className="d-field">
               <span>
@@ -238,28 +398,96 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
               </p>
             </div>
           ) : null}
-          {!working && ["ready", "stopped"].includes(status ?? "") ? (
+          {mission &&
+          state?.agent &&
+          [
+            "ready",
+            "stopped",
+            "waiting",
+            "running",
+            "launching",
+            "reserving",
+          ].includes(status ?? "") &&
+          (mission.lifecycle.phase !== "preparing" ||
+            item.mission.role !== "coordinator") ? (
+            <ContributionConsent
+              mission={mission}
+              agent={state.agent}
+              contribution={item}
+              isOwner={owner === mission.owner}
+            />
+          ) : null}
+          {!working &&
+          ["ready", "stopped"].includes(status ?? "") &&
+          mission?.lifecycle.phase === "active" ? (
+            <label className="n-check-label">
+              <input
+                type="checkbox"
+                checked={manual}
+                disabled={state?.agreement?.status === "active"}
+                onChange={(e) => setManual(e.target.checked)}
+              />
+              Approve one permission at a time{" "}
+              {state?.agreement?.status === "active"
+                ? "(stop automatic contribution first)"
+                : ""}
+            </label>
+          ) : null}
+          {!working &&
+          ["ready", "stopped"].includes(status ?? "") &&
+          (mission?.lifecycle.phase === "preparing" ||
+            (manual && mission?.lifecycle.phase === "active")) ? (
             <>
-              <label className="d-field">
-                <span>Mission permission</span>
-                <select
-                  value={permission?.id ?? ""}
-                  onChange={(e) => setSelected(e.target.value)}
-                >
-                  <option value="" disabled>
-                    No current permission
-                  </option>
-                  {grants.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.purpose === "planning"
-                        ? "Coordinator planning"
-                        : "Mission work"}{" "}
-                      · {g.turns - g.charged - g.reserved} turns · generation{" "}
-                      {g.generation}
+              {mission &&
+              owner === mission.owner &&
+              (mission.lifecycle.phase === "active" ||
+                mission.lifecycle.coordinator?.identity.author ===
+                  item.sharedAgent?.author) &&
+              !permission ? (
+                <>
+                  <button
+                    className="d-button primary"
+                    onClick={() => setReviewRun((v) => !v)}
+                  >
+                    {mission.lifecycle.phase === "preparing"
+                      ? "Review planning session"
+                      : "Review next run"}
+                  </button>
+                  {reviewRun && state ? (
+                    <RunApproval
+                      item={item}
+                      mission={mission}
+                      execution={state}
+                      done={async () => {
+                        setReviewRun(false);
+                        setState(await api.state(item.id));
+                      }}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              {permission ? (
+                <label className="d-field">
+                  <span>Current run permission</span>
+                  <select
+                    value={permission?.id ?? ""}
+                    onChange={(e) => setSelected(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      No current permission
                     </option>
-                  ))}
-                </select>
-              </label>
+                    {grants.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.purpose === "planning"
+                          ? "Coordinator planning"
+                          : "Mission work"}{" "}
+                        · {g.turns - g.charged - g.reserved} turns · generation{" "}
+                        {g.generation}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               {permission ? (
                 <p className="d-field-help">
                   Approve the isolation policy above and your prepared
@@ -272,40 +500,42 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
                   ).toLocaleTimeString()}
                   . Human Start is required before workers execute.
                 </p>
-              ) : (
+              ) : status === "stopped" ? (
                 <p className="d-field-help">
-                  The mission owner issues permissions from Budget. A stopped
-                  generation must be replaced before resume.
+                  A new run needs a fresh permission and your approval on this
+                  device.
                 </p>
-              )}
-              <button
-                className="d-button primary"
-                disabled={busy || !permission}
-                onClick={() =>
-                  void act(async () => {
-                    if (!permission) return;
-                    if (!permission.consent)
-                      await node.consentGrant(
-                        item.mission.missionId,
-                        permission.id,
-                        item.id,
-                      );
-                    await api.start(item.id, permission.id);
-                  })
-                }
-              >
-                <Play size={14} />{" "}
-                {permission?.purpose === "planning"
-                  ? "Approve and plan"
-                  : state?.record?.session
-                    ? "Approve and resume"
-                    : "Approve and run"}
-              </button>
+              ) : null}
+              {permission ? (
+                <button
+                  className="d-button primary"
+                  disabled={busy || !permission}
+                  onClick={() =>
+                    void act(async () => {
+                      if (!permission) return;
+                      if (!permission.consent)
+                        await node.consentGrant(
+                          item.mission.missionId,
+                          permission.id,
+                          item.id,
+                        );
+                      await api.start(item.id, permission.id);
+                    })
+                  }
+                >
+                  <Play size={14} />{" "}
+                  {permission?.purpose === "planning"
+                    ? "Approve and plan"
+                    : state?.record?.session
+                      ? "Approve and resume"
+                      : "Approve and run"}
+                </button>
+              ) : null}
             </>
           ) : null}
         </>
       ) : null}
-      {state?.record ? (
+      {state?.record && status !== "preparing" ? (
         <div className="n-action-row">
           <button
             className="d-button"
@@ -347,6 +577,25 @@ export function ExecutionPanel({ item }: { item: Contribution }) {
             <Upload size={14} /> Import files…
           </button>
         </div>
+      ) : null}
+      {state?.record?.transitions?.length ? (
+        <details>
+          <summary>State history</summary>
+          <ol className="n-execution-log">
+            {state.record.transitions
+              .slice(-15)
+              .reverse()
+              .map((t, i) => (
+                <li key={`${t.at}:${i}`}>
+                  <time>{new Date(t.at).toLocaleTimeString()}</time>{" "}
+                  <strong>
+                    {labels[t.from] ?? t.from} → {labels[t.to] ?? t.to}
+                  </strong>
+                  <p>{t.reason}</p>
+                </li>
+              ))}
+          </ol>
+        </details>
       ) : null}
       {state?.events.length ? (
         <details>

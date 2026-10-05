@@ -1,3 +1,4 @@
+import { BackgroundSetting } from "./BackgroundSetting";
 import { readDrafts, writeDrafts } from "../../shared/desktop-drafts.mjs";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -42,22 +43,52 @@ type View =
   | "device"
   | "activity"
   | { id: string }
-  | { missionId: string };
+  | { missionId: string; startSetup?: boolean };
 
 export default function Desktop() {
   const [state, setState] = useState<LocalState | null>(null);
-  const [view, setView] = useState<View>("missions");
+  const [view, setView] = useState<View>(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("harakiri.last-view.v1") ?? "null",
+      );
+      if (
+        saved &&
+        typeof saved.missionId === "string" &&
+        /^[a-f0-9]{64}$/.test(saved.missionId)
+      )
+        return saved;
+      if (saved === "new-mission") return saved;
+    } catch {
+      /* Use mission list if unavailable. */
+    }
+    return "missions";
+  });
   const [nodeState, setNodeState] = useState<NodeState | null>(null);
   const [error, setError] = useState("");
+  const [openingNode, setOpeningNode] = useState(false);
+  useEffect(() => {
+    if (nodeState || error) {
+      setOpeningNode(false);
+      return;
+    }
+    const timer = setTimeout(() => setOpeningNode(true), 2000);
+    return () => clearTimeout(timer);
+  }, [nodeState, error]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [joinReview, setJoinReview] = useState<{
     reference: string;
     review: InvitationReview;
   } | null>(null);
+  const [incomingInvitation, setIncomingInvitation] = useState<string | null>(
+    null,
+  );
   const [contributionReview, setContributionReview] =
     useState<ContributionReview | null>(null);
   const main = useRef<HTMLElement>(null);
+  const currentView = useRef(view);
+  currentView.current = view;
   const missionScroll = useRef<Record<string, number>>({});
   const latestSessions = useRef<Record<string, MissionSession>>({});
   const [missionSessions, setMissionSessions] = useState<
@@ -88,11 +119,39 @@ export default function Desktop() {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
+        const invitation = await window.blackboardSetup.takeInvitation();
+        if (invitation && !cancelled) {
+          setIncomingInvitation(invitation);
+          setView("join");
+          setNotice("Invitation received. Review it before joining.");
+        }
         const value = await node.state();
         const local = await desktop.state();
+        const target = await window.blackboardSetup.takeNotification();
         if (!cancelled) {
           setNodeState(value);
           setState(local);
+          if (
+            target &&
+            value.identity &&
+            value.missions.some((m) => m.id === target.mission)
+          ) {
+            const prior = currentView.current;
+            if (
+              typeof prior === "object" &&
+              "missionId" in prior &&
+              main.current
+            )
+              missionScroll.current[prior.missionId] = main.current.scrollTop;
+            const key = `${value.identity.owner}:${target.mission}`;
+            const saved =
+              latestSessions.current[key] ??
+              readDrafts(localStorage, value.identity.owner, target.mission);
+            const next = { ...saved, feed: "inbox" as const };
+            latestSessions.current[key] = next;
+            setMissionSessions((all) => ({ ...all, [key]: next }));
+            setView({ missionId: target.mission });
+          }
         }
       } catch (failure) {
         if (!cancelled)
@@ -133,6 +192,11 @@ export default function Desktop() {
     if (typeof view === "object" && "missionId" in view && main.current)
       missionScroll.current[view.missionId] = main.current.scrollTop;
     setView(next);
+    try {
+      localStorage.setItem("harakiri.last-view.v1", JSON.stringify(next));
+    } catch {
+      /* Navigation remains available. */
+    }
     setError("");
     setNotice("");
   };
@@ -306,16 +370,18 @@ export default function Desktop() {
         id="main"
         ref={main}
       >
-        <div className="d-stage-note">
-          <LockKeyhole size={14} />
-          <span>
-            {nodeState?.network === "enabled"
-              ? "Peer networking enabled"
-              : "Offline · local workspace"}{" "}
-            · Claude Code, Codex and Grok Build run in isolated Lima VMs on
-            Apple Silicon.
-          </span>
-        </div>
+        {!selectedMission ? (
+          <div className="d-stage-note">
+            <LockKeyhole size={14} />
+            <span>
+              {nodeState?.network === "enabled"
+                ? "Peer networking enabled"
+                : "Offline · local workspace"}{" "}
+              · Claude Code, Codex and Grok Build run in isolated Lima VMs on
+              Apple Silicon.
+            </span>
+          </div>
+        ) : null}
         {error ? (
           <div className="d-alert" role="alert">
             <span>{error}</span>
@@ -332,6 +398,13 @@ export default function Desktop() {
           <div className="d-notice" role="status">
             <Check size={15} />
             {notice}
+          </div>
+        ) : null}
+        {openingNode ? (
+          <div className="d-notice" role="status">
+            Opening your protected node. If macOS shows a Keychain prompt for
+            “Harakiri Desktop”, approve it there to continue. Your saved
+            missions remain on this Mac.
           </div>
         ) : null}
         <div className="d-content">
@@ -386,15 +459,17 @@ export default function Desktop() {
           ) : null}
           {view === "join" ? (
             <JoinMission
-              key={joinReview?.reference ?? "private"}
-              initialTicket={joinReview?.reference}
+              key={incomingInvitation ?? joinReview?.reference ?? "private"}
+              initialTicket={incomingInvitation ?? joinReview?.reference}
               initialReview={joinReview?.review}
               state={nodeState}
               busy={busy}
               perform={perform}
               updated={refreshNode}
               back={() => navigate("missions")}
-              open={(missionId) => navigate({ missionId })}
+              open={(missionId, startSetup) =>
+                navigate({ missionId, startSetup })
+              }
             />
           ) : null}
           {view === "new-mission" ? (
@@ -406,12 +481,19 @@ export default function Desktop() {
               complete={async (id) => {
                 await refreshNode();
                 navigate({ missionId: id });
-                setNotice("Mission created. Main is ready for your notes.");
+                setNotice(
+                  "Mission created. Follow the next action in this channel to prepare and start work.",
+                );
               }}
             />
           ) : null}
           {selectedMission && nodeState?.identity ? (
             <MissionRoom
+              initialSetup={
+                typeof view === "object" &&
+                "missionId" in view &&
+                view.startSetup === true
+              }
               error={error}
               readScroll={(audience) =>
                 missionScroll.current[`${selectedMission.id}:${audience}`]
@@ -682,11 +764,11 @@ export default function Desktop() {
                 <section className="d-panel">
                   <header>
                     <h2>Execution boundary</h2>
-                    <Status muted>Not connected</Status>
+                    <Status muted>Isolated local execution</Status>
                   </header>
                   <p>
-                    This build prepares participation. It does not launch or
-                    resume runtimes.
+                    Claude Code, Codex and Grok Build run in separate Lima
+                    environments after you approve a current permission.
                   </p>
                   <ul className="d-checklist">
                     <li>
@@ -703,11 +785,15 @@ export default function Desktop() {
                     </li>
                   </ul>
                   <div className="d-pending">
-                    <span className="d-label">Required before execution</span>
+                    <span className="d-label">
+                      Your approval controls execution
+                    </span>
                     <p>
-                      Authenticated contributor and device identities, a scoped
-                      board connection, and an isolation provider that enforces
-                      workspace, credential, network and resource limits.
+                      Each agent uses its own guest login and isolated
+                      workspace. Joining or preparing an agent never starts
+                      mission work. Open a mission’s Add agents panel to prepare
+                      this Mac and sign in; no Terminal setup is required for
+                      the normal flow.
                     </p>
                   </div>
                 </section>
@@ -718,6 +804,7 @@ export default function Desktop() {
                 perform={perform}
                 updated={refreshNode}
               />
+              <BackgroundSetting />
               <DeviceDiscovery
                 state={nodeState}
                 busy={busy}

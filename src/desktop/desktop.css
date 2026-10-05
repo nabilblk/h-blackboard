@@ -2442,3 +2442,280 @@ input[type="checkbox"] {
 .n-governance .n-action-row {
   flex-wrap: wrap;
 }
+.n-status-overview,
+.n-coordinator-progress {
+  padding: var(--space-5) var(--space-7);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.n-status-overview > p {
+  margin: 0 0 var(--space-4);
+}
+.n-status-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.n-status-details {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .n-status-overview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding-block: var(--space-1);
+  }
+  .n-status-overview > p {
+    flex: 1;
+    margin: 0;
+  }
+  .n-status-agents {
+    display: none;
+  }
+  .n-status-details {
+    display: inline-flex;
+    min-height: var(--size-control-sm);
+    padding-block: var(--space-1);
+  }
+}
+.n-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  font: inherit;
+  cursor: pointer;
+}
+.n-status-chip strong {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+}
+.n-status-chip.running strong,
+.n-live-status.running > strong {
+  color: var(--color-status-success);
+}
+.n-status-chip.stopped strong,
+.n-status-chip.unknown strong,
+.n-live-status.stopped > strong,
+.n-live-status.unknown > strong {
+  color: var(--color-status-warning);
+}
+.n-live-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--font-size-body);
+}
+.n-live-status > span {
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+.n-guided-setup > *,
+.n-guided-setup form,
+.n-setup-agent {
+  margin-bottom: var(--space-6);
+}
+.n-guided-setup summary {
+  cursor: pointer;
+  padding-block: var(--space-4);
+}
+.n-guided-setup .n-fields {
+  margin-block: var(--space-5);
+}
+.n-auth-output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  padding: var(--space-5);
+  background: var(--color-surface-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+}
+.n-dm-status {
+  padding: var(--space-5) var(--space-7);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.n-execution details {
+  margin-block: var(--space-5);
+}
+.n-execution progress,
+.n-guided-setup progress {
+  display: block;
+  margin-block: var(--space-5);
+  max-width: 100%;
+  accent-color: var(--color-accent-default);
+}
+.n-more-actions {
+  position: relative;
+}
+.n-more-actions > summary {
+  cursor: pointer;
+}
+.n-more-actions > div {
+  position: absolute;
+  z-index: 12;
+  top: 100%;
+  right: 0;
+  display: grid;
+  min-width: 220px;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+}
+
+/* Continuous onboarding uses the supplied designer tokens and components. */
+.n-journey,
+.n-decision-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-7);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.n-journey p,
+.n-decision-row p {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+.n-journey > div,
+.n-decision-row > div {
+  min-width: 0;
+}
+.n-journey .d-button,
+.n-decision-row .d-button {
+  flex-shrink: 0;
+}
+.n-decisions {
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+}
+.n-decisions h2 {
+  font-size: var(--font-size-body);
+  margin-top: 0;
+}
+.n-decision-row {
+  padding: var(--space-5) 0;
+}
+.n-routine-activity {
+  margin: var(--space-3) var(--space-7);
+  color: var(--color-text-secondary);
+}
+.n-routine-activity summary,
+.n-contribution-consent summary {
+  cursor: pointer;
+  padding-block: var(--space-3);
+}
+.n-check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  line-height: 1.5;
+  padding-block: var(--space-3);
+}
+.n-check-label input {
+  flex-shrink: 0;
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent-default);
+}
+.n-setup-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: 0;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+}
+.n-setup-steps li[aria-current] {
+  color: var(--color-text-primary);
+  border-bottom: 2px solid var(--color-accent-default);
+  padding-bottom: var(--space-2);
+}
+.n-status-overview {
+  padding-block: var(--space-3);
+}
+.n-status-overview > p {
+  margin-bottom: var(--space-2);
+}
+.n-status-chip {
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-3);
+}
+@media (max-width: 1100px) {
+  .n-decision-row {
+    flex-wrap: wrap;
+    padding-inline: var(--space-5);
+  }
+}
+.n-compact-contribute {
+  display: none;
+}
+@media (max-width: 1100px) and (max-height: 760px) {
+  .d-main-mission .n-journey p {
+    -webkit-line-clamp: 1;
+  }
+}
+.n-journey > div:first-child {
+  flex: 1;
+}
+.n-journey > div:last-child {
+  flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+  .d-main-mission .n-room-header {
+    flex-wrap: nowrap;
+  }
+  .n-room-header > div:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .n-room-header h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .n-room-header > .n-action-row {
+    flex-shrink: 0;
+  }
+  .n-header-contribute {
+    display: none;
+  }
+  .n-compact-contribute {
+    display: inline-flex;
+  }
+  .n-journey {
+    padding: var(--space-3) var(--space-5);
+  }
+  .n-journey p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .n-status-overview {
+    padding-block: var(--space-1);
+  }
+  .n-status-overview > p {
+    margin: 0;
+  }
+}

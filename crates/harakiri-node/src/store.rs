@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
 pub struct Store {
+    pub(crate) observations: crate::observations::Observations,
     pub(crate) artifact_cache:
         std::cell::RefCell<BTreeMap<String, std::sync::Arc<crate::artifacts::Records>>>,
     pub(crate) work_cache:
@@ -93,7 +94,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(2))?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(
-            version <= 14,
+            version <= 15,
             "unsupported node database version; preserve this profile"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -337,7 +338,12 @@ impl Store {
         if version < 14 {
             connection.pragma_update(None, "user_version", 14)?;
         }
+        // v11 preserves accepted readiness across an unchanged Pause/Resume.
+        if version < 15 {
+            connection.pragma_update(None, "user_version", 15)?;
+        }
         Ok(Self {
+            observations: Default::default(),
             artifact_cache: Default::default(),
             work_cache: Default::default(),
             connection,

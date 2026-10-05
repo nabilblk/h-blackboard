@@ -89,9 +89,26 @@ export const Session = z
   .max(256)
   .regex(/^[a-zA-Z0-9_-]+$/);
 export const ExecutionRequests = {
+  executionOverview: z.object({ mission: Hash }).strict(),
   executionState: z.object({ contributionId: Id }).strict(),
   executionPrepare: z.object({ contributionId: Id }).strict(),
   executionLogin: z.object({ contributionId: Id }).strict(),
+  executionCancelSetup: z.object({ contributionId: Id }).strict(),
+  executionSignIn: z.object({ contributionId: Id }).strict(),
+  executionLoginInput: z
+    .object({
+      contributionId: Id,
+      text: z
+        .string()
+        .min(1)
+        .max(4096)
+        .regex(/^[^\r\n\x00]+$/),
+    })
+    .strict(),
+  executionCancelLogin: z.object({ contributionId: Id }).strict(),
+  executionOpenLogin: z
+    .object({ contributionId: Id, url: z.string().url().max(8192) })
+    .strict(),
   executionStart: z.object({ contributionId: Id, grant: Hash }).strict(),
   executionStop: z.object({ contributionId: Id }).strict(),
   executionExport: z.object({ contributionId: Id }).strict(),
@@ -127,7 +144,28 @@ export const Record = z
     receipt: Hash.nullable(),
     expiresAt: z.number().int().nonnegative().nullable(),
     updatedAt: z.number().int().nonnegative(),
+    wake: z
+      .object({
+        fingerprint: Hash,
+        seen: z.array(Hash).max(768),
+        messages: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
     reason: z.string().max(2048),
+    transitions: z
+      .array(
+        z
+          .object({
+            at: z.number(),
+            from: z.string(),
+            to: z.string(),
+            reason: z.string().max(2048),
+          })
+          .strict(),
+      )
+      .max(50)
+      .optional(),
     // Optional for journals created before interruption recovery was explicit.
     interruption: z
       .object({

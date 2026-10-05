@@ -200,7 +200,8 @@ fn coordinator_acknowledges_exact_plan_and_only_human_starts_or_pauses() {
     let paused = s.control_state(&m).unwrap();
     assert_eq!(paused.lifecycle.phase, MissionPhase::Paused);
     assert_eq!(paused.lifecycle.plan.unwrap().id, p2.id);
-    assert!(paused.lifecycle.readiness.is_none());
+    assert_eq!(paused.lifecycle.readiness.as_ref().unwrap().plan, p2.id);
+    assert!(paused.lifecycle.start_blockers.is_empty());
     assert!(
         s.control(
             &owner,
@@ -213,7 +214,7 @@ fn coordinator_acknowledges_exact_plan_and_only_human_starts_or_pauses() {
         )
         .is_err()
     );
-    let resumed = ready(&mut s, &c, &m);
+    let resumed = paused.lifecycle.readiness.unwrap();
     command(
         &mut s,
         &owner,

@@ -116,6 +116,34 @@ test("concurrent boots cannot oversubscribe local VM capacity", async () => {
   assert.equal(launches, 1);
 });
 
+test("queued environment setup explains capacity and can be cancelled without booting", async () => {
+  const provider = new LimaProvider({
+    directory: "/tmp/hb-capacity-cancel-test",
+  });
+  provider.maximum = 1;
+  const controller = new AbortController();
+  let reason = "",
+    launches = 0;
+  provider.vm = async () => ({ exists: true, running: false });
+  provider.run = async ([command]) => {
+    if (command === "list") return JSON.stringify({ status: "Running" });
+    if (command === "start") launches++;
+  };
+  await assert.rejects(
+    provider.boot(randomUUID(), {
+      signal: controller.signal,
+      waitForSlot: true,
+      onProgress: (message) => {
+        reason = message;
+        controller.abort();
+      },
+    }),
+    /abort/i,
+  );
+  assert.match(reason, /Waiting for a free environment slot/);
+  assert.equal(launches, 0);
+});
+
 test("workspace export rejects hostile paths and imports never follow links", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "hb-transfer-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -153,4 +181,28 @@ test("workspace export rejects hostile paths and imports never follow links", as
     readImportFiles([join(directory, "link")]),
     /regular files/,
   );
+});
+
+test("cancelled starts leave a serialized capacity queue promptly without releasing its predecessor", async () => {
+  const provider = new LimaProvider({ directory: "/tmp/hb-capacity-order" });
+  let release;
+  provider.bootQueue = new Promise((r) => {
+    release = r;
+  });
+  const controller = new AbortController();
+  let boots = 0;
+  provider.vm = async () => ({ running: false });
+  provider.run = async ([command]) => {
+    if (command === "start") boots++;
+    return "";
+  };
+  const cancelled = provider.boot(randomUUID(), { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(cancelled, /abort/i);
+  const later = provider.boot(randomUUID());
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(boots, 0);
+  release();
+  await later;
+  assert.equal(boots, 1);
 });

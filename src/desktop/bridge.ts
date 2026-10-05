@@ -123,6 +123,9 @@ export type ContributionReview = {
   nodeBinding: { owner: string; revision: string };
 };
 export type NodeAPI = {
+  observations(
+    mission: string,
+  ): Promise<import("./execution-types").RemoteObservation[]>;
   artifacts(
     mission: string,
     query?: Partial<import("./node-contract").ArtifactQuery>,

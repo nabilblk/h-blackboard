@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import { AgentState } from "./ExecutionStatus";
+import type { Contribution } from "./bridge";
 import { PrivateRecovery } from "./PrivateRecovery";
 import {
   useCallback,
@@ -38,6 +41,8 @@ export type MissionSession = {
   recipients?: Record<string, string>;
 };
 type Props = {
+  decisions?: ReactNode;
+  contributions: Contribution[];
   streams: WorkstreamView[];
   taskCount: number;
   artifactCount: number;
@@ -61,6 +66,8 @@ type Props = {
 };
 
 export function Conversation({
+  decisions,
+  contributions,
   streams,
   taskCount,
   artifactCount,
@@ -527,6 +534,24 @@ export function Conversation({
             />
           </label>
         </header>
+        {isPrivate && feed === "conversation"
+          ? agents
+              .filter((a) => currentScope?.readers.includes(a.identity.author))
+              .map((a) => (
+                <div className="n-dm-status" key={a.id}>
+                  <AgentState
+                    agent={a}
+                    contribution={contributions.find(
+                      (c) => c.sharedAgent?.registration === a.id,
+                    )}
+                    mission={mission}
+                  />
+                  <button className="d-button" onClick={() => profile(a.id)}>
+                    Agent details
+                  </button>
+                </div>
+              ))
+          : null}
         {currentStream && feed === "conversation" ? (
           <div className="n-workstream-goal">
             <p>{currentStream.goal}</p>
@@ -649,7 +674,45 @@ export function Conversation({
               </p>
             </div>
           ) : null}
-          {messages.map((m) => render(m))}
+          {feed === "inbox" ? decisions : null}
+          {(() => {
+            if (appliedSearch || feed !== "conversation")
+              return messages.map((m) => render(m));
+            const grouped: ReactNode[] = [];
+            let routine: MessageView[] = [];
+            const flush = () => {
+              if (!routine.length) return;
+              const items = routine;
+              routine = [];
+              grouped.push(
+                <details
+                  className="n-routine-activity"
+                  key={`routine-${items[0].id}`}
+                >
+                  <summary>
+                    {items.length} resource{" "}
+                    {items.length === 1 ? "update" : "updates"} · signed history
+                  </summary>
+                  {items.map((m) => render(m))}
+                </details>,
+              );
+            };
+            for (const m of messages) {
+              if (
+                m.kind === "governance" &&
+                m.text ===
+                  "Resource permission or allowance updated. Open Budget & permissions for the signed ledger." &&
+                !m.replies
+              )
+                routine.push(m);
+              else {
+                flush();
+                grouped.push(render(m));
+              }
+            }
+            flush();
+            return grouped;
+          })()}
         </div>
         {feed === "conversation" ? (
           <>

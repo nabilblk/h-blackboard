@@ -1,5 +1,5 @@
 //! Safety limits are protocol limits, independent of a mission's compute budget.
-pub const VERSION: u16 = 10;
+pub const VERSION: u16 = 11;
 pub const MAX_AUDIENCES: usize = 1024;
 pub const MAX_AGENTS: usize = 512;
 pub const MAX_AGENT_RECORDS: usize = 4096;

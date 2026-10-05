@@ -22,3 +22,4 @@ pub mod artifacts;
 mod work_views;
 
 pub mod governance;
+pub mod observations;

@@ -1,9 +1,12 @@
+import { ContributionConsent } from "./ContributionApproval";
 import { useEffect, useState } from "react";
 import { Users, Plus, FolderOpen } from "lucide-react";
 import { desktop, node, type Contribution } from "./bridge";
 import type { AgentView, AgentStatus, MissionView } from "./node-contract";
 import { type Perform } from "./ui";
+import { AgentState } from "./ExecutionStatus";
 import { ExecutionPanel } from "./ExecutionPanel";
+import { agentContributorLabel } from "../../shared/agent-lifecycle.mjs";
 
 const runtimes = { grok: "Grok Build", claude: "Claude Code", codex: "Codex" };
 const runtimeName = (runtime: string) =>
@@ -30,6 +33,7 @@ export function AgentRoster({
   prepare,
   selectedAgent,
   message,
+  permissions,
 }: {
   mission: MissionView;
   localKey: string;
@@ -40,6 +44,7 @@ export function AgentRoster({
   prepare: () => void;
   selectedAgent?: string | null;
   message: (agent: AgentView, privateChat: boolean) => void;
+  permissions: (agent: AgentView) => void;
 }) {
   const [agents, setAgents] = useState<AgentView[]>([]);
   const [error, setError] = useState("");
@@ -124,12 +129,12 @@ export function AgentRoster({
           <span className="d-count">{agents.length}</span>
         </h3>
         <button className="d-button" onClick={prepare} disabled={busy}>
-          <Plus size={15} /> Prepare agent
+          <Plus size={15} /> Add agents
         </button>
       </header>
       <p>
-        Shared contributions and their direction. Open your agent’s details to
-        prepare, run or stop its isolated environment.
+        See each agent’s execution state and what it needs next. Select an agent
+        to continue setup, approve a run or recover its saved session.
       </p>
       {error ? <p role="alert">{error}</p> : null}
       {available.length ? (
@@ -243,21 +248,29 @@ export function AgentRoster({
                   </span>
                   <span className="d-field-help">
                     Contributed by{" "}
-                    {a.contributor === localKey
-                      ? "you"
-                      : a.identity.contributor_name === "You"
-                        ? `Participant ${a.contributor.slice(0, 8)}`
-                        : a.identity.contributor_name}
+                    {agentContributorLabel(
+                      a,
+                      mission,
+                      a.contributor === localKey,
+                    )}
                   </span>
                   <span
                     className={`n-agent-state ${a.status === "waiting_for_direction" ? "waiting" : ""}`}
                   >
-                    {statuses[a.status]}
+                    <AgentState agent={a} contribution={c} mission={mission} />
                   </span>
                 </span>
               </button>
               {expanded ? (
                 <div className="n-agent-detail">
+                  {c ? (
+                    <ExecutionPanel item={c} mission={mission} />
+                  ) : (
+                    <p className="d-field-help">
+                      {statuses[a.status]}. The contributor controls execution
+                      on their device.
+                    </p>
+                  )}
                   <h4>Direction · Main</h4>
                   <p className="n-preserve">
                     {a.direction?.text ??
@@ -265,6 +278,9 @@ export function AgentRoster({
                         ? "The Coordinator or mission owner must give this late arrival a direction."
                         : "No active direction.")}
                   </p>
+                  {isOwner && !c ? (
+                    <ContributionConsent mission={mission} agent={a} isOwner />
+                  ) : null}
                   <div className="n-action-row">
                     <button
                       className="d-button"
@@ -431,7 +447,6 @@ export function AgentRoster({
                       ) : null}
                     </details>
                   ) : null}
-                  {c ? <ExecutionPanel item={c} /> : null}
                   {withdraw === c?.id && c ? (
                     <div className="n-withdraw-confirm">
                       <p>

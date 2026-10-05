@@ -12,6 +12,7 @@ export function BudgetPanel({
   contributions,
   busy,
   perform,
+  initialAgent = null,
 }: {
   mission: MissionView;
   owner: string;
@@ -19,9 +20,12 @@ export function BudgetPanel({
   contributions: Contribution[];
   busy: boolean;
   perform: Perform;
+  initialAgent?: string | null;
 }) {
   const { data, error, refresh } = useLedger(mission.id);
-  const [form, setForm] = useState<"allocate" | "grant" | null>(null);
+  const [form, setForm] = useState<"allocate" | "grant" | "auto" | null>(
+    initialAgent ? "auto" : null,
+  );
   const [resolution, setResolution] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const own = owner === mission.owner;
@@ -30,13 +34,37 @@ export function BudgetPanel({
     void perform(async () => {
       await node.govern(mission.id, mission.lifecycle.revision, action);
       await refresh();
-      setForm(null);
+      setForm(initialAgent && action.type === "allocate" ? "grant" : null);
       setResolution(null);
       setReason("");
     });
   if (!data)
     return <p role="status">{error || "Reading the resource ledger…"}</p>;
   const nodes = [...new Set([owner, ...agents.map((a) => a.contributor)])];
+  const focused = agents.find((a) => a.id === initialAgent);
+  const usableAllocations = data.allocations.filter(
+    (a) =>
+      !a.sealed && !a.reclaimed && (!focused || a.node === focused.contributor),
+  );
+  const currentGrants = focused
+    ? data.grants.filter(
+        (g) =>
+          g.registration === focused.id &&
+          !g.sealed &&
+          g.control === mission.lifecycle.revision &&
+          g.direction === focused.direction?.id &&
+          g.turns > g.charged + g.reserved &&
+          Math.min(g.expires_ms, g.issued_ms + g.offline_ms) > Date.now(),
+      )
+    : [];
+  const mode =
+    form === "auto"
+      ? currentGrants.length
+        ? null
+        : usableAllocations.length
+          ? "grant"
+          : "allocate"
+      : form;
   const label = (id: string) => {
     if (id === owner) return "You";
     const name = agents.find((a) => a.contributor === id)?.identity
@@ -46,6 +74,31 @@ export function BudgetPanel({
   return (
     <div className="n-governance">
       <header>
+        {focused ? (
+          <>
+            <h3>Run permission · {focused.identity.label}</h3>
+            <p className="n-preserve">
+              {focused.direction?.text ?? "Waiting for a current direction."}
+            </p>
+            <p>
+              You authorize mission resources. {label(focused.contributor)} must
+              still approve the run on their own device.
+            </p>
+            {currentGrants.length ? (
+              <p role="status">
+                A current permission is already issued.{" "}
+                {currentGrants.some((g) => g.consent)
+                  ? "Local approval is recorded; execution status comes from the contributor."
+                  : "Waiting for the contributor’s local approval."}
+              </p>
+            ) : !usableAllocations.length ? (
+              <p>
+                First choose this contributor’s allowance, then review a bounded
+                run permission.
+              </p>
+            ) : null}
+          </>
+        ) : null}
         <p className="d-muted">
           Allowances, reserved turns and attributed usage. Local subscription
           limits still apply.
@@ -95,7 +148,9 @@ export function BudgetPanel({
               disabled={
                 busy ||
                 !["active", "preparing"].includes(mission.lifecycle.phase) ||
-                !data.allocations.some((a) => !a.sealed && !a.reclaimed)
+                !usableAllocations.length ||
+                (initialAgent !== null &&
+                  (!focused || !focused.direction || currentGrants.length > 0))
               }
               onClick={() => setForm("grant")}
             >
@@ -106,14 +161,15 @@ export function BudgetPanel({
           </>
         ) : null}
       </div>
-      {form ? (
+      {mode && own && (!initialAgent || focused) ? (
         <ResourceForm
-          key={`${form}:${mission.lifecycle.revision}`}
-          mode={form}
+          key={`${mode}:${mission.lifecycle.revision}:${initialAgent ?? "all"}`}
+          mode={mode}
           mission={mission}
           data={data}
           agents={agents}
           nodes={nodes}
+          focused={focused}
           label={label}
           busy={busy}
           submit={apply}
@@ -197,15 +253,17 @@ export function BudgetPanel({
                     ? "Retired · risk accepted"
                     : g.sealed
                       ? "Sealed"
-                      : g.expires_ms <= Date.now()
-                        ? "Expired · reconcile"
-                        : g.control !== mission.lifecycle.revision
-                          ? "Mission changed"
-                          : directionChanged
-                            ? "Direction changed"
-                            : g.consent
-                              ? "Consented · inspect execution on contributor device"
-                              : "Awaiting local consent"}
+                      : g.revoked
+                        ? "Stop requested · confirmation pending"
+                        : g.expires_ms <= Date.now()
+                          ? "Expired · reconcile"
+                          : g.control !== mission.lifecycle.revision
+                            ? "Mission changed"
+                            : directionChanged
+                              ? "Direction changed"
+                              : g.consent
+                                ? "Consented · inspect execution on contributor device"
+                                : "Awaiting local consent"}
                 </Status>
               </div>
               <p>
@@ -216,7 +274,7 @@ export function BudgetPanel({
                 validity {Math.floor(g.offline_ms / 60000)} min
               </p>
               <div className="n-action-row">
-                {local && !g.consent && !g.sealed ? (
+                {local && !g.consent && !g.sealed && !g.revoked ? (
                   <button
                     className="d-button"
                     disabled={

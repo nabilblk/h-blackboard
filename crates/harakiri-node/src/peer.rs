@@ -29,7 +29,7 @@ use std::{
 };
 use tokio::{sync::Semaphore, task::JoinHandle, time::timeout};
 
-pub const ALPN: &[u8] = b"harakiri/sync/10";
+pub const ALPN: &[u8] = b"harakiri/sync/11";
 pub type SharedStore = Arc<Mutex<Store>>;
 
 #[derive(Debug)]
@@ -58,6 +58,10 @@ impl ProtocolHandler for BoundedBlobs {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
+    Observe {
+        mission: String,
+        reports: Vec<String>,
+    },
     Catalog {
         items: Vec<String>,
         after: Option<String>,
@@ -92,6 +96,9 @@ pub enum Request {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Response {
+    Observations {
+        reports: Vec<String>,
+    },
     Catalog {
         page: crate::discovery::FeedPage,
     },
@@ -158,7 +165,8 @@ impl SyncProtocol {
         }
         with_store(&self.store, |store| {
             let mission = match &request {
-                Request::Pull { mission, .. }
+                Request::Observe { mission, .. }
+                | Request::Pull { mission, .. }
                 | Request::Push { mission, .. }
                 | Request::Exchange { mission, .. } => Some(mission),
                 _ => None,
@@ -172,6 +180,22 @@ impl SyncProtocol {
                 });
             }
             match request {
+                Request::Observe { mission, reports } => {
+                    ensure!(
+                        store.can_read(&mission, remote)?
+                            && store.can_read(&mission, &self.local)?
+                            && reports.len() <= 512,
+                        "observation access denied"
+                    );
+                    for raw in reports {
+                        // A report may arrive before its grant or registration.
+                        // Ignore it and let the next exchange repair visibility.
+                        let _ = store.receive_observation(&mission, &raw);
+                    }
+                    Ok(Response::Observations {
+                        reports: store.observation_claims(&mission),
+                    })
+                }
                 Request::Catalog { items, after } => {
                     ensure!(
                         store.discovery_config()?.enabled && items.len() <= crate::discovery::PAGE,
@@ -403,7 +427,8 @@ impl PeerNode {
                     "revocation size"
                 );
                 let mission = match request {
-                    Request::Pull { mission, .. }
+                    Request::Observe { mission, .. }
+                    | Request::Pull { mission, .. }
                     | Request::Push { mission, .. }
                     | Request::Exchange { mission, .. } => mission,
                     _ => bail!("unexpected revocation"),
@@ -613,6 +638,25 @@ impl PeerNode {
         Ok(())
     }
     pub async fn exchange(&self, peer: EndpointAddr, mission: &str) -> Result<Vec<String>> {
+        let reports = with_store(&self.store, |s| Ok(s.observation_claims(mission)))?;
+        if let Ok(Response::Observations { reports }) = self
+            .request(
+                peer.clone(),
+                &Request::Observe {
+                    mission: mission.into(),
+                    reports,
+                },
+            )
+            .await
+        {
+            ensure!(reports.len() <= 512, "observation limit");
+            with_store(&self.store, |s| {
+                for raw in reports {
+                    let _ = s.receive_observation(mission, &raw);
+                }
+                Ok(())
+            })?;
+        }
         let contact = self.contact()?;
         with_store(&self.store, |s| s.save_contact(mission, &contact))?;
         let Response::Peers {

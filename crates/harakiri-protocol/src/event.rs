@@ -238,7 +238,7 @@ pub fn is_audience(value: &str) -> bool {
 
 impl EventBody {
     pub fn validate(&self) -> Result<()> {
-        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, limits::VERSION].contains(&self.version)
+        if !(1..=limits::VERSION).contains(&self.version)
             || (self.version < 3
                 && matches!(
                     self.payload,
@@ -300,6 +300,14 @@ impl EventBody {
                         if self.version >= 8 && self.audience == "main" && is_hash(control) =>
                     {
                         action.validate()?;
+                        if self.version < 11
+                            && matches!(
+                                action,
+                                crate::governance::GovernanceAction::StopGrant { .. }
+                            )
+                        {
+                            return Err(Error::Invalid("stop without settlement requires v11"));
+                        }
                         if self.version < 9
                             && matches!(
                                 action,

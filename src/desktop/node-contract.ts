@@ -297,6 +297,33 @@ export type AgentContext = {
   conversations: Array<AudienceView>;
   execution: string;
 };
+export type Observation = {
+  mission: string;
+  registration: string;
+  control: string;
+  grant: string | null;
+  state: ObservedState;
+  issued_ms: number;
+};
+export type ObservedState =
+  | "setup"
+  | "sign_in"
+  | "ready"
+  | "awaiting_approval"
+  | "awaiting_owner"
+  | "awaiting_direction"
+  | "review_required"
+  | "starting"
+  | "running"
+  | "idle"
+  | "stopping"
+  | "stopped"
+  | "recovery_required";
+export type ObservationView = {
+  report: Observation;
+  contributor: string;
+  remaining_ms: number;
+};
 export type ArtifactFile = {
   path: string;
   hash: string;
@@ -600,6 +627,7 @@ export type GovernanceAction =
     }
   | { type: "resolve"; reservation: string; reason: string }
   | { type: "retire_grant"; grant: string; reason: string }
+  | { type: "stop_grant"; grant: string; reason: string }
   | { type: "seal_grant"; grant: string; settlements: Array<string> }
   | { type: "seal_allocation"; allocation: string; grants: Array<string> }
   | {
@@ -647,6 +675,7 @@ export type GrantView = {
   consent: string | null;
   consent_binding: string | null;
   risk_accepted: string | null;
+  revoked: boolean;
   sealed: boolean;
   seal: string | null;
   charged: number;
@@ -677,6 +706,8 @@ export type LocalAllowance =
   | { mode: "bounded"; turns: number; concurrency: number; minutes: number }
   | { mode: "unlimited"; concurrency: number };
 export type Command =
+  | { type: "publish_observation"; report: Observation }
+  | { type: "observations"; mission: string }
   | {
       type: "reserve_local";
       mission: string;

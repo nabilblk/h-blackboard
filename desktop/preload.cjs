@@ -8,12 +8,23 @@ const executionCall = async (method, input) => {
 contextBridge.exposeInMainWorld(
   "blackboardExecution",
   Object.freeze({
+    overview: (mission) => executionCall("executionOverview", { mission }),
     state: (contributionId) =>
       executionCall("executionState", { contributionId }),
     prepare: (contributionId) =>
       executionCall("executionPrepare", { contributionId }),
     login: (contributionId) =>
       executionCall("executionLogin", { contributionId }),
+    signIn: (contributionId) =>
+      executionCall("executionSignIn", { contributionId }),
+    cancelSetup: (contributionId) =>
+      executionCall("executionCancelSetup", { contributionId }),
+    loginInput: (contributionId, text) =>
+      executionCall("executionLoginInput", { contributionId, text }),
+    cancelLogin: (contributionId) =>
+      executionCall("executionCancelLogin", { contributionId }),
+    openLogin: (contributionId, url) =>
+      executionCall("executionOpenLogin", { contributionId, url }),
     start: (contributionId, grant) =>
       executionCall("executionStart", { contributionId, grant }),
     stop: (contributionId) =>
@@ -22,6 +33,43 @@ contextBridge.exposeInMainWorld(
       executionCall("executionExport", { contributionId }),
     importFiles: (contributionId) =>
       executionCall("executionImport", { contributionId }),
+  }),
+);
+const setupCall = async (method, input = {}) => {
+  const result = await ipcRenderer.invoke(`onboarding:${method}`, input);
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
+};
+contextBridge.exposeInMainWorld(
+  "blackboardSetup",
+  Object.freeze({
+    state: (mission) => setupCall("state", { mission }),
+    appPreferences: () => setupCall("appPreferences"),
+    completeMission: (input) => setupCall("completeMission", input),
+    completionState: (mission) => setupCall("completionState", { mission }),
+    discardCompletion: (id) => setupCall("discardCompletion", { id }),
+    setBackground: (enabled) => setupCall("setBackground", { enabled }),
+    setNotifications: (enabled) => setupCall("setNotifications", { enabled }),
+    takeNotification: () => setupCall("takeNotification"),
+    setCapacity: (maximum) => setupCall("setCapacity", { maximum }),
+    journeyDiagnostics: () => setupCall("journeyDiagnostics"),
+    setJourneyDiagnostics: (enabled) =>
+      setupCall("setJourneyDiagnostics", { enabled }),
+    clearJourneyDiagnostics: () => setupCall("clearJourneyDiagnostics"),
+    agreements: (mission) => setupCall("agreements", { mission }),
+    approveContribution: (input) => setupCall("approveContribution", input),
+    cancelAgreement: (id) => setupCall("cancelAgreement", { id }),
+    continueAgreement: (id) => setupCall("continueAgreement", { id }),
+    reviewedStart: (input) => setupCall("reviewedStart", input),
+    startState: (mission) => setupCall("startState", { mission }),
+    cancelStart: (id) => setupCall("cancelStart", { id }),
+    setup: (input) => setupCall("setup", input),
+    permission: (input) => setupCall("permission", input),
+    cancel: (id) => setupCall("cancel", { id }),
+    preflight: () => setupCall("preflight"),
+    installProvider: () => setupCall("installProvider"),
+    cancelInstall: () => setupCall("cancelInstall"),
+    takeInvitation: () => setupCall("takeInvitation"),
   }),
 );
 
@@ -80,6 +128,7 @@ contextBridge.exposeInMainWorld(
       nodeCall("setPlan", { mission, revision, text }),
     startMission: (mission, revision, readiness) =>
       nodeCall("startMission", { mission, revision, readiness }),
+    observations: (mission) => nodeCall("observations", { mission }),
     pauseMission: (mission, revision, reason) =>
       nodeCall("pauseMission", { mission, revision, reason }),
     appointCoordinator: (mission, revision, contributionId) =>

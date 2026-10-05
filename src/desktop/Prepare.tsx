@@ -225,11 +225,11 @@ export default function Prepare({
                 </select>
               </label>
               <p className="d-field-help">
-                Your own account, configured when isolated execution becomes
-                available.
+                Sign in with your own subscription inside each agent’s isolated
+                environment after preparation.
               </p>
               <div className="d-field">
-                <span>Workspace location</span>
+                <span>Export folder on this Mac</span>
                 <div className="d-folder-choice">
                   {workspace ? (
                     <>
@@ -337,8 +337,8 @@ export default function Prepare({
                 </p>
               )}
               <p className="d-field-help">
-                A turn is one managed runtime invocation. These are saved terms
-                for future execution, not a measurement of tokens or
+                A turn is one managed runtime invocation. These local limits
+                apply when you approve execution; they do not measure tokens or
                 subscription credit.
               </p>
             </section>

@@ -89,6 +89,48 @@ test(
     await assert.rejects(command("startMission", { readiness: null }));
     await assert.rejects(n.handle("coordinatorReady", { mission }));
     assert.ok(!Object.hasOwn(NodeRequests, "coordinatorReady"));
+    const channel = n.openAgentChannel(c.id);
+    const planned = await current();
+    const ready = await channel.request({
+      type: "ready",
+      control: planned.lifecycle.revision,
+      plan: planned.lifecycle.plan.id,
+    });
+    await command("startMission", { readiness: ready.event });
+    await command("pauseMission", {
+      reason: "Review the plan before resuming",
+    });
+    const paused = await current();
+    assert.equal(paused.lifecycle.readiness.id, ready.event);
+    assert.deepEqual(paused.lifecycle.start_blockers, []);
+    await command("startMission", { readiness: ready.event });
+    await command("pauseMission", {
+      reason: "Pause retains the accepted plan",
+    });
+    // The human explicitly re-adopts the saved plan. This is a new signed
+    // control revision, not fabricated readiness, a mission Start or new terms.
+    await command("setPlan", { text: paused.lifecycle.plan.text });
+    const preparing = await current();
+    assert.equal(preparing.lifecycle.phase, "preparing");
+    assert.equal(preparing.lifecycle.plan.text, paused.lifecycle.plan.text);
+    assert.equal(
+      preparing.lifecycle.terms_revision,
+      paused.lifecycle.terms_revision,
+    );
+    assert.deepEqual(
+      preparing.lifecycle.coordinator,
+      paused.lifecycle.coordinator,
+    );
+    assert.equal(preparing.lifecycle.readiness, null);
+    await assert.rejects(command("startMission", { readiness: ready.event }));
+    await assert.rejects(
+      n.handle("setPlan", {
+        mission,
+        revision: paused.lifecycle.revision,
+        text: "A stale pause review cannot overwrite the current plan.",
+      }),
+    );
+    assert.equal((await n.state()).execution, "unavailable");
     const reviewed = await n.handle("reviewContribution", {
       mission,
       role: "coordinator",

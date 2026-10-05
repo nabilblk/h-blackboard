@@ -32,6 +32,7 @@ try {
     out: join(root, "var/desktop/packages"),
     name: "Harakiri Desktop",
     appBundleId: "io.harakiri.contributor",
+    protocols: [{ name: "Harakiri mission invitation", schemes: ["harakiri"] }],
     icon: join(root, "desktop/Harakiri.icns"),
     appVersion: project.version,
     electronVersion: project.devDependencies.electron,

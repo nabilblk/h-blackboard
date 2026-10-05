@@ -18,6 +18,61 @@ struct F {
 }
 
 #[test]
+fn stopping_remote_permission_keeps_unconfirmed_usage_reserved() {
+    let mut f = F::new(true);
+    let (_, grant) = f.grant();
+    let reservation = f.reserve(&grant, "ac");
+    assert!(
+        f.s.govern(
+            &f.b,
+            &f.m,
+            &f.control,
+            G::StopGrant {
+                grant: grant.clone(),
+                reason: "Contributor cannot impersonate owner".into()
+            }
+        )
+        .is_err()
+    );
+    f.owner(G::StopGrant {
+        grant: grant.clone(),
+        reason: "Owner ended the contribution".into(),
+    });
+    let ledger = f.s.governance(&f.m, &f.a.public_key()).unwrap();
+    let g = ledger.grants.iter().find(|g| g.id == grant).unwrap();
+    assert!(g.revoked);
+    assert!(!g.sealed);
+    assert_eq!(g.reserved, 1);
+    assert!(g.risk_accepted.is_none());
+    assert!(
+        f.s.govern(
+            &f.b,
+            &f.m,
+            &f.control,
+            G::Reserve {
+                grant: grant.clone(),
+                consent: g.consent.clone().unwrap(),
+                nonce: "ad".repeat(32)
+            }
+        )
+        .is_err()
+    );
+    let receipt = f.peer(G::Receipt {
+        reservation: reservation.id,
+        used: Some(1),
+        stopped: true,
+        summary: "Confirmed termination".into(),
+    });
+    f.peer(G::SealGrant {
+        grant,
+        settlements: vec![receipt.id],
+    });
+    let ledger = f.s.governance(&f.m, &f.a.public_key()).unwrap();
+    assert!(ledger.grants[0].sealed);
+    assert_eq!(ledger.grants[0].reserved, 0);
+}
+
+#[test]
 fn planning_is_bounded_to_the_appointed_coordinator_and_does_not_start_workers() {
     use harakiri_protocol::{governance::GrantPurpose, lifecycle::CoordinatorIdentity};
     let mut f = F::new(true);

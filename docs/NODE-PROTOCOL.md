@@ -1,11 +1,18 @@
 # Experimental local node and peer protocol
 
-## Protocol v10: explicit artifact review scope
+## Protocol v11: reusable readiness, stop requests and remote observations
 
-Live peers negotiate `harakiri/sync/10`; all connected peers must upgrade.
-SQLite schema 14 prevents older executables reopening an upgraded profile.
-Signed v1–9 records remain readable with their original bytes unchanged. This
-upgrade adds a schema barrier, without rewriting tables or signed history.
+Live peers negotiate `harakiri/sync/11`; every connected peer must upgrade. SQLite schema 15 prevents older executables from reopening upgraded profiles. Signed v1–10 records remain readable, with original bytes unchanged. Back up a profile before upgrading.
+
+An ordinary Pause retains the exact readiness accepted by Start when the terms, plan and Coordinator remain valid. A changed plan, terms, mode or authority still invalidates reuse. Resume remains a new owner-signed Start; no acknowledgment is fabricated.
+
+The owner-only `stop_grant` action disables further authorization without sealing the grant or accepting accounting risk. Reservations remain unsettled until attributed receipts and confirmed sealing/reconciliation. A disconnected contributor may continue only inside the existing offline deadline; a Stop request is not proof of remote process death.
+
+The authenticated peer `Observe` exchange carries contributor-signed COSE claims in domain `harakiri/execution-observation/1`, separate from mission history. Each report binds mission, shared registration, control revision, permission (where required), a fixed state and issue time. Maximum age is 30 seconds, with at most 5 seconds of future clock skew. Receipt expiry uses a monotonic deadline; replaying the same/older issue time cannot refresh it. Reports are memory-only, bounded to 8 KiB each, 512 per exchange and 4,096 cached identities. Unrecognized dependencies wait for normal history synchronization. Reports never authorize work or establish independent execution evidence. No workspace paths, messages, provider output or credentials are included.
+
+Finite contribution agreements are durable local human instructions, not a new agent role or transferable peer authority. They instruct an owner's host to issue existing bounded native grants and a contributor's host to consent under its separately reviewed local limits. Every reservation and launch still passes the native grant, consent, generation and budget checks. Existing one-run consent never migrates automatically.
+
+## Artifact review scope (introduced in v10)
 
 Artifact reviews may contain up to eight `{method, result, details}` checks.
 Methods are `source_inspection`, `executed_tests`, `browser_check` and
@@ -214,11 +221,11 @@ The Electron viewer is a separate ephemeral session and sandboxed renderer with 
 
 ## Storage, synchronization and artifacts
 
-SQLite schema version 14 uses WAL and FULL synchronization. Versions 3–5 add separate audience indexes, delivery progress, admission/contact state, network preferences and conservative revocation notices; version 6 adds discovery caches, signed withdrawals and local notification queues. Existing version 2 Main histories migrate without changing their signed bytes. Version 1 migrates transactionally by rebuilding the message index from verified signed bytes; an invalid record rolls back the migration. Message and mission pages also bound encoded JSON size, so escaped content cannot exhaust an IPC response. Each valid event and its membership/artifact projection commit in one transaction. Duplicate delivery is idempotent. A batch can preserve valid predecessors before rejecting an invalid child; retrying does not create duplicate events. Missing dependencies are rejected for retry rather than accepted as authority. Unknown newer schema versions are refused without migration.
+SQLite schema version 15 uses WAL and FULL synchronization. Versions 3–5 add separate audience indexes, delivery progress, admission/contact state, network preferences and conservative revocation notices; version 6 adds discovery caches, signed withdrawals and local notification queues. Existing version 2 Main histories migrate without changing their signed bytes. Version 1 migrates transactionally by rebuilding the message index from verified signed bytes; an invalid record rolls back the migration. Message and mission pages also bound encoded JSON size, so escaped content cannot exhaust an IPC response. Each valid event and its membership/artifact projection commit in one transaction. Duplicate delivery is idempotent. A batch can preserve valid predecessors before rejecting an invalid child; retrying does not create duplicate events. Missing dependencies are rejected for retry rather than accepted as authority. Unknown newer schema versions are refused without migration.
 
 Two different signed events at the same writer sequence are preserved as fork evidence. A Main fork suspends mission writes and artifact serving; a private fork freezes that audience without changing Main counts or activity. A conflicting private audience root does not grant new readers access. Admissions at or beyond an owner fork lose read authority. Earlier authorized members can still obtain conflict history. Fork evidence bypasses a newer synchronization cursor; it cannot be silently hidden behind already received history. There is no timestamp winner or automatic fork recovery.
 
-The sync ALPN is `harakiri/sync/7`; old network peers are incompatible and must upgrade. Reading version 1 history is separate from speaking version 1 on the wire. A connection carries one bounded JSON request on one bidirectional QUIC stream:
+The sync ALPN is `harakiri/sync/11`; old network peers are incompatible and must upgrade. Reading version 1 history is separate from speaking version 1 on the wire. A connection carries one bounded JSON request on one bidirectional QUIC stream:
 
 ```json
 {

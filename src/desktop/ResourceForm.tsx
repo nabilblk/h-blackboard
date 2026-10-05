@@ -16,6 +16,7 @@ export function ResourceForm({
   busy,
   submit,
   close,
+  focused,
 }: {
   mode: "allocate" | "grant";
   mission: MissionView;
@@ -26,18 +27,29 @@ export function ResourceForm({
   busy: boolean;
   submit: (a: GovernanceAction) => void;
   close: () => void;
+  focused?: AgentView;
 }) {
-  const [who, setWho] = useState(nodes[0] ?? "");
+  const [who, setWho] = useState(focused?.contributor ?? nodes[0] ?? "");
   const planning = mission.lifecycle.phase === "preparing" && mode === "grant";
   const [turns, setTurns] = useState(planning ? "3" : "10");
+  const [unlimited, setUnlimited] = useState(false);
   const [slots, setSlots] = useState(1);
   const [allocation, setAllocation] = useState(
-    data.allocations.find((a) => !a.sealed && !a.reclaimed)?.id ?? "",
+    data.allocations.find(
+      (a) =>
+        !a.sealed &&
+        !a.reclaimed &&
+        (!focused || a.node === focused.contributor),
+    )?.id ?? "",
   );
-  const [registration, setRegistration] = useState("");
+  const [registration, setRegistration] = useState(focused?.id ?? "");
+  const [reviewedDirection] = useState(focused?.direction?.id);
+  const staleDirection =
+    !!focused && focused.direction?.id !== reviewedDirection;
   const [minutes, setMinutes] = useState(planning ? 10 : 60);
   const options = agents.filter(
     (a) =>
+      (!focused || a.id === focused.id) &&
       a.contributor ===
         data.allocations.find((a) => a.id === allocation)?.node &&
       (planning
@@ -52,11 +64,12 @@ export function ResourceForm({
       className="d-panel n-ledger-row"
       onSubmit={(e) => {
         e.preventDefault();
+        if (busy || staleDirection) return;
         if (mode === "allocate")
           submit({
             type: "allocate",
             node: who,
-            turns: turns ? Number(turns) : null,
+            turns: unlimited ? null : Number(turns),
             slots,
           });
         else if (selected && (planning || selected.direction)) {
@@ -79,7 +92,7 @@ export function ResourceForm({
             generation: previous ? previous.generation + 1 : 1,
             turns: Number(turns),
             expires_ms: Date.now() + minutes * 60000,
-            offline_ms: minutes * 60000,
+            offline_ms: minutes * 60000 - 10000,
           });
         }
       }}
@@ -102,11 +115,13 @@ export function ResourceForm({
         <label className="d-field">
           <span>Contributor</span>
           <select value={who} onChange={(e) => setWho(e.target.value)}>
-            {nodes.map((n) => (
-              <option key={n} value={n}>
-                {label(n)}
-              </option>
-            ))}
+            {nodes
+              .filter((n) => !focused || n === focused.contributor)
+              .map((n) => (
+                <option key={n} value={n}>
+                  {label(n)}
+                </option>
+              ))}
           </select>
         </label>
       ) : (
@@ -118,7 +133,12 @@ export function ResourceForm({
               onChange={(e) => setAllocation(e.target.value)}
             >
               {data.allocations
-                .filter((a) => !a.sealed && !a.reclaimed)
+                .filter(
+                  (a) =>
+                    !a.sealed &&
+                    !a.reclaimed &&
+                    (!focused || a.node === focused.contributor),
+                )
                 .map((a) => (
                   <option key={a.id} value={a.id}>
                     {label(a.node)} · {short(a.id)}
@@ -149,18 +169,32 @@ export function ResourceForm({
           </label>
         </>
       )}
-      <label className="d-field">
-        <span>Turns {mode === "allocate" ? "(empty for unlimited)" : ""}</span>
-        <input
-          name="turns"
-          type="number"
-          min="1"
-          max={planning ? "8" : "4294967295"}
-          required={mode === "grant"}
-          value={turns}
-          onChange={(e) => setTurns(e.target.value)}
-        />
-      </label>
+      {mode === "allocate" ? (
+        <label className="d-field">
+          Turn allowance
+          <select
+            value={unlimited ? "unlimited" : "limited"}
+            onChange={(e) => setUnlimited(e.target.value === "unlimited")}
+          >
+            <option value="limited">Set a turn limit</option>
+            <option value="unlimited">Unlimited turns</option>
+          </select>
+        </label>
+      ) : null}
+      {!unlimited ? (
+        <label className="d-field">
+          <span>Turns</span>
+          <input
+            name="turns"
+            type="number"
+            min="1"
+            max={planning ? "8" : "4294967295"}
+            required
+            value={turns}
+            onChange={(e) => setTurns(e.target.value)}
+          />
+        </label>
+      ) : null}
       {mode === "allocate" ? (
         <label className="d-field">
           <span>Concurrent turns</span>
@@ -197,11 +231,17 @@ export function ResourceForm({
         </button>
         <button
           className="d-button primary"
-          disabled={busy || (mode === "grant" && !selected)}
+          disabled={busy || staleDirection || (mode === "grant" && !selected)}
         >
           Save {mode === "allocate" ? "allocation" : "permission"}
         </button>
       </div>
+      {staleDirection ? (
+        <p role="alert">
+          The direction changed. Close and reopen this review before issuing
+          permission.
+        </p>
+      ) : null}
     </form>
   );
 }

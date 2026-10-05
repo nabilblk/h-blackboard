@@ -2,10 +2,18 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
-import { access, mkdir, readFile, writeFile, lstat } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  writeFile,
+  lstat,
+  statfs,
+} from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cpus, totalmem } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { Id } from "../model.mjs";
 import {
@@ -45,11 +53,13 @@ export class LimaProvider {
     namespace = directory,
     resources = sourceGuest,
     executable,
+    installer,
   } = {}) {
     this.directory = directory;
     this.namespace = namespace;
     this.resources = resources;
     this.executable = executable;
+    this.installer = installer;
     this.maximum = Math.max(
       1,
       Math.min(
@@ -75,6 +85,8 @@ export class LimaProvider {
         "This enforcing provider currently supports Apple Silicon macOS only.",
       );
     if (this.executable) return this.executable;
+    const managed = await this.installer?.available();
+    if (managed) return (this.executable = managed);
     for (const path of [
       "/opt/homebrew/bin/limactl",
       "/usr/local/bin/limactl",
@@ -88,7 +100,7 @@ export class LimaProvider {
         return (this.executable = path);
     }
     throw new Error(
-      "Install Lima with brew install lima, then prepare this contribution again.",
+      "Install the isolated environment provider from agent setup, then continue. Existing Homebrew Lima installations are also supported.",
     );
   }
   env() {
@@ -101,13 +113,17 @@ export class LimaProvider {
       LIMA_HOME: this.directory,
     };
   }
-  async run(args, { input, timeout = 30000, maxBuffer = 1024 * 1024 } = {}) {
+  async run(
+    args,
+    { input, timeout = 30000, maxBuffer = 1024 * 1024, signal } = {},
+  ) {
     const binary = await this.binary();
     if (input === undefined) {
       const { stdout } = await exec(binary, args, {
         env: this.env(),
         timeout,
         maxBuffer,
+        signal,
       });
       return stdout;
     }
@@ -115,6 +131,7 @@ export class LimaProvider {
       const child = spawn(binary, args, {
         env: this.env(),
         stdio: ["pipe", "pipe", "pipe"],
+        signal,
       });
       const chunks = [];
       let length = 0;
@@ -169,39 +186,73 @@ export class LimaProvider {
       throw new Error("VM state is uncertain; recover it before execution.");
     return { exists: true, running: value.status === "Running" };
   }
-  async boot(id) {
+  async boot(id, { signal, waitForSlot = false, onProgress = () => {} } = {}) {
     const previous = this.bootQueue;
     let release;
     this.bootQueue = new Promise((resolve) => {
       release = resolve;
     });
-    await previous;
+    let onAbort;
     try {
+      await Promise.race([
+        previous,
+        new Promise((_, reject) => {
+          onAbort = () =>
+            reject(signal.reason ?? new Error("Environment start cancelled."));
+          if (signal?.aborted) onAbort();
+          else signal?.addEventListener("abort", onAbort, { once: true });
+        }),
+      ]);
+    } catch (error) {
+      // Cancel promptly without letting later boots jump the serialized gate.
+      void previous.then(release, release);
+      throw error;
+    } finally {
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+    }
+    try {
+      signal?.throwIfAborted();
       if (!(await this.vm(id)).running) {
-        const current = (await this.run(["list", "--json"]))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map((s) => JSON.parse(s));
-        if (
-          current.filter((v) => v.status === "Running").length >= this.maximum
-        )
-          throw new Error(
-            `This device's safe capacity is ${this.maximum} VM(s). Stop another environment first.`,
-          );
+        while (true) {
+          signal?.throwIfAborted();
+          const current = (await this.run(["list", "--json"]))
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .map((s) => JSON.parse(s));
+          if (
+            current.filter((v) => v.status === "Running").length >= this.maximum
+          ) {
+            if (!waitForSlot)
+              throw new Error(
+                `This device's safe capacity is ${this.maximum} VM(s). Stop another environment first.`,
+              );
+            onProgress(
+              `Waiting for a free environment slot (${this.maximum} in use). Stop another agent or leave this setup queued.`,
+            );
+            await delay(2000, undefined, { signal });
+            continue;
+          }
+          break;
+        }
         await this.run(["start", "--tty=false", this.instance(id)], {
           timeout: 180000,
+          signal,
         });
       }
     } finally {
       release();
     }
   }
-  async prepare({ contribution }) {
+  async prepare({ contribution, signal, onProgress = () => {} }) {
     const id = contribution.id;
     const spec = runtimeSpec(contribution.runtime);
     const digest = policyDigest(contribution.runtime);
+    signal?.throwIfAborted();
+    onProgress("Checking this Mac and the isolated environment provider.");
     await this.binary();
+    const guest = (args, options = {}) =>
+      this.guest(id, args, { ...options, signal });
     if (
       Buffer.byteLength(
         join(this.directory, this.instance(id), "ssh.sock.1234567890123456"),
@@ -223,6 +274,14 @@ export class LimaProvider {
     if (!existing)
       await writeFile(marker, STORAGE_MARKER, { mode: 0o600, flag: "wx" });
     if (!(await this.vm(id)).exists) {
+      const disk = await statfs(this.directory);
+      if (disk.bavail * disk.bsize < 4 * 1024 ** 3)
+        throw new Error(
+          "Free at least 4 GB on this Mac before preparing a new environment. Existing agents and files are retained.",
+        );
+      onProgress(
+        "Downloading and verifying the Ubuntu image. The first setup can take several minutes.",
+      );
       const path = join(this.directory, `${this.instance(id)}.yaml`);
       await writeFile(
         path,
@@ -231,10 +290,13 @@ export class LimaProvider {
       );
       await this.run(
         ["create", "--tty=false", `--name=${this.instance(id)}`, path],
-        { timeout: 180000 },
+        { timeout: 600000, signal },
       );
     }
-    await this.boot(id);
+    onProgress(
+      "Starting the isolated environment. Checking available capacity.",
+    );
+    await this.boot(id, { signal, waitForSlot: true, onProgress });
     const prior = await this.guest(id, [
       "sh",
       "-c",
@@ -259,6 +321,9 @@ export class LimaProvider {
     if (!["inactive", "failed"].includes(active.trim()))
       throw new Error("Stop the existing execution before preparing its VM.");
     await this.guest(id, ["install", "-d", "-m", "0755", "/opt/harakiri"]);
+    onProgress(
+      "Installing the isolated workspace and scoped Blackboard tools.",
+    );
     for (const file of [
       "agent.md",
       "bridge.py",
@@ -271,7 +336,7 @@ export class LimaProvider {
       "runtimes.py",
       "install-runtime.py",
     ]) {
-      await this.guest(id, ["tee", `/opt/harakiri/${file}`], {
+      await guest(["tee", `/opt/harakiri/${file}`], {
         input: await readFile(join(this.resources, file)),
         maxBuffer: 128 * 1024,
       });
@@ -284,10 +349,15 @@ export class LimaProvider {
     await this.guest(id, ["tee", "/opt/harakiri/runtime.json"], {
       input: JSON.stringify(spec),
     });
-    await this.guest(id, ["sh", "/opt/harakiri/setup.sh"], { timeout: 420000 });
+    onProgress(
+      `Downloading and verifying ${RUNTIME_LABELS[contribution.runtime]}; applying isolation policy.`,
+    );
+    await guest(["sh", "/opt/harakiri/setup.sh"], { timeout: 420000 });
     await this.guest(id, ["tee", "/opt/harakiri/policy"], {
       input: digest,
     });
+    signal?.throwIfAborted();
+    onProgress("Verifying isolation and checking guest sign-in.");
     return this.inspect({ contribution });
   }
   async inspect({ contribution }) {
@@ -348,7 +418,97 @@ export class LimaProvider {
       command: `LIMA_HOME=${quote(this.directory)} ${args.map(quote).join(" ")}`,
     };
   }
+  async authenticate({ contribution, onOutput }) {
+    await this.boot(contribution.id);
+    const inspected = await this.inspect({ contribution });
+    if (!inspected.stopped)
+      throw new Error("Stop the agent before signing in.");
+    if (inspected.authenticated) {
+      onOutput(
+        "An existing provider sign-in is available in this isolated environment.",
+      );
+      return {
+        done: Promise.resolve(),
+        input: () => {},
+        cancel: async () => {},
+      };
+    }
+    const command = {
+      grok: [
+        "/opt/harakiri/grok",
+        "--no-auto-update",
+        "login",
+        "--device-auth",
+      ],
+      claude: ["/opt/harakiri/claude", "auth", "login", "--claudeai"],
+      codex: ["/opt/harakiri/codex", "login", "--device-auth"],
+    }[contribution.runtime];
+    // Only the pinned CLI login command is exposed. The guest unit bounds
+    // abandoned login processes; pipes carry prompts and the returned code.
+    const child = spawn(
+      await this.binary(),
+      [
+        "shell",
+        "--workdir=/tmp",
+        this.instance(contribution.id),
+        "sudo",
+        "--",
+        "systemd-run",
+        "--unit=hb-login",
+        "--collect",
+        "--pipe",
+        "--wait",
+        "--uid=hb-runtime",
+        "--property=RuntimeMaxSec=600",
+        "--setenv=HOME=/home/hb-runtime",
+        "--setenv=CODEX_HOME=/home/hb-runtime/.codex",
+        "--setenv=CLAUDE_CONFIG_DIR=/home/hb-runtime/.claude",
+        "--setenv=DISABLE_AUTOUPDATER=1",
+        "--",
+        ...command,
+      ],
+      { env: this.env(), detached: true, stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const done = new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code) =>
+        code === 0
+          ? resolve()
+          : reject(
+              new Error("The provider login session ended before completion."),
+            ),
+      );
+    });
+    child.stdout.on("data", (chunk) => onOutput(chunk.toString()));
+    child.stderr.on("data", (chunk) => onOutput(chunk.toString()));
+    child.stdin.on("error", () => {});
+    return {
+      done,
+      input: (text) => child.stdin.write(text + "\n"),
+      cancel: async () => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const status = (
+          await this.guest(contribution.id, [
+            "systemctl",
+            "show",
+            "hb-login.service",
+            "-p",
+            "ActiveState",
+            "--value",
+          ])
+        ).trim();
+        if (!["inactive", "failed"].includes(status))
+          await this.guest(contribution.id, [
+            "systemctl",
+            "stop",
+            "hb-login.service",
+          ]);
+        await done.catch(() => {});
+      },
+    };
+  }
   async launch({
+    signal,
     contribution,
     seconds,
     session,
@@ -364,11 +524,14 @@ export class LimaProvider {
     if (session) Session.parse(session);
     if (this.handles.has(id))
       throw new Error("This contribution already has a live execution.");
-    if (this.handles.size >= this.maximum)
-      throw new Error(
-        "This device has no free VM capacity. Stop an agent first.",
-      );
-    await this.boot(id);
+    const leaseSignal = AbortSignal.timeout(
+      Math.max(1, Math.floor(remaining?.() ?? seconds * 1000)),
+    );
+    await this.boot(id, {
+      waitForSlot: true,
+      signal: signal ? AbortSignal.any([signal, leaseSignal]) : leaseSignal,
+      onProgress: (message) => onEvent?.({ type: "capacity_wait", message }),
+    });
     const state = await this.inspect({ contribution });
     if (!state.stopped || !state.authenticated)
       throw new Error(

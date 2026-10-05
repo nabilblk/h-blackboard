@@ -1,3 +1,13 @@
+import { MissionJourney, MissionDecisions } from "./MissionJourney";
+import {
+  ExecutionStatusProvider,
+  ExecutionSummary,
+  useExecutionStates,
+  AgentState,
+} from "./ExecutionStatus";
+import { AgentSetup } from "./Onboarding";
+import { useSetupDraft } from "./useSetupDraft";
+import { agentLifecycle } from "../../shared/agent-lifecycle.mjs";
 import { BudgetPanel } from "./BudgetPanel";
 import { MissionProgress } from "./MissionProgress";
 import { useCallback, useEffect, useState } from "react";
@@ -163,7 +173,8 @@ export function MyMissions({
         <p>
           Saved locally, available offline. Your node identity is protected by
           this computer’s secure key storage. Enable peer networking to invite
-          people and share a mission. Agent execution is not enabled yet.
+          people and share a mission. Add Claude Code, Codex or Grok Build
+          agents in isolated environments on this Mac.
         </p>
       </div>
     </>
@@ -183,9 +194,51 @@ export function CreateMission({
   cancel: () => void;
   complete: (id: string) => Promise<void>;
 }) {
-  const [criteria, setCriteria] = useState<string[]>([]);
-  const [draft, setDraft] = useState("");
-  const [limited, setLimited] = useState(false);
+  const [saved, saveDraft, clearDraft, draftError] = useSetupDraft<{
+    fields: Record<string, string>;
+    criteria: string[];
+    criterion: string;
+    limited: boolean;
+  }>(
+    "new-mission",
+    { fields: {}, criteria: [], criterion: "", limited: false },
+    (
+      value,
+    ): value is {
+      fields: Record<string, string>;
+      criteria: string[];
+      criterion: string;
+      limited: boolean;
+    } => {
+      if (!value || typeof value !== "object") return false;
+      const v = value as {
+        fields: Record<string, string>;
+        criteria: string[];
+        criterion: string;
+        limited: boolean;
+      };
+      return (
+        !!v.fields &&
+        typeof v.fields === "object" &&
+        Object.values(v.fields).every(
+          (x) => typeof x === "string" && x.length <= 8192,
+        ) &&
+        Array.isArray(v.criteria) &&
+        v.criteria.length <= 32 &&
+        v.criteria.every((x) => typeof x === "string" && x.length <= 1024) &&
+        typeof v.criterion === "string" &&
+        typeof v.limited === "boolean"
+      );
+    },
+  );
+  const [criteria, setCriteria] = useState(saved.criteria);
+  const [draft, setDraft] = useState(saved.criterion);
+  const [limited, setLimited] = useState(saved.limited);
+  const [fields, setFields] = useState(saved.fields);
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  useEffect(() => {
+    saveDraft({ fields, criteria, criterion: draft, limited });
+  }, [fields, criteria, draft, limited]);
   const add = () => {
     if (draft.trim() && criteria.length < 32) {
       setCriteria((current) => [...current, draft.trim()]);
@@ -203,6 +256,20 @@ export function CreateMission({
       </Heading>
       <form
         className="d-panel n-mission-form"
+        onChange={(e) => {
+          const element = e.target;
+          if (
+            element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement ||
+            element instanceof HTMLSelectElement
+          ) {
+            if (element.name)
+              setFields((current) => ({
+                ...current,
+                [element.name]: element.value,
+              }));
+          }
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           const data = new FormData(event.currentTarget);
@@ -231,17 +298,34 @@ export function CreateMission({
             },
           };
           void perform(async () => {
-            if (!enrolled) await node.enroll();
+            if (!enrolled) {
+              setSavingIdentity(true);
+              try {
+                await node.enroll();
+              } finally {
+                setSavingIdentity(false);
+              }
+            }
             const result = await node.createMission(definition);
+            clearDraft();
             await complete(result.mission);
           });
         }}
       >
+        {draftError ? <p role="alert">{draftError}</p> : null}
+        {savingIdentity ? (
+          <p className="d-notice" role="status">
+            Securing your node identity. If macOS shows a Keychain prompt for
+            “Harakiri Desktop”, approve it there. Setup continues automatically;
+            your mission brief is saved.
+          </p>
+        ) : null}
         <fieldset disabled={busy} className="n-fields">
           <label className="d-field">
             Channel name
             <input
               name="name"
+              defaultValue={fields.name ?? ""}
               required
               maxLength={120}
               placeholder="A short, recognizable name"
@@ -252,6 +336,7 @@ export function CreateMission({
             Objective
             <textarea
               name="objective"
+              defaultValue={fields.objective ?? ""}
               required
               rows={2}
               maxLength={4096}
@@ -262,6 +347,7 @@ export function CreateMission({
             Scope
             <textarea
               name="scope"
+              defaultValue={fields.scope ?? ""}
               rows={3}
               maxLength={8192}
               placeholder="What is in, what is out, and what the agents may change."
@@ -318,80 +404,106 @@ export function CreateMission({
               </button>
             </div>
           </div>
-          <div className="d-two-columns">
-            <label className="d-field">
-              Coordination
-              <select name="coordination" defaultValue="coordinated">
-                <option value="coordinated">Coordinator-led</option>
-                <option value="peer">Peer collaboration</option>
-              </select>
-              <span className="d-field-help">
-                In coordinated mode, this node hosts the initial Coordinator.
-              </span>
-            </label>
-            <label className="d-field">
-              Participation
-              <select name="participation" defaultValue="private">
-                <option value="private">Private invitation</option>
-                <option value="approval">
-                  Discoverable · approval required
-                </option>
-              </select>
-              <span className="d-field-help">
-                Discoverable missions stay unlisted until you publish a public
-                brief.
-              </span>
-            </label>
-          </div>
-          <label className="d-field">
-            Mission budget
-            <select
-              value={limited ? "limited" : "unlimited"}
-              onChange={(event) => setLimited(event.target.value === "limited")}
-            >
-              <option value="unlimited">No budget · Unlimited</option>
-              <option value="limited">Set limits</option>
-            </select>
-          </label>
-          {limited ? (
-            <div className="n-budget-fields">
+          <details>
+            <summary>
+              Mission settings ·{" "}
+              {fields.coordination === "peer"
+                ? "Peer collaboration"
+                : "Coordinator-led"}{" "}
+              ·{" "}
+              {fields.participation === "approval"
+                ? "Approval required"
+                : "Private"}{" "}
+              · {limited ? "Limited budget" : "Unlimited budget"}
+            </summary>
+            <div className="d-two-columns">
               <label className="d-field">
-                Turns
-                <input
-                  name="turns"
-                  type="number"
-                  required
-                  min={1}
-                  max={4294967295}
-                  defaultValue={100}
-                />
+                Coordination
+                <select
+                  name="coordination"
+                  defaultValue={fields.coordination ?? "coordinated"}
+                >
+                  <option value="coordinated">Coordinator-led</option>
+                  <option value="peer">Peer collaboration</option>
+                </select>
+                <span className="d-field-help">
+                  In coordinated mode, this node hosts the initial Coordinator.
+                </span>
               </label>
               <label className="d-field">
-                Concurrent turns
-                <input
-                  name="concurrency"
-                  type="number"
-                  min={1}
-                  max={1024}
-                  placeholder="No cap"
-                />
-              </label>
-              <label className="d-field">
-                Deadline
-                <input name="deadline" type="datetime-local" />
+                Participation
+                <select
+                  name="participation"
+                  defaultValue={fields.participation ?? "private"}
+                >
+                  <option value="private">Private invitation</option>
+                  <option value="approval">
+                    Discoverable · approval required
+                  </option>
+                </select>
+                <span className="d-field-help">
+                  Discoverable missions stay unlisted until you publish a public
+                  brief.
+                </span>
               </label>
             </div>
-          ) : (
-            <p className="d-field-help">
-              Track work without a mission limit. Your model provider’s
-              subscription limits still apply.
-            </p>
-          )}
+            <label className="d-field">
+              Mission budget
+              <select
+                value={limited ? "limited" : "unlimited"}
+                onChange={(event) =>
+                  setLimited(event.target.value === "limited")
+                }
+              >
+                <option value="unlimited">No budget · Unlimited</option>
+                <option value="limited">Set limits</option>
+              </select>
+            </label>
+            {limited ? (
+              <div className="n-budget-fields">
+                <label className="d-field">
+                  Turns
+                  <input
+                    name="turns"
+                    type="number"
+                    required
+                    min={1}
+                    max={4294967295}
+                    defaultValue={fields.turns ?? "100"}
+                  />
+                </label>
+                <label className="d-field">
+                  Concurrent turns
+                  <input
+                    name="concurrency"
+                    defaultValue={fields.concurrency ?? ""}
+                    type="number"
+                    min={1}
+                    max={1024}
+                    placeholder="No cap"
+                  />
+                </label>
+                <label className="d-field">
+                  Deadline
+                  <input
+                    name="deadline"
+                    defaultValue={fields.deadline ?? ""}
+                    type="datetime-local"
+                  />
+                </label>
+              </div>
+            ) : (
+              <p className="d-field-help">
+                Track work without a mission limit. Your model provider’s
+                subscription limits still apply.
+              </p>
+            )}
+          </details>
         </fieldset>
         <footer className="n-form-actions">
           <p>
             {busy
-              ? "Unlock your operating system’s key storage if prompted."
+              ? "If macOS shows a Keychain prompt for Harakiri Desktop, select Allow and authenticate with your Mac account. Keep the app open while it creates your protected identity."
               : enrolled
                 ? "The mission begins in Preparing."
                 : "This also creates your protected node identity on this computer."}
@@ -413,7 +525,14 @@ export function CreateMission({
   );
 }
 
-export function MissionRoom({
+export function MissionRoom(props: Parameters<typeof MissionWorkspace>[0]) {
+  return (
+    <ExecutionStatusProvider mission={props.mission.id}>
+      <MissionWorkspace {...props} />
+    </ExecutionStatusProvider>
+  );
+}
+function MissionWorkspace({
   error,
   readScroll,
   rememberScroll,
@@ -428,8 +547,9 @@ export function MissionRoom({
   enabled,
   network,
   withdrawal,
-  prepare,
+  prepare: _legacyPrepare,
   contributions,
+  initialSetup = false,
 }: {
   mission: MissionView;
   error: string;
@@ -447,9 +567,11 @@ export function MissionRoom({
   network: () => void;
   withdrawal?: WithdrawalView;
   prepare: (role: "agent" | "coordinator") => void;
+  initialSetup?: boolean;
 }) {
   const [panel, setPanel] = useState<
     | "controls"
+    | "setup"
     | "members"
     | "contribution"
     | "tasks"
@@ -457,8 +579,22 @@ export function MissionRoom({
     | "budget"
     | "artifacts"
     | null
-  >(null);
-  const closePanel = useCallback(() => setPanel(null), []);
+  >(initialSetup ? "setup" : null);
+  const executionStates = useExecutionStates();
+  const [startReviewRequest, setStartReviewRequest] = useState(0);
+  const openControls = (review = false) => {
+    setStartReviewRequest(review ? (v) => v + 1 : 0);
+    setPanel("controls");
+  };
+  const [setupRole, setSetupRole] = useState<"agent" | "coordinator">("agent");
+  const prepare = (role: "agent" | "coordinator") => {
+    setSetupRole(role);
+    setPanel("setup");
+  };
+  const closePanel = useCallback(() => {
+    setPanel(null);
+    setStartReviewRequest(0);
+  }, []);
   const [streams, setStreams] = useState<WorkstreamView[]>([]);
   const [workAgents, setWorkAgents] = useState<AgentView[]>([]);
   const [taskCount, setTaskCount] = useState(0);
@@ -529,6 +665,7 @@ export function MissionRoom({
   const people = panel === "members";
   const participation = panel === "contribution";
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [permissionAgent, setPermissionAgent] = useState<string | null>(null);
   const [memberTab, setMemberTab] = useState<"agents" | "people">("agents");
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [role, setRole] = useState<"agent" | "coordinator">(
@@ -575,6 +712,53 @@ export function MissionRoom({
     });
   const blocked = !!withdrawal || revoked || mission.conflicted;
   const budget = mission.definition.policy?.budget;
+  const coordinator = workAgents.find(
+    (a) => a.identity.author === mission.lifecycle.coordinator?.identity.author,
+  );
+  const coordinatorContribution = contributions.find(
+    (c) => c.sharedAgent?.registration === coordinator?.id,
+  );
+  const openAgent = (id: string) => {
+    setSelectedAgent(id);
+    setMemberTab("agents");
+    setPanel("members");
+  };
+  const nextAction =
+    !mission.lifecycle.coordinator &&
+    mission.owner === owner &&
+    mission.definition.policy?.coordination === "coordinated"
+      ? { label: "Set up Coordinator", act: () => prepare("coordinator") }
+      : coordinator
+        ? {
+            label: (() => {
+              const status = agentLifecycle({
+                agent: coordinator,
+                contribution: coordinatorContribution,
+                mission,
+                execution: coordinatorContribution
+                  ? executionStates?.[coordinatorContribution.id]
+                  : undefined,
+              });
+              const actions: Record<string, string> = {
+                login: "Sign in to Coordinator",
+                prepare: "Continue Coordinator setup",
+                permission:
+                  mission.owner === owner
+                    ? "Review planning session"
+                    : "Open Coordinator",
+                approve: "Review planning approval",
+                run: "Open planning session",
+                recover: "Recover Coordinator",
+                resume:
+                  mission.lifecycle.phase === "preparing"
+                    ? "Review planning session"
+                    : "Review Coordinator continuation",
+              };
+              return actions[status.action ?? ""] ?? "Open Coordinator";
+            })(),
+            act: () => openAgent(coordinator.id),
+          }
+        : { label: "Review mission controls", act: () => setPanel("controls") };
   return (
     <section
       className="n-room"
@@ -589,44 +773,108 @@ export function MissionRoom({
         <div className="n-action-row">
           <button
             className="d-button"
-            aria-expanded={panel === "budget"}
-            onClick={() => setPanel(panel === "budget" ? null : "budget")}
-          >
-            Budget & permissions
-          </button>
-          <button
-            className="d-button n-tasks-header"
-            aria-expanded={panel === "tasks"}
-            onClick={() => {
-              setTaskId(null);
-              setPanel(panel === "tasks" ? null : "tasks");
-            }}
-          >
-            Tasks <span className="d-count">{taskCount}</span>
-          </button>
-          <button
-            className="d-button"
-            aria-expanded={controls}
-            onClick={() => setPanel(controls ? null : "controls")}
-          >
-            Mission controls
-          </button>
-          <button
-            className="d-button"
-            aria-expanded={participation}
-            onClick={() => setPanel(participation ? null : "contribution")}
-          >
-            Your contribution
-          </button>
-          <button
-            className="d-button"
             aria-expanded={people}
-            onClick={() => setPanel(people ? null : "members")}
+            onClick={() => {
+              setMemberTab("agents");
+              setPanel(people ? null : "members");
+            }}
           >
             Members
           </button>
+          {!blocked &&
+          !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+            <button
+              className="d-button n-header-contribute"
+              onClick={() => prepare("agent")}
+            >
+              Add my agents
+            </button>
+          ) : null}
+          <button
+            className="d-button"
+            aria-expanded={controls}
+            onClick={() => (controls ? closePanel() : openControls())}
+          >
+            Mission controls
+          </button>
+          {mission.owner === owner && !blocked ? (
+            <button
+              className="d-button primary"
+              onClick={() => {
+                setMemberTab("people");
+                setPanel("members");
+              }}
+            >
+              Invite people
+            </button>
+          ) : null}
+          <details className="n-more-actions">
+            <summary className="d-button">More</summary>
+            <div>
+              {!blocked &&
+              !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+                <button
+                  className="d-button n-compact-contribute"
+                  onClick={(e) => {
+                    prepare("agent");
+                    e.currentTarget.closest("details")?.removeAttribute("open");
+                  }}
+                >
+                  Add my agents
+                </button>
+              ) : null}
+              <button
+                className="d-button"
+                onClick={(e) => {
+                  setPermissionAgent(null);
+                  setPanel("budget");
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+              >
+                Budget &amp; permissions
+              </button>
+              <button
+                className="d-button"
+                onClick={(e) => {
+                  setPanel("contribution");
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+              >
+                Your contribution
+              </button>
+              <button
+                className="d-button"
+                onClick={(e) => {
+                  setMemberTab("people");
+                  setPanel("members");
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+              >
+                Invite people
+              </button>
+            </div>
+          </details>
         </div>
       </header>
+      {panel === "setup" ? (
+        <ContextPanel
+          title={
+            setupRole === "coordinator" ? "Set up Coordinator" : "Add my agents"
+          }
+          close={closePanel}
+          error={error}
+        >
+          <AgentSetup
+            reviewMission={() => openControls(true)}
+            key={`${mission.id}:${setupRole}:${mission.lifecycle.terms_revision}`}
+            mission={mission}
+            role={setupRole}
+            localKey={owner}
+            contributions={contributions}
+            updated={changed}
+          />
+        </ContextPanel>
+      ) : null}
       {panel === "tasks" ? (
         <ContextPanel
           title="Tasks"
@@ -713,6 +961,10 @@ export function MissionRoom({
           </nav>
           <div hidden={memberTab !== "agents"}>
             <AgentRoster
+              permissions={(agent) => {
+                setPermissionAgent(agent.id);
+                setPanel("budget");
+              }}
               message={(agent, privateChat) => {
                 if (privateChat)
                   void perform(async () => {
@@ -902,6 +1154,8 @@ export function MissionRoom({
           error={error}
         >
           <BudgetPanel
+            key={permissionAgent ?? "all"}
+            initialAgent={permissionAgent}
             mission={mission}
             owner={owner}
             agents={workAgents}
@@ -914,12 +1168,15 @@ export function MissionRoom({
       {controls ? (
         <ContextPanel title="Mission controls" close={closePanel} error={error}>
           <MissionControl
+            key={startReviewRequest}
+            reviewStart={startReviewRequest > 0}
             mission={mission}
             isOwner={mission.owner === owner}
             blocked={blocked}
             busy={busy}
             open
-            detailsOnly
+            agents={workAgents}
+            nextAction={nextAction}
             contributions={contributions}
             perform={perform}
             updated={updated}
@@ -1004,16 +1261,24 @@ export function MissionRoom({
           </div>
         ) : null}
       </div>
-      <MissionControl
+      <MissionJourney
         mission={mission}
-        isOwner={mission.owner === owner}
-        blocked={blocked}
-        busy={busy}
-        open={false}
+        owner={owner}
+        agents={workAgents}
         contributions={contributions}
-        perform={perform}
-        updated={updated}
-        prepare={() => prepare("coordinator")}
+        controls={openControls}
+        people={() => {
+          setMemberTab("people");
+          setPanel("members");
+        }}
+        setup={prepare}
+        agent={openAgent}
+      />
+      <ExecutionSummary
+        mission={mission}
+        agents={workAgents}
+        contributions={contributions}
+        open={openAgent}
       />
       {workError ? (
         <p className="d-alert" role="alert">
@@ -1021,6 +1286,22 @@ export function MissionRoom({
         </p>
       ) : null}
       <Conversation
+        decisions={
+          <MissionDecisions
+            mission={mission}
+            owner={owner}
+            agents={workAgents}
+            contributions={contributions}
+            controls={openControls}
+            people={() => {
+              setMemberTab("people");
+              setPanel("members");
+            }}
+            setup={prepare}
+            agent={openAgent}
+          />
+        }
+        contributions={contributions}
         streams={streams}
         taskCount={taskCount}
         tasks={(id) => {

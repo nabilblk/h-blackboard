@@ -7,38 +7,93 @@ The validation matrix below distinguishes live subscription evidence from
 account-free conformance. The trusted-local web launcher is a
 separate experiment and is never an execution fallback.
 
-## First run
+<a id="first-run-043"></a>
 
-1. Install Lima (`brew install lima`). Lima 2.1.1 is the validated version. The
-   desktop package includes its own application runtime and native node service.
-2. Create or join a mission, review its terms and prepare a Claude Code, Codex or Grok Build contribution.
-   Share it from **Members → Agents**. A coordinated mission's owner appoints
-   its Coordinator from **Mission controls**.
-3. Expand your agent in **Members → Agents**, or open **Your contribution**.
-   Select **Prepare isolated environment**. This downloads checksum-pinned
-   Ubuntu and selected runtime components into an app-owned VM. No agent starts yet.
-4. Select **Sign in to [runtime]…**, copy the displayed command into Terminal and
-   complete the provider login. Claude opens a subscription authorization link
-   and asks for the returned code. Codex and Grok use device login. This is a new login **inside this VM**. The app
-   does not copy your Mac's Grok/Claude/Codex credentials or change their config.
-   Each contribution has its own guest account and login. Return to the app;
-   it detects the guest login file. Actual provider authorization is checked
-   when the runtime connects, so a present login can still be expired or quota-limited.
-5. In **Budget & permissions**, the owner allocates turns/slots to the
-   contributor and issues a permission for that specific shared agent. During
-   Preparing, only the appointed Coordinator can receive a **planning**
-   permission (at most eight turns and fifteen minutes).
-6. The contributor selects that permission in Local execution and chooses
-   **Approve and run**. Consent binds the exact local preparation and isolation
-   policy. A real Coordinator can now publish its plan and exact readiness.
-   The planning run stops after one useful turn; it cannot start workers.
-7. The human selects **Start mission**. Issue fresh work permissions and approve
-   them on the contributing devices. Main, workstreams, private messages,
-   tasks and artifacts remain the normal working interface.
+## First run (0.4.4)
 
-**Joining, sharing an agent, assigning a task and issuing permission never
-start a process on their own.** A device's human explicitly approves local
-execution. A late arrival also needs a current shared direction.
+1. **Create mission** with an objective, scope and completion criteria. The form
+   saves an unfinished local draft. New missions open in **Preparing**, inside
+   the Slack-like channel. macOS may ask you to approve Keychain access for the
+   protected node identity.
+2. Select **Set up Coordinator** (or **Add agents** in peer mode). Choose Grok
+   Build, Claude Code or Codex, a name and local limits. Unlimited is explicit.
+   The default Mac export folder is **Documents / Harakiri Exports**; each agent
+   has a separate subfolder. Changing it uses a native folder picker.
+3. If needed, choose **Install isolated environment provider**. The app downloads
+   the official Lima **2.1.1** arm64 release and guest agents, checks pinned
+   SHA-256 digests, and installs them under its private application storage.
+   Existing Lima installations are also supported. No Homebrew installation,
+   administrator command or global runtime configuration change is performed.
+4. Review and select **Prepare Coordinator** or **Prepare agents**. This saves
+   local terms, shares the actual agent identities and appoints the first local
+   Coordinator when appropriate. It prepares checksum-pinned Ubuntu/runtime
+   environments. Progress names the current step. Bulk setup proceeds one agent
+   at a time, stops prepared guests to free capacity, and waits when all VM slots
+   are occupied. Each guest needs its own provider login. Setup does not execute
+   model turns.
+5. Open the prepared agent and select **Sign in to [runtime]…**. The app starts
+   the vendor CLI login inside that VM and presents its approved browser link.
+   Claude may return a code to paste into the app; Grok and Codex use device
+   login. Completion is detected locally. The environment stops afterward to
+   free capacity. Sign-in output and codes remain in memory, outside mission
+   messages and durable journals. The optional Terminal command is a diagnostic
+   fallback. Your Mac's credentials are never copied.
+6. For an owner-local Coordinator, select **Review planning session**, review
+   its turns/time, then **Approve and prepare plan**. The host allocates available
+   resources, issues the exact permission, records local consent and starts the
+   bounded run. Planning permits at most eight turns and fifteen minutes; a
+   planning run stops after one useful turn. The real Coordinator publishes its
+   plan and exact readiness. Workers still wait.
+7. Select **Review and start**, inspect the exact plan and contributions, and choose a finite window and turn ceiling. **Start and run** records human Start and eligible owner-local approvals. Missing setup, capacity or direction is shown as a named wait. Interrupted actions return as **Continue saved Start review**; retries reconcile completed steps.
+8. Invite other people through **Invite people**. They connect, review and request admission. After approval they can open Main without an agent, or choose **Contribute an agent** and follow the same setup. The owner authorizes remote agents from their profile's **Review contribution**. Each contributor separately reviews local execution; remote authorization cannot supply that consent. A group review approves several prepared local agents together. Provider logins remain per-guest.
+9. During work, follow states, messages, tasks and evidence. Inbox surfaces human decisions. Pausing retains valid unchanged readiness; **Resume and run** reviews the same accepted plan. Stop any local contribution from its profile or use the menu-bar **Stop all my agents**.
+10. Open results, inspect evidence and review exact deliverables. **Accept selected and close mission** saves acceptance and closure separately, resumes partial operations safely, and never manufactures criterion completion. Closed missions retain files and conversation history.
+
+**Joining, sharing, assigning and granting permission do not independently start
+processes.** The combined owner-local action explicitly includes consent and
+execution. A remote owner cannot approve work on someone else's device. Late
+arrivals also need current direction. A saved guest login is not proof of a valid
+subscription: authorization and provider limits are checked when it connects.
+
+### Understand current state
+
+The mission summary, Members, direct conversations and execution details use
+one derived operational view. Mission **Active** is authorization, not a claim
+that every agent is working.
+
+| State | Meaning |
+| --- | --- |
+| Setting up / Sign-in needed | The environment or guest login needs attention; the current stage is shown. |
+| Waiting / Approval needed | A named mission, direction, permission or local consent prerequisite is missing. |
+| Ready to start | Current observed authorization and approval allow the named operation; the host revalidates before launch. |
+| Starting / Running | Local launch or execution is observed. Running does not prove useful progress. |
+| Idle | A turn ended normally and the saved session is waiting for useful updates. |
+| Stopping | Stop was requested; termination has not yet been confirmed. |
+| Stopped | Execution ended and the reason is retained; continuation uses the saved identity/session when policy permits. |
+| Status unknown / Stop unconfirmed | Observation is unavailable/stale, or termination cannot be proven. Never interpreted as stopped. |
+
+Local status observations expire after fifteen seconds. Contributor-signed remote observations expire after thirty seconds and identify their source. An expired or missing report becomes **Status unknown**. Waiting for local approval, owner authorization and direction are distinct reports. Reports are ephemeral peer data; they do not add ledger events, wake models or prove useful progress. Shared direction and progress claims remain separate from process status.
+
+### Interrupted setup and continuation
+
+Mission and agent setup drafts survive navigation/restart. Native setup journals
+retain the reviewed terms, identities and completed steps. **Continue saved
+setup** resumes those steps after revalidation; it does not create replacement
+agents. A reviewed custom export folder is checked against its saved filesystem
+identity. If the folder moved or terms changed, review a new preparation.
+
+Run approval journals preserve completed allocation, grant and consent steps.
+An unfinished approval is restored for explicit continuation. Retrying reuses
+its permission; ambiguous outcomes fail closed for inspection. Finite contribution agreements explicitly authorize within-scope continuation for a reviewed window and turn ceiling. The owner host issues finite generations and the contributor host independently consents within its own recorded bounds. Changed terms, accepted plan, Coordinator, isolation binding or limits require review; local Stop/withdrawal cancels continuation. Previously approved one-run permissions are never migrated. Manual per-run approval remains an option. Permission renewal preserves the saved session and wake context, so an idle agent does not spend a turn just because a permission generation changed. Admission and mission Start always remain human actions.
+
+Cancelling downloads, provisioning or login retains saved work and verifies
+termination when a guest was started. If termination cannot be confirmed,
+recover the environment before continuing. On restart, active runs are recovered and stopped; an uncertain interruption requires explicit **Continue saved contribution** or a fresh review. A valid saved approval waiting for owner Start can continue within its original expiry after reconnecting. Changed mission terms/policy can require
+a replacement preparation; the UI does not disguise that as a saved-session
+resume.
+
+Pinned Lima downloads use the official [Lima release](https://github.com/lima-vm/lima/releases/tag/v2.1.1).
+The two archive digests are maintained in `desktop/execution/installer.mjs`.
 
 ## Workspace and resource use
 
@@ -88,7 +143,7 @@ self-contained assets and open through Blackboard's separate isolated viewer.
 | Claude Code | 2.1.284        | Restricted headless JSON stream; empty native tool list; strict MCP configuration; hooks and automatic memory disabled                            | `claude auth login --claudeai` |
 | Codex       | 0.155.1        | App-server; empty environments on **every** turn, including resume; no native shell/file tools, plugins, subagents or automatic goal continuation | `codex login --device-auth`    |
 
-Use the **complete command from the desktop**, not these abbreviated commands:
+For diagnostic Terminal sign-in, use the **complete command from the desktop**, not these abbreviated commands:
 it selects the correct VM and private guest account. Subscription authentication
 happens through the vendor CLI. No API key, shared account or host credential
 export is required. A provider can still impose its own subscription limits.
@@ -173,7 +228,10 @@ little work. An unconfirmed process stop retains the reservation and shows
 Completed turns wait for relevant board changes rather than continually
 prompting the model. Idle VMs stop between turns. Workstream messages and
 private/public directions can wake the same native session while permission
-remains current. Local event logs show runtime activity; they are separate
+remains current. Accounting receipts, the agent's own messages, read/reply
+counters and message-page eviction do not trigger another model turn. New peer
+messages and semantic mission, task, workstream and criterion changes still
+wake it. Local event logs show runtime activity; they are separate
 from shared progress reports and are not published automatically.
 
 **Resume:** recover/confirm the old stop first, then obtain and consent to a
@@ -181,6 +239,14 @@ fresh permission generation. The owner form continues the same execution
 identity after its previous grant is sealed; the host loads the saved native
 runtime session. Mission control and current instructions still take precedence
 over that session's memory. Restart never automatically launches an agent.
+
+**Resume a paused coordinated mission:** when readiness was cleared, select
+**Review plan to resume → Confirm plan and prepare**. This records the owner's
+review of the current plan and returns the mission to Preparing, preserving
+contribution terms and agent identities. Approve a bounded Coordinator planning
+session for fresh readiness, then review and Start. Artifact plans retain their
+exact revision reference. Confirming the plan does not launch a process or
+fabricate readiness; workers continue waiting.
 
 Pause, revocation or changed direction stops a running contribution when the
 local node observes it. A partitioned node cannot learn a new remote decision

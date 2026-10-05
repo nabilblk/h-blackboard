@@ -69,6 +69,11 @@ pub enum GovernanceAction {
         grant: String,
         reason: String,
     },
+    /// Stop authority without releasing uncertain usage or asserting a stop.
+    StopGrant {
+        grant: String,
+        reason: String,
+    },
     SealGrant {
         grant: String,
         settlements: Vec<String>,
@@ -104,7 +109,9 @@ impl GovernanceAction {
             .into_iter()
             .chain(previous.as_deref())
             .collect(),
-            Self::Consent { grant, .. } | Self::RetireGrant { grant, .. } => vec![grant],
+            Self::Consent { grant, .. }
+            | Self::RetireGrant { grant, .. }
+            | Self::StopGrant { grant, .. } => vec![grant],
             Self::SealGrant { grant, settlements } => std::iter::once(grant.as_str())
                 .chain(settlements.iter().map(String::as_str))
                 .collect(),
@@ -143,9 +150,9 @@ impl GovernanceAction {
                 Self::Receipt { used, summary, .. } => {
                     used.is_none_or(|n| n <= 1) && text(summary, 2048)
                 }
-                Self::Resolve { reason, .. } | Self::RetireGrant { reason, .. } => {
-                    text(reason, 2048)
-                }
+                Self::Resolve { reason, .. }
+                | Self::RetireGrant { reason, .. }
+                | Self::StopGrant { reason, .. } => text(reason, 2048),
                 Self::Criterion {
                     index,
                     wording,
@@ -206,6 +213,7 @@ pub struct GrantView {
     pub consent: Option<String>,
     pub consent_binding: Option<String>,
     pub risk_accepted: Option<String>,
+    pub revoked: bool,
     pub sealed: bool,
     pub seal: Option<String>,
     pub charged: u32,

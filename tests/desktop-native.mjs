@@ -5,10 +5,11 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile, access } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, access, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 const packaged = process.argv.includes("--packaged");
 const executable = packaged
   ? resolve(
@@ -40,7 +41,9 @@ function click(selector) {
   browser("click", selector);
 }
 async function waitForMission() {
-  const deadline = Date.now() + 45000;
+  // Packaged builds can need human approval in the macOS Keychain dialog.
+  // Keep the app alive long enough to approve it without weakening storage.
+  const deadline = Date.now() + (packaged ? 300000 : 45000);
   while (Date.now() < deadline) {
     const status = JSON.parse(
       browser(
@@ -56,7 +59,7 @@ async function waitForMission() {
     "Mission creation did not finish. Check for a pending macOS Keychain prompt; the native test never approves it automatically.",
   );
 }
-async function startApp() {
+async function startApp(invitation = null) {
   let startupError;
   child = spawn(
     executable,
@@ -64,6 +67,7 @@ async function startApp() {
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${profile}`,
       ...(packaged ? [] : [resolve("var/desktop/build")]),
+      ...(invitation ? [invitation] : []),
     ],
     { env, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -102,7 +106,7 @@ async function startApp() {
       "The native app did not load its bundled UI within 20 seconds.",
   );
   browser("connect", String(port));
-  browser("wait", "--text", "Your missions, on your computer.");
+  browser("wait", "--text", "Blackboard");
   browser("snapshot", "-i");
 }
 async function stopApp() {
@@ -136,12 +140,14 @@ try {
     bridge: Object.keys(window.contributor),
     nodeBridge: Object.keys(window.blackboardNode),
     executionBridge: Object.keys(window.blackboardExecution),
+    setupBridge: Object.keys(window.blackboardSetup),
     nodeState: await window.blackboardNode.state(),
     state: await window.contributor.state(),
     remoteBlocked: await fetch('https://example.com').then(() => false, () => true),
     fileBlocked: await fetch('file:///etc/passwd').then(() => false, () => true),
     forgedRequestBlocked: await window.contributor.prepare({workspace:'/tmp',permissions:'full-access'}).then(() => false, () => true),
     forgedNodeRequestBlocked: await window.blackboardNode.createMission({profile:'/tmp',command:'launch'}).then(() => false, () => true),
+    forgedSetupBlocked: await window.blackboardSetup.setup({command:'sh',workspace:'/Users',role:'owner'}).then(() => false, () => true),
     insecureInvitationRejected: await window.contributor.inspect('http://127.0.0.1:9/j/desktop_fixture_0123456789').then(() => false, e => e.message.includes('HTTPS')),
     renamed: (await window.contributor.rename('Native smoke test')).contributor.name,
     overflow: document.documentElement.scrollWidth > innerWidth
@@ -168,6 +174,12 @@ try {
   assert.deepEqual(
     evaluated.executionBridge.sort(),
     [
+      "overview",
+      "signIn",
+      "cancelSetup",
+      "loginInput",
+      "cancelLogin",
+      "openLogin",
       "state",
       "prepare",
       "login",
@@ -217,6 +229,7 @@ try {
       "markMessagesRead",
       "messages",
       "networkState",
+      "observations",
       "configureNetwork",
       "issueInvitation",
       "copyInvitation",
@@ -241,6 +254,38 @@ try {
   assert.equal(evaluated.nodeState.status, "not_enrolled");
   assert.equal(evaluated.nodeState.identity, null);
   assert.equal(evaluated.forgedNodeRequestBlocked, true);
+  assert.equal(evaluated.forgedSetupBlocked, true);
+  assert.deepEqual(
+    evaluated.setupBridge.sort(),
+    [
+      "state",
+      "setup",
+      "permission",
+      "cancel",
+      "preflight",
+      "installProvider",
+      "cancelInstall",
+      "takeInvitation",
+      "approveContribution",
+      "agreements",
+      "cancelAgreement",
+      "continueAgreement",
+      "reviewedStart",
+      "startState",
+      "cancelStart",
+      "appPreferences",
+      "setBackground",
+      "setNotifications",
+      "takeNotification",
+      "setCapacity",
+      "journeyDiagnostics",
+      "setJourneyDiagnostics",
+      "clearJourneyDiagnostics",
+      "completeMission",
+      "completionState",
+      "discardCompletion",
+    ].sort(),
+  );
   assert.equal(evaluated.remoteBlocked, true);
   assert.equal(evaluated.fileBlocked, true);
   assert.equal(evaluated.forgedRequestBlocked, true);
@@ -271,8 +316,57 @@ try {
     "Every activity has an age range and a materials list.",
   );
   click(".n-inline button");
+  click(".d-back");
+  click(".n-empty .d-button");
+  assert.equal(
+    JSON.parse(
+      browser("eval", "document.querySelector('input[name=name]').value"),
+    ),
+    "Community science day",
+    "Unsubmitted mission survives navigation",
+  );
+  assert.equal(
+    JSON.parse(
+      browser("eval", "document.querySelectorAll('.n-criteria > div').length"),
+    ),
+    1,
+  );
   click("button[type=submit]");
+  if (packaged) {
+    console.log(
+      "Creating the isolated test identity. Approve the Harakiri Desktop macOS Keychain prompt if it appears; waiting up to five minutes.",
+    );
+  }
   await waitForMission();
+  assert.ok(
+    JSON.parse(
+      browser(
+        "eval",
+        "[...document.querySelectorAll('button')].some(b => b.textContent.includes('Set up Coordinator') && !b.disabled)",
+      ),
+    ),
+  );
+  browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Set up Coordinator",
+    "--exact",
+  );
+  browser("wait", "--text", "Set up your Coordinator");
+  assert.ok(
+    JSON.parse(
+      browser(
+        "eval",
+        "!!document.querySelector('.n-conversations') && !!document.querySelector('.n-guided-setup')",
+      ),
+    ),
+    "Setup stays inside the Slack mission",
+  );
+  browser("screenshot", resolve("var/desktop/onboarding-guided-setup.png"));
+  browser("press", "Escape");
   browser("snapshot", "-i");
   browser(
     "fill",
@@ -321,7 +415,10 @@ try {
     JSON.parse(browser("eval", "window.blackboardNode.state()")),
     savedNode,
   );
-  click(".n-mission-row");
+  assert.ok(
+    JSON.parse(browser("eval", "!!document.querySelector('.n-conversations')")),
+    "Reopen the last mission automatically",
+  );
   browser("wait", "--text", "Start with hands-on experiments.");
   const restoredMessages = JSON.parse(
     browser(
@@ -331,6 +428,31 @@ try {
   );
   assert.equal(restoredMessages.items.length, 1);
   assert.equal(restoredMessages.items[0].author, savedNode.identity.owner);
+  await stopApp();
+  await startApp("harakiri://join/aabbcc");
+  browser("wait", "--text", "Invitation received. Review it before joining.");
+  assert.equal(
+    JSON.parse(
+      browser(
+        "eval",
+        "document.querySelector('input[placeholder=\"harakiri://join/…\"]').value",
+      ),
+    ),
+    "harakiri://join/aabbcc",
+  );
+  const invitationState = JSON.parse(
+    browser("eval", "window.blackboardNode.state()"),
+  );
+  assert.equal(
+    invitationState.network,
+    "disabled",
+    "Opening a native invitation never enables networking",
+  );
+  assert.equal(
+    invitationState.joins.length,
+    0,
+    "Opening a native invitation never joins",
+  );
   await writeFile(
     packaged
       ? "var/desktop/package-smoke.json"
@@ -338,10 +460,20 @@ try {
     JSON.stringify(
       {
         checkedAt: new Date().toISOString(),
+        appBundleSha256: packaged
+          ? createHash("sha256")
+              .update(
+                await readFile(
+                  join(dirname(dirname(executable)), "Resources/app.asar"),
+                ),
+              )
+              .digest("hex")
+          : null,
         restartPreservedState: true,
         localMissionCreatedThroughUI: true,
         encryptedNodeIdentityAndSignedHistorySurvivedRestart: true,
         executionRemainedDisabled: true,
+        nativeInvitationOpenedReviewWithoutJoining: true,
         ...evaluated,
       },
       null,

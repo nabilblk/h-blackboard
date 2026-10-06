@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.4";
+const desktopVersion = "0.4.5";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
 const desktopGuide = "#getting-started";
@@ -455,7 +455,7 @@ const features = [
 const questions = [
   {
     title: `What’s new in v${desktopVersion}?`,
-    body: "Continuous setup from preparation and guest sign-in to plan review and Start and run. Approve contributions for a limited time and number of turns, review several agents together, and queue work within your device capacity. Inbox gathers decisions that need you; agent status shows what is running or waiting. Saved progress and optional background controls keep the mission moving while Main stays beside setup.",
+    body: "One mission summary shows current activity and the next decision. Inspect an agent’s Activity, Access & limits or Technical details beside Main. Preparation includes installing the isolation tools when needed, and group setup guides each guest sign-in in turn. Discovery now distinguishes connection failures, empty catalogs and searches with no matches.",
   },
   {
     title: "When do agents actually start working?",
@@ -463,11 +463,11 @@ const questions = [
   },
   {
     title: "Can I tell whether an agent is running?",
-    body: "Local agents have separate setup, waiting, running, idle and stopped states, with reasons and next actions. A direction or an online device is not evidence that its agent is running. Remote execution is shown as unknown when fresh process information is unavailable. Recovery keeps the saved identity and session, with fresh approval when required.",
+    body: "Agent lists show Setting up, Working, Waiting, Stopping, Stopped or Unknown. Inspect a state for its reason, responsible person and latest observation. Remote activity is an attributed report; expired reports become Unknown. A running process does not prove useful progress, and Pause does not confirm that an unreachable agent stopped.",
   },
   {
     title: "Do existing desktops need to upgrade together?",
-    body: "Yes. Version 0.4.4 cannot exchange peer data with 0.4.3 or earlier. Update every participating Mac to 0.4.4 before reconnecting. Quit the app and back up its profile before upgrading. Existing signed history is preserved during the storage upgrade; older builds cannot reopen the upgraded profile.",
+    body: "Versions 0.4.4 and 0.4.5 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
   },
   {
     title: "Can I run the decentralized product today?",
@@ -532,10 +532,10 @@ function GettingStarted() {
           </span>
           <h3>Set up your agents in the mission.</h3>
           <p>
-            Choose Set up Coordinator as the creator, or Add agents after
-            joining. The app guides Lima installation, isolated environment
-            setup and provider sign-in. Each agent signs in separately; your
-            Mac’s existing logins are not copied.
+            Choose Set up Coordinator as the creator, or More → Add my agents
+            after joining. Preparing an agent also installs its verified
+            isolation tools when needed. Each agent signs in separately; group
+            setup guides one login at a time. Your Mac’s logins stay private.
           </p>
         </li>
         <li>
@@ -766,12 +766,12 @@ export default function Landing() {
           <div className="next-step">
             <GitBranch size={21} />
             <div>
-              <h3>Guided setup, inside the mission.</h3>
+              <h3>One clear next step.</h3>
               <p>
-                Set up a Coordinator or add several agents without leaving Main.
-                Install Lima and sign in through the app. See what is ready,
-                waiting, running or stopped, with a reason and a next action.
-                Your drafts and setup progress survive a restart.
+                The mission summary shows current activity and what needs your
+                decision. Prepare agents and sign in without leaving Main. Open
+                the inspector for permissions, technical evidence and recovery;
+                your conversation and drafts stay in place.
               </p>
             </div>
             <span className="mini-badge mono">New in v{desktopVersion}</span>

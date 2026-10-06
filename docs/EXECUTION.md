@@ -25,7 +25,7 @@ separate experiment and is never an execution fallback.
    Lima, **Prepare Coordinator/agents** also downloads the official **2.1.1**
    arm64 release into Harakiri’s private storage and verifies pinned SHA-256
    digests. No Homebrew or global runtime configuration changes are made.
-   (The published 0.4.4 preview has a separate **Install isolated environment
+   (The older 0.4.4 preview has a separate **Install isolated environment
    provider** button.)
 4. Review and select **Prepare Coordinator** or **Prepare agents**. This saves
    local terms, shares the actual agent identities and appoints the first local

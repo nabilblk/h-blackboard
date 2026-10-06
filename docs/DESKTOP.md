@@ -6,7 +6,7 @@ The desktop on `pivot/renting-the-rent` creates local missions and connects peop
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.4 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.4 adds continuous onboarding, limited contribution windows, grouped agent approvals, Start and run, device capacity queues, decision Inbox and optional background controls. **Update every participating Mac to 0.4.4; it cannot exchange peer data with 0.4.3 or earlier.** See [continuous onboarding](#continuous-onboarding-044) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.5 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.5 adds one mission summary, contextual decisions and technical inspection, simpler preparation/sign-in, and discovery connection diagnostics. **0.4.4 and 0.4.5 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [the 0.4.5 changes](#simpler-mission-experience-045) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
 
 Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
@@ -83,12 +83,12 @@ failed exchanges, an empty catalog and a text search with no matches have
 different recovery instructions. It does not automatically connect to a directory
 or publish a mission.
 
-This source iteration is separate from the **0.4.4** download currently linked
-on the landing page. Peer protocol 11/schema 15 are unchanged. Native isolated
+The landing page serves the **0.4.5** installer and checksum. Peer protocol
+11/schema 15 are unchanged from 0.4.4. Native isolated
 journeys and service tests verify behavior; independently operated Macs and
 unassisted first-time usability remain separate validation gates.
 
-The local **0.4.5 Apple Silicon DMG** passes image and mounted-signature checks;
+The published **0.4.5 Apple Silicon DMG** passes image and mounted-signature checks;
 its packaged UI/native service start and retain form drafts in an isolated
 profile. The full identity/mission/restart test passes in the development app;
 the newly signed package's Keychain identity test has not been repeated.
@@ -113,7 +113,7 @@ Background users can separately opt into macOS decision notifications. These cov
 
 **This device** also offers optional local onboarding timings. They contain bounded sampled state transitions and elapsed durations, without message text, login output or invitation secrets. They are off by default, never uploaded, and can be cleared. These diagnostics do not measure successful first-time usability.
 
-The landing page serves the verified 0.4.4 DMG and its checksum. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
+These 0.4.4 capabilities are retained in the current 0.4.5 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
 
 ## Create an offline mission
 

@@ -90,13 +90,16 @@ export function MissionControl({
         const pending = jobs.find(
           (j) => !["complete", "cancelled"].includes(j.phase),
         );
-        if (!cancelled) setPendingStart(pending ?? null);
+        if (!cancelled) {
+          setPendingStart(pending ?? null);
+          if (pending && reviewStart) setStartReview(pending.request.revision);
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [mission.id, isOwner]);
+  }, [mission.id, isOwner, reviewStart]);
   const [planReview, setPlanReview] = useState<string | null>(null);
   const coordinated = definition.policy?.coordination === "coordinated";
   const candidates = contributions.filter(
@@ -142,7 +145,10 @@ export function MissionControl({
               <span className="d-label">{phaseLabel(mission)}</span>
               <p role="status">{reason}</p>
             </div>
-            {isOwner && !["closed", "archived"].includes(l.phase) ? (
+            {isOwner &&
+            !startReview &&
+            !planReview &&
+            !["closed", "archived"].includes(l.phase) ? (
               l.phase === "active" ? (
                 <button
                   className="d-button"
@@ -170,14 +176,16 @@ export function MissionControl({
                 >
                   Review plan to resume
                 </button>
-              ) : l.start_blockers.length && nextAction ? (
-                <button
-                  className="d-button primary"
-                  disabled={busy || blocked}
-                  onClick={nextAction.act}
-                >
-                  {nextAction.label}
-                </button>
+              ) : l.start_blockers.length ? (
+                nextAction ? (
+                  <button
+                    className="d-button primary"
+                    disabled={busy || blocked}
+                    onClick={nextAction.act}
+                  >
+                    {nextAction.label}
+                  </button>
+                ) : null
               ) : (
                 <button
                   className="d-button primary"
@@ -264,10 +272,6 @@ export function MissionControl({
               }}
             />
           ) : null}
-          <p className="d-field-help">
-            Contributors control execution on their devices. Mission state is
-            separate from confirmed process status.
-          </p>
         </>
       ) : null}
       {open ? (
@@ -288,15 +292,7 @@ export function MissionControl({
               <>
                 <div>
                   <dt>Coordinator</dt>
-                  <dd>
-                    {l.coordinator?.identity.label ?? "Not appointed"}
-                    {l.coordinator ? (
-                      <span className="d-secondary">
-                        {" "}
-                        · separate agent identity
-                      </span>
-                    ) : null}
-                  </dd>
+                  <dd>{l.coordinator?.identity.label ?? "Not appointed"}</dd>
                 </div>
                 <div>
                   <dt>Readiness</dt>
@@ -329,13 +325,6 @@ export function MissionControl({
                 : " Tasks and additional workstreams are optional."}
             </p>
           )}
-          {coordinated && !l.readiness ? (
-            <p className="d-field-help">
-              The appointed Coordinator must run a planning session, publish the
-              shared plan and acknowledge readiness. Open its agent details to
-              continue setup or approve planning.
-            </p>
-          ) : null}
           {isOwner && !blocked && !["closed", "archived"].includes(l.phase) ? (
             <>
               {coordinated && !l.coordinator ? (
@@ -379,16 +368,7 @@ export function MissionControl({
                         Appoint Coordinator
                       </button>
                     </>
-                  ) : (
-                    <button
-                      className="d-button"
-                      disabled={busy}
-                      onClick={prepare}
-                    >
-                      <Plus size={15} />
-                      Prepare Coordinator
-                    </button>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
               <div className="n-action-row">

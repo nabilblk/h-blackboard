@@ -7,7 +7,7 @@ import type { GrantView } from "./node-contract";
 import type { ExecutionState } from "./execution-types";
 import type { MissionView } from "./node-contract";
 import { RunApproval, ProviderSetup } from "./ExecutionSetup";
-import { agentLifecycle } from "../../shared/agent-lifecycle.mjs";
+import { agentPresentation } from "../../shared/mission-presentation.mjs";
 
 const labels: Record<string, string> = {
   preparing: "Preparing VM",
@@ -49,6 +49,10 @@ export function ExecutionPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [command, setCommand] = useState("");
+  const [tab, setTab] = useState<"activity" | "access" | "technical">(
+    "activity",
+  );
+  const [historySearch, setHistorySearch] = useState("");
   const api = window.blackboardExecution;
   useEffect(() => {
     if (!api) return;
@@ -118,7 +122,8 @@ export function ExecutionPanel({
     !item.sharedAgent?.withdrawn &&
     !["closed", "archived"].includes(mission?.lifecycle.phase ?? "");
   const effective = mission
-    ? agentLifecycle({
+    ? agentPresentation({
+        viewer: owner,
         mission,
         contribution: item,
         execution: state ?? undefined,
@@ -130,27 +135,33 @@ export function ExecutionPanel({
     <section className="d-panel n-execution" aria-label="Local agent execution">
       <header>
         <h3>
-          <ShieldCheck size={16} /> Local execution
+          <ShieldCheck size={16} /> {effective?.label ?? "Local execution"}
         </h3>
         <span className="d-label" role="status">
-          {effective?.label ?? (status ? labels[status] : "Checking status")}
+          This Mac
         </span>
       </header>
-      <p>
+      <p role="status">
         {effective?.reason ||
           state?.record?.reason ||
           (supported
             ? `Prepare an isolated environment for this contribution, then sign in to ${runtimeLabel} inside it.`
             : "Prepare a contribution to a peer mission to use isolated execution on Apple Silicon with Lima.")}
       </p>
-      {state?.events.at(-1) ? (
-        <p className="d-field-help">
-          Last observed activity:{" "}
-          {new Date(state.events.at(-1)!.at).toLocaleTimeString()} ·{" "}
-          {state.events.at(-1)!.type.replaceAll("_", " ")}. Running confirms
-          execution, not useful progress.
-        </p>
-      ) : null}
+      <nav
+        className="n-member-tabs n-execution-tabs"
+        aria-label="Agent inspector views"
+      >
+        {(["activity", "access", "technical"] as const).map((v) => (
+          <button key={v} aria-pressed={tab === v} onClick={() => setTab(v)}>
+            {v === "activity"
+              ? "Activity"
+              : v === "access"
+                ? "Access & limits"
+                : "Technical"}
+          </button>
+        ))}
+      </nav>
       {status === "stopped" && state?.record?.interruption ? (
         <div className="d-panel" role="status">
           <h4>Direction changed · review before resuming</h4>
@@ -171,8 +182,34 @@ export function ExecutionPanel({
       {state?.permissionProblem ? (
         <p className="d-field-help">{state.permissionProblem}</p>
       ) : null}
-      <details>
-        <summary>Environment, limits and session</summary>
+      <section hidden={tab !== "technical"} aria-label="Environment and source">
+        <h4>Environment and source</h4>
+        <button
+          className="d-button"
+          disabled={busy}
+          onClick={() =>
+            void act(async () => {
+              const result = await api.exportDiagnostics(item.id);
+              if (!result.cancelled)
+                setNotice(
+                  "Diagnostics exported: execution states and times only.",
+                );
+            })
+          }
+        >
+          Export diagnostics
+        </button>
+        <p className="d-field-help">
+          Exports states and times. Provider output, prompts, credentials and
+          paths stay on this Mac.
+        </p>
+        <p className="d-field-help">
+          {effective?.source} ·{" "}
+          {effective?.fresh ? "Current" : "Expired or unavailable"}
+          {effective?.observedAt
+            ? ` · ${new Date(effective.observedAt).toLocaleTimeString()}`
+            : ""}
+        </p>
         <dl className="d-facts">
           <div>
             <dt>Environment</dt>
@@ -200,77 +237,118 @@ export function ExecutionPanel({
               </dd>
             </div>
           ) : null}
+          <div>
+            <dt>Technical state</dt>
+            <dd>{effective?.technicalState ?? "unknown"}</dd>
+          </div>
+          <div>
+            <dt>Dependency</dt>
+            <dd>{effective?.cause ?? "observation_missing"}</dd>
+          </div>
+          <div>
+            <dt>Contribution</dt>
+            <dd className="n-key">{item.id}</dd>
+          </div>
         </dl>
-      </details>
+      </section>
       {error ? (
         <p className="d-error" role="alert">
           {error}
         </p>
       ) : null}
       {notice ? <p role="status">{notice}</p> : null}
+      <section hidden={tab !== "access"} aria-label="Execution limits">
+        <dl className="d-facts">
+          <div>
+            <dt>Account</dt>
+            <dd>Your {runtimeLabel} subscription</dd>
+          </div>
+          <div>
+            <dt>Workspace</dt>
+            <dd>Isolated VM · no Mac folders or credentials mounted</dd>
+          </div>
+          <div>
+            <dt>Local allowance</dt>
+            <dd>
+              {item.limits.mode === "unlimited"
+                ? "Unlimited; contribution approvals remain finite"
+                : `${item.limits.turns} turns · ${item.limits.minutes} minutes`}
+            </dd>
+          </div>
+          <div>
+            <dt>Provider access</dt>
+            <dd>
+              {runtimeLabel} connects to its provider. Workspace tools have no
+              network or credential access.
+            </dd>
+          </div>
+        </dl>
+      </section>
       {supported && !item.sharedAgent ? (
         <p>Share this prepared agent in the mission roster first.</p>
       ) : null}
       {supported && available && item.sharedAgent ? (
         <>
-          <div className="n-action-row">
-            {!state?.record || status === "failed" ? (
-              <button
-                className="d-button primary"
-                disabled={busy}
-                onClick={() => void act(() => api.prepare(item.id))}
-              >
-                Prepare isolated environment
-              </button>
-            ) : null}
-            {!working &&
-            state?.record &&
-            !state.busy &&
-            ["ready", "login_required", "stopped"].includes(status ?? "") ? (
-              <button
-                className="d-button"
-                disabled={busy}
-                onClick={() => void act(() => api.signIn(item.id))}
-              >
-                Sign in to {runtimeLabel}…
-              </button>
-            ) : null}
-          </div>
-          {!state?.record || status === "failed" ? <ProviderSetup /> : null}
-          {status === "preparing" ? (
-            <>
-              <progress aria-label="Preparing isolated environment" />
-              <button
-                className="d-button"
-                onClick={() => void act(() => api.cancelSetup(item.id))}
-              >
-                Cancel environment setup
-              </button>
-            </>
-          ) : null}
-          {state?.authentication ? (
-            <section className="d-panel" aria-label="Provider sign-in">
-              <h4>Sign in inside this agent’s environment</h4>
-              {state.authentication.status === "failed" ||
-              (state.authentication.expiresAt &&
-                state.authentication.expiresAt <= Date.now()) ? (
+          <div hidden={tab !== "activity"}>
+            <div className="n-action-row">
+              {!state?.record || status === "failed" ? (
                 <button
                   className="d-button primary"
                   disabled={busy}
-                  onClick={() =>
-                    void act(async () => {
-                      await api.cancelLogin(item.id);
-                      await api.signIn(item.id);
-                    })
-                  }
+                  onClick={() => void act(() => api.prepare(item.id))}
                 >
-                  Get a fresh sign-in
+                  Prepare isolated environment
                 </button>
               ) : null}
-              <p role="status">
-                {state.authentication.status === "complete"
-                  ? "Signed in. Continue to contribution approval below."
-                  : state.authentication.status === "failed"
+              {!working &&
+              state?.record &&
+              !state.busy &&
+              (status === "login_required" ||
+                state.authentication?.status === "failed") ? (
+                <button
+                  className="d-button primary"
+                  disabled={busy}
+                  onClick={() => void act(() => api.signIn(item.id))}
+                >
+                  Sign in to {runtimeLabel}…
+                </button>
+              ) : null}
+            </div>
+            {!state?.record || status === "failed" ? <ProviderSetup /> : null}
+            {status === "preparing" ? (
+              <>
+                <progress aria-label="Preparing isolated environment" />
+                <button
+                  className="d-button"
+                  onClick={() => void act(() => api.cancelSetup(item.id))}
+                >
+                  Cancel environment setup
+                </button>
+              </>
+            ) : null}
+            {state?.authentication &&
+            state.authentication.status !== "complete" &&
+            state.authentication.status !== "cancelled" ? (
+              <section className="d-panel" aria-label="Provider sign-in">
+                <h4>Sign in inside this agent’s environment</h4>
+                {state.authentication.status === "failed" ||
+                (state.authentication.expiresAt &&
+                  state.authentication.expiresAt <= Date.now()) ? (
+                  <button
+                    className="d-button primary"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(async () => {
+                        await api.cancelLogin(item.id);
+                        await api.signIn(item.id);
+                      })
+                    }
+                  >
+                    Get a fresh sign-in
+                  </button>
+                ) : null}
+                <p role="status">
+                  {state.authentication.status === "failed"
                     ? state.authentication.failure === "expired"
                       ? "This code expired. Get a fresh code when you are ready."
                       : state.authentication.failure === "denied"
@@ -279,90 +357,108 @@ export function ExecutionPanel({
                     : state.authentication.status === "starting"
                       ? "Checking your existing guest login and preparing sign-in…"
                       : "Open the provider in your browser and complete sign-in. Keep this step open until confirmation."}
-              </p>
-              {state.authentication.code ? (
-                <label className="d-field">
-                  Provider code
-                  <input
-                    readOnly
-                    value={state.authentication.code}
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                </label>
-              ) : null}
-              {state.authentication.expiresAt ? (
-                <p className="d-field-help">
-                  {state.authentication.expiresAt <= Date.now()
-                    ? "Code expired. Cancel this sign-in and retry for a new code."
-                    : `Code expires at ${new Date(state.authentication.expiresAt).toLocaleTimeString()}.`}
                 </p>
-              ) : state.authentication.status === "waiting" ? (
-                <p className="d-field-help">
-                  The provider did not report a code expiry. If it rejects the
-                  code, cancel and retry to get a fresh one.
-                </p>
-              ) : null}
-              <details>
-                <summary>Provider details</summary>
-                <pre className="n-auth-output">{state.authentication.text}</pre>
-              </details>
-              {(state.authentication.status === "waiting" &&
-              (!state.authentication.expiresAt ||
-                state.authentication.expiresAt > Date.now())
-                ? state.authentication.urls
-                : []
-              ).map((url) => (
-                <button
-                  key={url}
-                  className="d-button"
-                  onClick={() => void act(() => api.openLogin(item.id, url))}
-                >
-                  Open provider sign-in
-                </button>
-              ))}
-              {["starting", "waiting"].includes(state.authentication.status) ? (
-                <>
-                  {item.runtime === "claude" ? (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const code = authInput;
-                        setAuthInput("");
-                        void act(() => api.loginInput(item.id, code));
-                      }}
-                    >
-                      <label className="d-field">
-                        Code returned by the provider
-                        <input
-                          type="password"
-                          autoComplete="off"
-                          value={authInput}
-                          onChange={(e) => setAuthInput(e.target.value)}
-                          required
-                          maxLength={4096}
-                        />
-                      </label>
-                      <button
-                        className="d-button"
-                        disabled={busy || !authInput}
-                      >
-                        Submit sign-in code
-                      </button>
-                    </form>
-                  ) : null}
+                {state.authentication.code ? (
+                  <label className="d-field">
+                    Provider code
+                    <input
+                      readOnly
+                      value={state.authentication.code}
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                  </label>
+                ) : null}
+                {state.authentication.expiresAt ? (
+                  <p className="d-field-help">
+                    {state.authentication.expiresAt <= Date.now()
+                      ? "Code expired. Cancel this sign-in and retry for a new code."
+                      : `Code expires at ${new Date(state.authentication.expiresAt).toLocaleTimeString()}.`}
+                  </p>
+                ) : state.authentication.status === "waiting" ? (
+                  <p className="d-field-help">
+                    The provider did not report a code expiry. If it rejects the
+                    code, cancel and retry to get a fresh one.
+                  </p>
+                ) : null}
+                <details>
+                  <summary>Provider details</summary>
+                  <pre className="n-auth-output">
+                    {state.authentication.text}
+                  </pre>
+                </details>
+                {(state.authentication.status === "waiting" &&
+                (!state.authentication.expiresAt ||
+                  state.authentication.expiresAt > Date.now())
+                  ? state.authentication.urls
+                  : []
+                ).map((url) => (
                   <button
+                    key={url}
                     className="d-button"
-                    onClick={() => void act(() => api.cancelLogin(item.id))}
+                    onClick={() => void act(() => api.openLogin(item.id, url))}
                   >
-                    Cancel sign-in
+                    Open provider sign-in
                   </button>
-                </>
-              ) : null}
-            </section>
-          ) : null}
-          {!working && state?.record && status !== "failed" ? (
-            <details>
-              <summary>Sign-in diagnostics</summary>
+                ))}
+                {["starting", "waiting"].includes(
+                  state.authentication.status,
+                ) ? (
+                  <>
+                    {item.runtime === "claude" ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const code = authInput;
+                          setAuthInput("");
+                          void act(() => api.loginInput(item.id, code));
+                        }}
+                      >
+                        <label className="d-field">
+                          Code returned by the provider
+                          <input
+                            type="password"
+                            autoComplete="off"
+                            value={authInput}
+                            onChange={(e) => setAuthInput(e.target.value)}
+                            required
+                            maxLength={4096}
+                          />
+                        </label>
+                        <button
+                          className="d-button"
+                          disabled={busy || !authInput}
+                        >
+                          Submit sign-in code
+                        </button>
+                      </form>
+                    ) : null}
+                    <button
+                      className="d-button"
+                      onClick={() => void act(() => api.cancelLogin(item.id))}
+                    >
+                      Cancel sign-in
+                    </button>
+                  </>
+                ) : null}
+              </section>
+            ) : null}
+          </div>
+          {tab === "technical" &&
+          !working &&
+          state?.record &&
+          status !== "failed" ? (
+            <section aria-label="Sign-in diagnostics">
+              <h4>Sign-in diagnostics</h4>
+              <button
+                className="d-button"
+                disabled={busy || state.busy}
+                onClick={() => {
+                  setTab("activity");
+                  void act(() => api.signIn(item.id));
+                }}
+              >
+                Sign in again
+              </button>
               <button
                 className="d-button"
                 disabled={busy || state.busy}
@@ -374,9 +470,9 @@ export function ExecutionPanel({
               >
                 Show Terminal fallback
               </button>
-            </details>
+            </section>
           ) : null}
-          {command ? (
+          {command && tab === "technical" ? (
             <div className="d-field">
               <span>
                 Run in Terminal, complete the provider’s login, then return
@@ -398,7 +494,8 @@ export function ExecutionPanel({
               </p>
             </div>
           ) : null}
-          {mission &&
+          {tab === "access" &&
+          mission &&
           state?.agent &&
           [
             "ready",
@@ -417,7 +514,23 @@ export function ExecutionPanel({
               isOwner={owner === mission.owner}
             />
           ) : null}
-          {!working &&
+          {tab === "activity" &&
+          mission &&
+          state?.agent &&
+          ["ready", "stopped", "waiting", "running"].includes(status ?? "") &&
+          (mission.lifecycle.phase !== "preparing" ||
+            item.mission.role !== "coordinator") ? (
+            <button
+              className={`d-button ${effective?.action ? "primary" : ""}`}
+              onClick={() => setTab("access")}
+            >
+              {state?.agreement?.status === "active"
+                ? "View contribution approval"
+                : "Review contribution"}
+            </button>
+          ) : null}
+          {tab === "access" &&
+          !working &&
           ["ready", "stopped"].includes(status ?? "") &&
           mission?.lifecycle.phase === "active" ? (
             <label className="n-check-label">
@@ -433,7 +546,11 @@ export function ExecutionPanel({
                 : ""}
             </label>
           ) : null}
-          {!working &&
+          {((tab === "activity" &&
+            mission?.lifecycle.phase === "preparing" &&
+            mission.lifecycle.start_blockers.length > 0) ||
+            (tab === "access" && manual)) &&
+          !working &&
           ["ready", "stopped"].includes(status ?? "") &&
           (mission?.lifecycle.phase === "preparing" ||
             (manual && mission?.lifecycle.phase === "active")) ? (
@@ -446,7 +563,7 @@ export function ExecutionPanel({
               !permission ? (
                 <>
                   <button
-                    className="d-button primary"
+                    className={reviewRun ? "d-button" : "d-button primary"}
                     onClick={() => setReviewRun((v) => !v)}
                   >
                     {mission.lifecycle.phase === "preparing"
@@ -547,43 +664,67 @@ export function ExecutionPanel({
               ? "Recover and confirm stop"
               : "Stop environment"}
           </button>
-          <button
-            className="d-button"
-            disabled={busy || working || status === "recovery_required"}
-            onClick={() =>
-              void act(async () => {
-                const result = await api.exportFiles(item.id);
-                setNotice(
-                  `${result.exported} files saved in ${result.directory}`,
-                );
-              })
-            }
-          >
-            <Download size={14} /> Export workspace
-          </button>
-          <button
-            className="d-button"
-            disabled={
-              busy || working || !available || status === "recovery_required"
-            }
-            onClick={() =>
-              void act(async () => {
-                const result = await api.importFiles(item.id);
-                if (!result.cancelled)
-                  setNotice(`${result.imported} files imported into the VM.`);
-              })
-            }
-          >
-            <Upload size={14} /> Import files…
-          </button>
+          {tab === "technical" ? (
+            <>
+              <button
+                className="d-button"
+                disabled={busy || working || status === "recovery_required"}
+                onClick={() =>
+                  void act(async () => {
+                    const result = await api.exportFiles(item.id);
+                    setNotice(
+                      `${result.exported} files saved in ${result.directory}`,
+                    );
+                  })
+                }
+              >
+                <Download size={14} /> Export workspace
+              </button>
+              <button
+                className="d-button"
+                disabled={
+                  busy ||
+                  working ||
+                  !available ||
+                  status === "recovery_required"
+                }
+                onClick={() =>
+                  void act(async () => {
+                    const result = await api.importFiles(item.id);
+                    if (!result.cancelled)
+                      setNotice(
+                        `${result.imported} files imported into the VM.`,
+                      );
+                  })
+                }
+              >
+                <Upload size={14} /> Import files…
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
-      {state?.record?.transitions?.length ? (
-        <details>
-          <summary>State history</summary>
+      {tab === "technical" ? (
+        <label className="d-field n-history-search">
+          Search operation history
+          <input
+            type="search"
+            value={historySearch}
+            onChange={(e) => setHistorySearch(e.target.value)}
+          />
+        </label>
+      ) : null}
+      {tab === "technical" && state?.record?.transitions?.length ? (
+        <section aria-label="State history">
+          <h4>State history</h4>
           <ol className="n-execution-log">
             {state.record.transitions
-              .slice(-15)
+              .filter((t) =>
+                `${t.from} ${t.to} ${t.reason}`
+                  .toLowerCase()
+                  .includes(historySearch.trim().toLowerCase()),
+              )
+              .slice(-50)
               .reverse()
               .map((t, i) => (
                 <li key={`${t.at}:${i}`}>
@@ -595,21 +736,28 @@ export function ExecutionPanel({
                 </li>
               ))}
           </ol>
-        </details>
+        </section>
       ) : null}
-      {state?.events.length ? (
-        <details>
-          <summary>Execution activity</summary>
+      {tab === "technical" && state?.events.length ? (
+        <section aria-label="Execution activity">
+          <h4>Execution activity</h4>
           <ol className="n-execution-log">
-            {state.events.slice(-20).map((event, i) => (
-              <li key={`${event.at}:${i}`}>
-                <time>{new Date(event.at).toLocaleTimeString()}</time>{" "}
-                <strong>{event.type.replaceAll("_", " ")}</strong>
-                <p>{event.message}</p>
-              </li>
-            ))}
+            {state.events
+              .filter((e) =>
+                `${e.type} ${e.message}`
+                  .toLowerCase()
+                  .includes(historySearch.trim().toLowerCase()),
+              )
+              .slice(-50)
+              .map((event, i) => (
+                <li key={`${event.at}:${i}`}>
+                  <time>{new Date(event.at).toLocaleTimeString()}</time>{" "}
+                  <strong>{event.type.replaceAll("_", " ")}</strong>
+                  <p>{event.message}</p>
+                </li>
+              ))}
           </ol>
-        </details>
+        </section>
       ) : null}
     </section>
   );

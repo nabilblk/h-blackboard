@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { desktop, node, type Contribution, type Runtime } from "./bridge";
 import type { MissionView } from "./node-contract";
 import { ExecutionPanel } from "./ExecutionPanel";
@@ -6,7 +6,11 @@ import { useSetupDraft } from "./useSetupDraft";
 import { AgentState, useExecutionStates } from "./ExecutionStatus";
 import { ProviderSetup } from "./ExecutionSetup";
 import { GroupContributionConsent } from "./ContributionApproval";
-import type { SetupRequest, AgentSetupJob } from "./onboarding-types";
+import type {
+  SetupRequest,
+  AgentSetupJob,
+  Preflight,
+} from "./onboarding-types";
 type AgentDraft = {
   runtime: Runtime;
   name: string;
@@ -81,7 +85,9 @@ export function AgentSetup({
   const executionStates = useExecutionStates();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [available, setAvailable] = useState(false);
+  const [device, setDevice] = useState<Preflight | null>(null);
+  const available =
+    !!device?.supported && device.freeDiskBytes >= device.minimumDiskBytes;
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   useEffect(() => {
     let cancelled = false;
@@ -123,14 +129,6 @@ export function AgentSetup({
       c.status === "prepared" &&
       !c.sharedAgent?.withdrawn,
   );
-  const current =
-    local.find((c) => c.id === selected) ??
-    local.find((c) =>
-      ["login_required", "failed", "ready"].includes(
-        executionStates?.[c.id]?.record?.status ?? "",
-      ),
-    ) ??
-    local[0];
   const signedIn = local.filter((c) =>
     [
       "ready",
@@ -141,42 +139,45 @@ export function AgentSetup({
       "launching",
     ].includes(executionStates?.[c.id]?.record?.status ?? ""),
   );
+  const authenticating = local.find((c) =>
+    ["starting", "waiting"].includes(
+      executionStates?.[c.id]?.authentication?.status ?? "",
+    ),
+  );
+  const previousAuth = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousAuth.current;
+    previousAuth.current = authenticating?.id ?? null;
+    if (
+      previous &&
+      !authenticating &&
+      signedIn.some((c) => c.id === previous)
+    ) {
+      const next = local.find((c) => !signedIn.includes(c));
+      if (next) setSelected(next.id);
+    }
+  }, [authenticating?.id, signedIn.map((c) => c.id).join(":")]);
+  const current =
+    authenticating ??
+    local.find((c) => c.id === selected) ??
+    local.find((c) => !signedIn.includes(c)) ??
+    (local.length === 1 ? local[0] : undefined);
   const pending = jobs.filter(
     (j) => !["complete", "cancelled"].includes(j.status),
   );
   return (
     <section className="n-guided-setup" aria-label="Guided agent setup">
-      <h2>
-        {role === "coordinator" ? "Set up your Coordinator" : "Add your agents"}
-      </h2>
-      <p>
-        {role === "coordinator"
-          ? "Prepare an isolated agent to write the plan. You review the plan and start mission work."
-          : "Choose what this Mac contributes. Each agent keeps its own identity, environment and provider login."}
-      </p>
-      <ol className="n-setup-steps" aria-label="Setup progress">
-        <li aria-current={!local.length ? "step" : undefined}>
-          1 · Prepare {local.length ? "✓" : ""}
-        </li>
-        <li
-          aria-current={
-            local.length && signedIn.length < local.length ? "step" : undefined
-          }
-        >
-          2 · Sign in {local.length ? `${signedIn.length}/${local.length}` : ""}
-        </li>
-        <li
-          aria-current={
-            local.length && signedIn.length === local.length
-              ? "step"
-              : undefined
-          }
-        >
-          3 · {role === "coordinator" ? "Prepare plan" : "Approve contribution"}
-        </li>
-        {role === "coordinator" ? <li>4 · Review and Start</li> : null}
-      </ol>
-      {role === "coordinator" && mission.lifecycle.readiness ? (
+      {!local.length && !pending.length ? (
+        <p>
+          {role === "coordinator"
+            ? "Choose the agent that will prepare your mission plan."
+            : "Choose the agents you want to contribute from this Mac."}
+        </p>
+      ) : null}
+      {role === "coordinator" &&
+      mission.lifecycle.phase === "preparing" &&
+      mission.lifecycle.readiness &&
+      !mission.lifecycle.start_blockers.length ? (
         <section className="d-panel">
           <h3>Your plan is ready</h3>
           <p>
@@ -188,7 +189,7 @@ export function AgentSetup({
           </button>
         </section>
       ) : null}
-      <ProviderSetup ready={setAvailable} />
+      <ProviderSetup report={setDevice} integrated />
       {error || draftError ? (
         <p role="alert" className="d-error">
           {error || draftError}
@@ -214,7 +215,11 @@ export function AgentSetup({
                   job.request.terms !== mission.lifecycle.terms_revision
                 }
                 onClick={() =>
-                  void act(() => window.blackboardSetup.setup(job.request))
+                  void act(async () => {
+                    if (!device?.available)
+                      await window.blackboardSetup.installProvider();
+                    return window.blackboardSetup.setup(job.request);
+                  })
                 }
               >
                 Continue saved setup
@@ -267,6 +272,8 @@ export function AgentSetup({
                       },
                 workspaceChoiceId: workspace?.id ?? null,
               };
+              if (!device?.available)
+                await window.blackboardSetup.installProvider();
               await window.blackboardSetup.setup(request);
               clear();
               setRequestId(crypto.randomUUID());
@@ -367,16 +374,15 @@ export function AgentSetup({
                 </div>
               ) : (
                 <p>
-                  Unlimited local allowance. Each run still needs bounded
-                  permission and your approval. Provider subscription limits
-                  apply.
+                  No total local allowance. You still approve finite execution
+                  windows, either together or one session at a time. Provider
+                  subscription limits apply.
                 </p>
               )}
             </details>
             <p>
-              Each agent works in <code>/workspace</code> inside its VM. Sign in
-              there with your subscription. Your Mac’s credentials and folders
-              are not copied or mounted.
+              Separate isolated workspaces. Sign in with your subscription for
+              each agent; your Mac’s credentials and folders stay private.
             </p>
             <details>
               <summary>Export location</summary>
@@ -416,9 +422,11 @@ export function AgentSetup({
                 !available || terms !== mission.lifecycle.terms_revision
               }
             >
-              {role === "coordinator"
-                ? "Prepare Coordinator"
-                : "Prepare agents"}
+              {busy
+                ? "Preparing…"
+                : role === "coordinator"
+                  ? "Prepare Coordinator"
+                  : "Prepare agents"}
             </button>
           </fieldset>
         </form>
@@ -426,34 +434,45 @@ export function AgentSetup({
       {local.length ? (
         <section aria-label="Your prepared agents">
           <h3>
-            Continue setup · {signedIn.length}/{local.length} signed in
+            {signedIn.length < local.length
+              ? `Sign in · ${signedIn.length} of ${local.length} complete`
+              : "Your agents"}
           </h3>
-          {role === "agent" ? (
+          {role === "agent" && signedIn.length === local.length ? (
             <GroupContributionConsent
               mission={mission}
-              contributions={signedIn}
+              contributions={signedIn.filter(
+                (c) => executionStates?.[c.id]?.agreement?.status !== "active",
+              )}
               isOwner={localKey === mission.owner}
               done={updated}
             />
           ) : null}
-          {local.length > 1 ? (
-            <p>
-              Each isolated agent needs its own guest login. Complete one
-              sign-in, then select the next agent when you are ready; codes are
-              only generated when you start that step.
+          {local.length > 1 && signedIn.length < local.length ? (
+            <p className="d-field-help">
+              One sign-in at a time. Each agent has its own isolated login.
             </p>
           ) : null}
           {local.map((c) => (
             <div key={c.id} className="n-setup-agent">
-              <AgentState mission={mission} contribution={c} />
-              <button
-                className="d-button"
-                aria-expanded={current?.id === c.id}
-                onClick={() => setSelected(selected === c.id ? null : c.id)}
-              >
-                {c.sharedAgent?.label ?? c.runtime} ·{" "}
-                {signedIn.includes(c) ? "Continue" : "Sign in"}
-              </button>
+              <div className="n-setup-agent-head">
+                <span>
+                  <strong>{c.sharedAgent?.label ?? c.runtime}</strong>
+                  <AgentState mission={mission} contribution={c} />
+                </span>
+                <button
+                  className="d-button"
+                  aria-expanded={current?.id === c.id}
+                  disabled={!!authenticating && authenticating.id !== c.id}
+                  onClick={() => setSelected(selected === c.id ? null : c.id)}
+                >
+                  {current?.id === c.id
+                    ? "Selected"
+                    : signedIn.includes(c)
+                      ? "Inspect"
+                      : "Continue"}
+                </button>
+              </div>
               {!c.sharedAgent ? (
                 <button
                   className="d-button"

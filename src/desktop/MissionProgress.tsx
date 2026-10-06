@@ -102,11 +102,11 @@ export function MissionProgress({
       {data?.criteria.map((c) => (
         <div className="d-panel n-ledger-row" key={c.index}>
           <div className="n-action-row">
-            <Status muted={!c.met}>
-              {c.met
-                ? "Reported met"
-                : c.stale
-                  ? "Evidence needs review"
+            <Status muted={!c.met || c.stale}>
+              {c.stale
+                ? "Evidence needs review"
+                : c.met
+                  ? "Reported met"
                   : "Not yet met"}
             </Status>
             <strong>{c.wording}</strong>

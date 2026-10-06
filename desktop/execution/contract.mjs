@@ -112,6 +112,7 @@ export const ExecutionRequests = {
   executionStart: z.object({ contributionId: Id, grant: Hash }).strict(),
   executionStop: z.object({ contributionId: Id }).strict(),
   executionExport: z.object({ contributionId: Id }).strict(),
+  executionDiagnostics: z.object({ contributionId: Id }).strict(),
   executionImport: z.object({ contributionId: Id }).strict(),
 };
 

@@ -8,6 +8,7 @@ pub mod agents;
 pub mod communication;
 pub mod contact;
 pub mod discovery;
+pub mod discovery_health;
 pub mod lifecycle;
 pub mod network;
 pub mod review;

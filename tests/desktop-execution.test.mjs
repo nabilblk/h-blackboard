@@ -12,10 +12,50 @@ import {
 } from "../desktop/execution/contract.mjs";
 import { ExecutionStore } from "../desktop/execution/store.mjs";
 import { LimaProvider } from "../desktop/execution/lima.mjs";
+import { executionDiagnostics } from "../desktop/execution/diagnostics.mjs";
 import {
   exportWorkspace,
   readImportFiles,
 } from "../desktop/execution/files.mjs";
+
+test("shareable execution diagnostics only export bounded structured facts", () => {
+  const diagnostic = executionDiagnostics({
+    observedAt: 1000,
+    capacity: 2,
+    record: {
+      status: "stopped",
+      session: "PRIVATE SESSION",
+      reason: "PRIVATE ERROR",
+      transitions: Array.from({ length: 100 }, () => ({
+        at: 900,
+        from: "running",
+        to: "stopped",
+        reason: "PRIVATE PROMPT",
+      })),
+    },
+    authentication: {
+      status: "failed",
+      failure: "expired",
+      code: "PRIVATE CODE",
+      text: "PRIVATE OUTPUT",
+    },
+    events: [{ type: "PRIVATE EVENT" }],
+  });
+  assert.equal(diagnostic.transitions.length, 80);
+  assert.equal(diagnostic.savedSession, true);
+  assert.equal(diagnostic.authenticationFailure, "expired");
+  assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE/);
+  assert.equal(
+    executionDiagnostics({ record: { status: "UNTRUSTED" } }).status,
+    "unknown",
+  );
+  assert.throws(() =>
+    ExecutionRequests.executionDiagnostics.parse({
+      contributionId: randomUUID(),
+      path: "/Users",
+    }),
+  );
+});
 
 test("execution intent survives restart, rejects identity substitution and symlinks", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "hb-execution-"));

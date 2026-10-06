@@ -63,6 +63,7 @@ export type ExecutionAPI = {
   start(id: string, grant: string): Promise<ExecutionState>;
   stop(id: string): Promise<void>;
   exportFiles(id: string): Promise<{ exported: number; directory: string }>;
+  exportDiagnostics(id: string): Promise<{ cancelled: boolean }>;
   importFiles(id: string): Promise<{ imported?: number; cancelled?: boolean }>;
 };
 declare global {

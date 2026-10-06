@@ -60,6 +60,19 @@ const recordSchema = z
     status: z.enum(["active", "stopped", "expired", "review", "interrupted"]),
     resumeGrant: Hash.nullable().default(null),
     message: z.string().max(2048),
+    waitingFor: z
+      .enum([
+        "mission_start",
+        "mission_resume",
+        "direction",
+        "new_work",
+        "contributor",
+        "setup",
+        "capacity",
+        "owner_permission",
+      ])
+      .nullable()
+      .default(null),
     grants: z.array(Hash).max(4096),
     allocation: Hash.nullable(),
     allocationBefore: z.array(Hash).nullable(),
@@ -133,6 +146,7 @@ export class ContributionAgreements {
         this.clock(),
       ),
     });
+    if (a.status !== "active") a.waitingFor = null;
     this.store.write(a);
     return a;
   }
@@ -471,6 +485,10 @@ export class ContributionAgreements {
     await this.check(a, mission);
     if (mission.lifecycle.phase !== "active") {
       this.save(a, {
+        waitingFor:
+          mission.lifecycle.phase === "paused"
+            ? "mission_resume"
+            : "mission_start",
         message:
           mission.lifecycle.phase === "paused"
             ? "Mission paused. Waiting for the owner's Resume."
@@ -481,6 +499,7 @@ export class ContributionAgreements {
     const agent = await this.agent(mission.id, a.request.registration);
     if (agent.status !== "direction_assigned" || !agent.direction) {
       this.save(a, {
+        waitingFor: "direction",
         message: "Waiting for the Coordinator or owner to assign a direction.",
       });
       return;
@@ -529,6 +548,7 @@ export class ContributionAgreements {
         !(await this.executions.hasNewWork(localId))
       ) {
         this.save(a, {
+          waitingFor: "new_work",
           message:
             "Session saved. Waiting for new messages or work; no model turn is being spent.",
         });
@@ -544,6 +564,7 @@ export class ContributionAgreements {
     const id = a.request.contributionId;
     if (!id) {
       this.save(a, {
+        waitingFor: "contributor",
         message:
           "Work authorized. Waiting for this agent's contributor to approve and run.",
       });
@@ -555,6 +576,7 @@ export class ContributionAgreements {
       ["preparing", "login_required", "failed"].includes(record.status)
     ) {
       this.save(a, {
+        waitingFor: "setup",
         message: "Finish this agent's setup and provider sign-in.",
       });
       return;
@@ -564,7 +586,7 @@ export class ContributionAgreements {
         "Confirm the previous process stopped before continuing.",
       );
     if (!["ready", "stopped"].includes(record.status)) {
-      this.save(a, { message: record.reason });
+      this.save(a, { waitingFor: null, message: record.reason });
       return;
     }
     const oldGrant = ledger.grants.find((g) => g.id === record.grant);
@@ -589,6 +611,7 @@ export class ContributionAgreements {
       (this.executions.provider.maximum ?? 1)
     ) {
       this.save(a, {
+        waitingFor: "capacity",
         message:
           "Queued for capacity on this Mac. Other agents are using its environment slots.",
       });
@@ -605,6 +628,7 @@ export class ContributionAgreements {
     );
     if (!grant) {
       this.save(a, {
+        waitingFor: "owner_permission",
         message:
           "Ready. Waiting for an owner permission within your contribution limits.",
       });
@@ -624,6 +648,7 @@ export class ContributionAgreements {
     await this.check(a, (await this.mission(mission.id)).mission);
     await this.executions.start(id, grant.id);
     this.save(a, {
+      waitingFor: null,
       message:
         "Approved. The local host is starting or resuming work within your limits.",
     });

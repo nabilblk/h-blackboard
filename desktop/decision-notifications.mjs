@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { missionDecisions } from "../shared/mission-presentation.mjs";
 // Local, opt-in attention only. Never put conversation, provider or invitation
 // text on the lock screen, and never perform a decision from a notification.
 const messages = {
   admission: "Someone is waiting for your decision to join a mission.",
-  start: "A mission is ready for your Start review.",
+  start: "A mission has a Start review waiting for you.",
   results:
     "Mission criteria are reported met. Review the evidence and results.",
   contribution:
@@ -33,27 +34,18 @@ export class DecisionNotifications {
         continue;
       const decisions = [];
       if (m.owner === snapshot.identity.owner) {
-        const peers = await this.node.handle("peers", { mission: m.id });
-        const pending = peers.requests.filter((r) => r.status === "pending");
-        if (pending.length)
-          decisions.push([
-            "admission",
-            pending
-              .map((r) => r.author)
-              .sort()
-              .join(":"),
-          ]);
-        if (
-          m.lifecycle.phase === "preparing" &&
-          !m.lifecycle.start_blockers.length
-        )
-          decisions.push(["start", m.lifecycle.revision]);
-        const ledger = await this.node.handle("governance", { mission: m.id });
-        if (
-          ledger.criteria.length &&
-          ledger.criteria.every((c) => c.met && !c.stale)
-        )
-          decisions.push(["results", JSON.stringify(ledger.criteria)]);
+        const [peers, ledger] = await Promise.all([
+          this.node.handle("peers", { mission: m.id }),
+          this.node.handle("governance", { mission: m.id }),
+        ]);
+        for (const decision of missionDecisions({
+          mission: m,
+          viewer: snapshot.identity.owner,
+          requests: peers.requests,
+          criteria: ledger.criteria,
+          startJobs: this.agreements.startState?.(m.id) ?? [],
+        }))
+          decisions.push([decision.kind, decision.id]);
       }
       for (const a of this.agreements.list(m.id))
         if (["review", "interrupted", "expired"].includes(a.status))

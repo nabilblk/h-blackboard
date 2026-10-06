@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld(
       executionCall("executionStop", { contributionId }),
     exportFiles: (contributionId) =>
       executionCall("executionExport", { contributionId }),
+    exportDiagnostics: (contributionId) =>
+      executionCall("executionDiagnostics", { contributionId }),
     importFiles: (contributionId) =>
       executionCall("executionImport", { contributionId }),
   }),

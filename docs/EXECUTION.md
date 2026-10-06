@@ -9,21 +9,24 @@ separate experiment and is never an execution fallback.
 
 <a id="first-run-043"></a>
 
-## First run (0.4.4)
+<a id="first-run-044"></a>
+
+## First run (current branch)
 
 1. **Create mission** with an objective, scope and completion criteria. The form
    saves an unfinished local draft. New missions open in **Preparing**, inside
    the Slack-like channel. macOS may ask you to approve Keychain access for the
    protected node identity.
-2. Select **Set up Coordinator** (or **Add agents** in peer mode). Choose Grok
+2. Select **Set up Coordinator** (or **More → Add my agents** in peer mode). Choose Grok
    Build, Claude Code or Codex, a name and local limits. Unlimited is explicit.
    The default Mac export folder is **Documents / Harakiri Exports**; each agent
    has a separate subfolder. Changing it uses a native folder picker.
-3. If needed, choose **Install isolated environment provider**. The app downloads
-   the official Lima **2.1.1** arm64 release and guest agents, checks pinned
-   SHA-256 digests, and installs them under its private application storage.
-   Existing Lima installations are also supported. No Homebrew installation,
-   administrator command or global runtime configuration change is performed.
+3. Review the local limits, isolation and preparation consent. If this Mac needs
+   Lima, **Prepare Coordinator/agents** also downloads the official **2.1.1**
+   arm64 release into Harakiri’s private storage and verifies pinned SHA-256
+   digests. No Homebrew or global runtime configuration changes are made.
+   (The published 0.4.4 preview has a separate **Install isolated environment
+   provider** button.)
 4. Review and select **Prepare Coordinator** or **Prepare agents**. This saves
    local terms, shares the actual agent identities and appoints the first local
    Coordinator when appropriate. It prepares checksum-pinned Ubuntu/runtime
@@ -44,8 +47,8 @@ separate experiment and is never an execution fallback.
    bounded run. Planning permits at most eight turns and fifteen minutes; a
    planning run stops after one useful turn. The real Coordinator publishes its
    plan and exact readiness. Workers still wait.
-7. Select **Review and start**, inspect the exact plan and contributions, and choose a finite window and turn ceiling. **Start and run** records human Start and eligible owner-local approvals. Missing setup, capacity or direction is shown as a named wait. Interrupted actions return as **Continue saved Start review**; retries reconcile completed steps.
-8. Invite other people through **Invite people**. They connect, review and request admission. After approval they can open Main without an agent, or choose **Contribute an agent** and follow the same setup. The owner authorizes remote agents from their profile's **Review contribution**. Each contributor separately reviews local execution; remote authorization cannot supply that consent. A group review approves several prepared local agents together. Provider logins remain per-guest.
+7. Select **Review plan** (or **Review and start** in peer mode), inspect the exact plan and contributions, and choose a finite window and turn ceiling. **Start and run** records human Start and eligible owner-local approvals. Missing setup, capacity or direction is shown as a named wait. Interrupted actions return as **Continue Start review**; retries reconcile completed steps. If several decisions are pending, open the summary's decision queue first.
+8. Invite other people through **More → Invite people**. They connect, review and request admission. After approval they can open Main without an agent, or choose **More → Add my agents** and follow the same setup. The owner authorizes remote agents from their profile's **Review contribution**. Each contributor separately reviews local execution; remote authorization cannot supply that consent. A group review approves several prepared local agents together. Provider logins remain per-guest.
 9. During work, follow states, messages, tasks and evidence. Inbox surfaces human decisions. Pausing retains valid unchanged readiness; **Resume and run** reviews the same accepted plan. Stop any local contribution from its profile or use the menu-bar **Stop all my agents**.
 10. Open results, inspect evidence and review exact deliverables. **Accept selected and close mission** saves acceptance and closure separately, resumes partial operations safely, and never manufactures criterion completion. Closed missions retain files and conversation history.
 
@@ -63,16 +66,14 @@ that every agent is working.
 
 | State | Meaning |
 | --- | --- |
-| Setting up / Sign-in needed | The environment or guest login needs attention; the current stage is shown. |
-| Waiting / Approval needed | A named mission, direction, permission or local consent prerequisite is missing. |
-| Ready to start | Current observed authorization and approval allow the named operation; the host revalidates before launch. |
-| Starting / Running | Local launch or execution is observed. Running does not prove useful progress. |
-| Idle | A turn ended normally and the saved session is waiting for useful updates. |
+| Setting up | The environment is being prepared or needs guest sign-in. Inspect the named step and its action. |
+| Working | Execution is observed, locally or in an attributed contributor report. It does not prove useful progress. |
+| Waiting | A named prerequisite is missing, capacity is occupied, or a saved session is idle awaiting useful work. Only an actual human decision gets an approval action. |
 | Stopping | Stop was requested; termination has not yet been confirmed. |
 | Stopped | Execution ended and the reason is retained; continuation uses the saved identity/session when policy permits. |
-| Status unknown / Stop unconfirmed | Observation is unavailable/stale, or termination cannot be proven. Never interpreted as stopped. |
+| Unknown | Observation is unavailable/stale, or termination cannot be proven. Never interpreted as stopped. |
 
-Local status observations expire after fifteen seconds. Contributor-signed remote observations expire after thirty seconds and identify their source. An expired or missing report becomes **Status unknown**. Waiting for local approval, owner authorization and direction are distinct reports. Reports are ephemeral peer data; they do not add ledger events, wake models or prove useful progress. Shared direction and progress claims remain separate from process status.
+Local status observations expire after fifteen seconds. Contributor-signed remote observations expire after thirty seconds and identify their source. An expired or missing report becomes **Unknown**. Waiting for local approval, owner authorization and direction are distinct reports. Exact technical states, such as reserving, launching and idle, remain visible in **Technical**. Reports are ephemeral peer data; they do not add ledger events, wake models or prove useful progress. Shared direction and progress claims remain separate from process status.
 
 ### Interrupted setup and continuation
 
@@ -321,3 +322,19 @@ for a live subscription test. See `var/node/g5-runtimes/` for local evidence.
 | Actual CLI model-facing tool surface                                | Passed     | Passed (loopback fixture) | Passed (loopback fixture) |
 | Subscription inference, scoped tools and native resume              | Passed     | Passed                    | Passed                    |
 | Planning → human Start → HTML artifact → settled receipts           | Passed     | Passed                    | Passed                    |
+
+## Inspect without losing the conversation
+
+The mission summary links to its current decision and observed activity. Click
+its name for **Overview**, **Decisions** and **Technical**. **Members → Agents**
+opens an agent’s **Activity**, **Access & limits** or **Technical** section.
+Use Technical to inspect the exact state, freshness, environment and searchable
+operation history; export structured diagnostics through the native save dialog.
+Provider output and authentication secrets are excluded from that export.
+
+**Unknown** means no current observation, including an expired remote report.
+**Waiting** names its dependency (human Start, direction, local consent, device
+capacity or new work). **Stopped** requires a current host observation or an
+attributed contributor report. Pause and closure do not prove termination on an
+unreachable device. The shared decision model is presentation only; the host
+still checks every permission and consent at execution time.

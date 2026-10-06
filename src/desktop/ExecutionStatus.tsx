@@ -5,10 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  agentLifecycle,
-  lifecycleSummary,
-} from "../../shared/agent-lifecycle.mjs";
+import { agentPresentation } from "../../shared/mission-presentation.mjs";
 import type { ExecutionState } from "./execution-types";
 import type { RemoteObservation } from "./execution-types";
 import { node } from "./bridge";
@@ -97,6 +94,9 @@ export function useExecutionStates() {
 export function useExecutionObservations() {
   return useContext(Context)?.observations ?? {};
 }
+export function useExecutionClock() {
+  return useContext(Context)?.clock ?? Date.now();
+}
 export function AgentState({
   agent,
   contribution,
@@ -108,7 +108,10 @@ export function AgentState({
 }) {
   const states = useExecutionStates();
   const observations = useExecutionObservations();
-  const status = agentLifecycle({
+  const status = agentPresentation({
+    viewer: contribution
+      ? (agent?.contributor ?? states?.[contribution.id]?.agent?.contributor)
+      : undefined,
     observation: agent ? observations[agent.id] : undefined,
     agent:
       agent ??
@@ -121,77 +124,11 @@ export function AgentState({
   });
   return (
     <span className={`n-live-status ${status.state}`}>
-      <strong>{status.label}</strong>
+      <strong>
+        {status.label}
+        {!status.local && status.fresh ? " · reported" : ""}
+      </strong>
       <span>{status.reason}</span>
     </span>
-  );
-}
-export function ExecutionSummary({
-  agents,
-  contributions,
-  mission,
-  open,
-}: {
-  agents: AgentView[];
-  contributions: Contribution[];
-  mission: MissionView;
-  open: (id: string) => void;
-}) {
-  const states = useExecutionStates();
-  const observations = useExecutionObservations();
-  const rows = agents.map((agent) => ({
-    agent,
-    status: agentLifecycle({
-      observation: observations[agent.id],
-      agent,
-      contribution: contributions.find(
-        (c) => c.sharedAgent?.registration === agent.id,
-      ),
-      execution:
-        states?.[
-          contributions.find((c) => c.sharedAgent?.registration === agent.id)
-            ?.id ?? ""
-        ],
-      mission,
-    }),
-  }));
-  if (!rows.length) return null;
-  return (
-    <section
-      className="n-status-overview"
-      aria-label="Agent execution overview"
-    >
-      <p role="status">
-        <strong>Agents</strong> · {lifecycleSummary(rows.map((r) => r.status))}
-      </p>
-      <button
-        className="d-button n-status-details"
-        onClick={() => open(rows[0].agent.id)}
-      >
-        View agents
-      </button>
-      <div className="n-status-agents">
-        {rows.slice(0, 6).map(({ agent, status }) => (
-          <button
-            type="button"
-            key={agent.id}
-            className={`n-status-chip ${status.state}`}
-            onClick={() => open(agent.id)}
-            title={status.reason}
-          >
-            <span>{agent.identity.label}</span>
-            <strong>{status.label}</strong>
-            {status.attention ? (
-              <span className="sr-only"> · Needs attention</span>
-            ) : null}
-          </button>
-        ))}
-        {rows.length > 6 ? (
-          <button className="d-button" onClick={() => open(rows[6].agent.id)}>
-            View all {rows.length} agents
-          </button>
-        ) : null}
-      </div>
-    </section>
   );
 }

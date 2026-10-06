@@ -1,14 +1,22 @@
-import { MissionJourney, MissionDecisions } from "./MissionJourney";
+import {
+  MissionJourney,
+  MissionDecisions,
+  MissionActivity,
+} from "./MissionJourney";
 import {
   ExecutionStatusProvider,
-  ExecutionSummary,
   useExecutionStates,
-  AgentState,
+  useExecutionObservations,
+  useExecutionClock,
 } from "./ExecutionStatus";
 import { AgentSetup } from "./Onboarding";
 import { useSetupDraft } from "./useSetupDraft";
-import { agentLifecycle } from "../../shared/agent-lifecycle.mjs";
+import {
+  missionPresentation,
+  type PresentationAction,
+} from "../../shared/mission-presentation.mjs";
 import { BudgetPanel } from "./BudgetPanel";
+import type { StartJob } from "./onboarding-types";
 import { MissionProgress } from "./MissionProgress";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -17,6 +25,8 @@ import {
   Hash,
   LockKeyhole,
   Plus,
+  Pause,
+  Square,
   X,
 } from "lucide-react";
 import { node, type NodeState, type Contribution } from "./bridge";
@@ -38,6 +48,9 @@ import type {
   WithdrawalView,
   WorkstreamView,
   AgentView,
+  JoinView,
+  CriterionView,
+  ArtifactSummary,
 } from "./node-contract";
 import { Heading, Status, type Perform } from "./ui";
 
@@ -581,8 +594,14 @@ function MissionWorkspace({
     | null
   >(initialSetup ? "setup" : null);
   const executionStates = useExecutionStates();
+  const observations = useExecutionObservations();
+  const clock = useExecutionClock();
+  const [inspectorTab, setInspectorTab] = useState<
+    "overview" | "decisions" | "technical"
+  >("overview");
   const [startReviewRequest, setStartReviewRequest] = useState(0);
   const openControls = (review = false) => {
+    setInspectorTab("overview");
     setStartReviewRequest(review ? (v) => v + 1 : 0);
     setPanel("controls");
   };
@@ -603,12 +622,23 @@ function MissionWorkspace({
   const [taskId, setTaskId] = useState<string | null>(null);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [workError, setWorkError] = useState("");
+  const [workLoaded, setWorkLoaded] = useState(false);
+  const [startJobs, setStartJobs] = useState<StartJob[]>([]);
+  const [requests, setRequests] = useState<JoinView[]>([]);
+  const [criteria, setCriteria] = useState<CriterionView[]>([]);
+  const [acceptedResult, setAcceptedResult] = useState<ArtifactSummary | null>(
+    null,
+  );
   const loadWork = useCallback(async () => {
-    const [streams, tasks, artifacts] = await Promise.all([
-      node.workstreams(mission.id),
-      node.tasks(mission.id, {}),
-      node.artifacts(mission.id, {}),
-    ]);
+    const [streams, tasks, artifacts, peers, governance, starts] =
+      await Promise.all([
+        node.workstreams(mission.id),
+        node.tasks(mission.id, {}),
+        node.artifacts(mission.id, {}),
+        node.peers(mission.id),
+        node.governance(mission.id),
+        window.blackboardSetup.startState(mission.id),
+      ]);
     const agents: AgentView[] = [];
     let after: string | null = null;
     do {
@@ -616,7 +646,7 @@ function MissionWorkspace({
       agents.push(...page.items);
       after = page.after;
     } while (after && agents.length < 512);
-    return { streams, tasks, agents, artifacts };
+    return { streams, tasks, agents, artifacts, peers, governance, starts };
   }, [mission.id]);
   useEffect(() => {
     let cancelled = false;
@@ -630,6 +660,19 @@ function MissionWorkspace({
           setArtifactCount(data.artifacts.total);
           setWorkAgents(data.agents);
           setWorkError("");
+          setRequests(data.peers.requests);
+          setStartJobs(data.starts);
+          setCriteria(data.governance.criteria);
+          setAcceptedResult(
+            data.artifacts.items.find(
+              (a) =>
+                a.conversation === "main" &&
+                a.accepted &&
+                !a.stale &&
+                a.heads.length === 1,
+            ) ?? null,
+          );
+          setWorkLoaded(true);
         }
       } catch (e) {
         if (!cancelled)
@@ -651,6 +694,9 @@ function MissionWorkspace({
     setWorkAgents(data.agents);
     setTaskCount(data.tasks.total);
     setArtifactCount(data.artifacts.total);
+    setRequests(data.peers.requests);
+    setStartJobs(data.starts);
+    setCriteria(data.governance.criteria);
     await updated();
   };
   const openWorkstream = (id: string) => {
@@ -712,53 +758,84 @@ function MissionWorkspace({
     });
   const blocked = !!withdrawal || revoked || mission.conflicted;
   const budget = mission.definition.policy?.budget;
-  const coordinator = workAgents.find(
-    (a) => a.identity.author === mission.lifecycle.coordinator?.identity.author,
-  );
-  const coordinatorContribution = contributions.find(
-    (c) => c.sharedAgent?.registration === coordinator?.id,
-  );
   const openAgent = (id: string) => {
     setSelectedAgent(id);
     setMemberTab("agents");
     setPanel("members");
   };
+  const experience = missionPresentation({
+    mission,
+    viewer: owner,
+    agents: workAgents,
+    contributions,
+    states: executionStates ?? {},
+    observations,
+    requests,
+    criteria,
+    acceptedResult,
+    startJobs,
+    loaded: workLoaded,
+    blocked,
+    access: withdrawal ? "withdrawn" : revoked ? "revoked" : null,
+    now: clock,
+  });
+  const inspect = (
+    tab: "overview" | "decisions" | "technical" = "overview",
+  ) => {
+    setInspectorTab(tab);
+    setStartReviewRequest(0);
+    setPanel("controls");
+  };
+  const act = (action: PresentationAction) => {
+    if (action.destination === "artifact" && action.revision) {
+      void perform(async () => {
+        const detail = await node.artifactDetail(mission.id, action.revision!);
+        const path =
+          detail.document.entrypoint ?? detail.document.files[0]?.path;
+        if (path) await node.artifactOpen(mission.id, action.revision!, path);
+        else {
+          setArtifactId(action.revision!);
+          setPanel("artifacts");
+        }
+      });
+    } else if (action.destination === "setup") prepare(action.role ?? "agent");
+    else if (action.destination === "agent" && action.agent)
+      openAgent(action.agent);
+    else if (action.destination === "people") {
+      setMemberTab("people");
+      setPanel("members");
+    } else if (action.destination === "technical") inspect("technical");
+    else openControls(action.review);
+  };
+  const coordinatorAction = experience.rows.find(
+    (r) =>
+      r.agent.identity.author ===
+      mission.lifecycle.coordinator?.identity.author,
+  )?.status.action;
   const nextAction =
     !mission.lifecycle.coordinator &&
-    mission.owner === owner &&
-    mission.definition.policy?.coordination === "coordinated"
+    mission.definition.policy?.coordination === "coordinated" &&
+    mission.owner === owner
       ? { label: "Set up Coordinator", act: () => prepare("coordinator") }
-      : coordinator
-        ? {
-            label: (() => {
-              const status = agentLifecycle({
-                agent: coordinator,
-                contribution: coordinatorContribution,
-                mission,
-                execution: coordinatorContribution
-                  ? executionStates?.[coordinatorContribution.id]
-                  : undefined,
-              });
-              const actions: Record<string, string> = {
-                login: "Sign in to Coordinator",
-                prepare: "Continue Coordinator setup",
-                permission:
-                  mission.owner === owner
-                    ? "Review planning session"
-                    : "Open Coordinator",
-                approve: "Review planning approval",
-                run: "Open planning session",
-                recover: "Recover Coordinator",
-                resume:
-                  mission.lifecycle.phase === "preparing"
-                    ? "Review planning session"
-                    : "Review Coordinator continuation",
-              };
-              return actions[status.action ?? ""] ?? "Open Coordinator";
-            })(),
-            act: () => openAgent(coordinator.id),
-          }
-        : { label: "Review mission controls", act: () => setPanel("controls") };
+      : coordinatorAction
+        ? { label: coordinatorAction.label, act: () => act(coordinatorAction) }
+        : undefined;
+  const localAgents = contributions.filter(
+    (c) =>
+      c.mission.missionId === mission.id && !!executionStates?.[c.id]?.record,
+  );
+  const stopMine = () =>
+    void perform(async () => {
+      const results = await Promise.allSettled(
+        localAgents.map((c) => window.blackboardExecution.stop(c.id)),
+      );
+      const failures = results.filter((r) => r.status === "rejected");
+      if (failures.length)
+        throw new Error(
+          `${failures.length} local stops could not be confirmed. Inspect the agents before continuing.`,
+        );
+      await updated();
+    });
   return (
     <section
       className="n-room"
@@ -767,7 +844,14 @@ function MissionWorkspace({
       <header className="n-room-header">
         <div>
           <h1>
-            <span className="d-hash">#</span> {mission.definition.name}
+            <button
+              className="n-mission-title"
+              onClick={() => inspect("overview")}
+              aria-label={`Open mission brief: ${mission.definition.name}`}
+            >
+              <span className="d-hash">#</span> {mission.definition.name}
+              <ChevronRight size={16} />
+            </button>
           </h1>
         </div>
         <div className="n-action-row">
@@ -781,40 +865,49 @@ function MissionWorkspace({
           >
             Members
           </button>
-          {!blocked &&
-          !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+          {mission.owner === owner &&
+          mission.lifecycle.phase === "active" &&
+          !blocked ? (
             <button
-              className="d-button n-header-contribute"
-              onClick={() => prepare("agent")}
+              className="d-button"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  await node.pauseMission(
+                    mission.id,
+                    mission.lifecycle.revision,
+                    "Paused by the mission owner.",
+                  );
+                  await updated();
+                })
+              }
             >
-              Add my agents
+              <Pause size={15} />
+              Pause mission
             </button>
           ) : null}
-          <button
-            className="d-button"
-            aria-expanded={controls}
-            onClick={() => (controls ? closePanel() : openControls())}
-          >
-            Mission controls
-          </button>
-          {mission.owner === owner && !blocked ? (
-            <button
-              className="d-button primary"
-              onClick={() => {
-                setMemberTab("people");
-                setPanel("members");
-              }}
-            >
-              Invite people
+          {localAgents.length ? (
+            <button className="d-button" disabled={busy} onClick={stopMine}>
+              <Square size={14} />
+              Stop my agents
             </button>
           ) : null}
           <details className="n-more-actions">
             <summary className="d-button">More</summary>
             <div>
+              <button
+                className="d-button"
+                onClick={(e) => {
+                  inspect("overview");
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+              >
+                Mission details
+              </button>
               {!blocked &&
               !["closed", "archived"].includes(mission.lifecycle.phase) ? (
                 <button
-                  className="d-button n-compact-contribute"
+                  className="d-button"
                   onClick={(e) => {
                     prepare("agent");
                     e.currentTarget.closest("details")?.removeAttribute("open");
@@ -1166,119 +1259,72 @@ function MissionWorkspace({
         </ContextPanel>
       ) : null}
       {controls ? (
-        <ContextPanel title="Mission controls" close={closePanel} error={error}>
-          <MissionControl
-            key={startReviewRequest}
-            reviewStart={startReviewRequest > 0}
-            mission={mission}
-            isOwner={mission.owner === owner}
-            blocked={blocked}
-            busy={busy}
-            open
-            agents={workAgents}
-            nextAction={nextAction}
-            contributions={contributions}
-            perform={perform}
-            updated={updated}
-            prepare={() => prepare("coordinator")}
-          />
-          <MissionProgress
-            mission={mission}
-            owner={owner}
-            agents={workAgents}
-            busy={busy}
-            perform={perform}
-            updated={updated}
-            openArtifact={(id) => {
-              setArtifactId(id);
-              setPanel("artifacts");
-            }}
-          />
+        <ContextPanel
+          title="Mission"
+          close={closePanel}
+          error={error || workError}
+        >
+          <nav className="n-member-tabs" aria-label="Mission inspector views">
+            {(["overview", "decisions", "technical"] as const).map((tab) => (
+              <button
+                key={tab}
+                aria-pressed={inspectorTab === tab}
+                onClick={() => setInspectorTab(tab)}
+              >
+                {tab === "overview"
+                  ? "Overview"
+                  : tab === "decisions"
+                    ? `Decisions${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`
+                    : "Technical"}
+              </button>
+            ))}
+          </nav>
+          <div hidden={inspectorTab !== "decisions"}>
+            <MissionDecisions value={experience} act={act} />
+          </div>
+          <div hidden={inspectorTab !== "technical"}>
+            <MissionActivity value={experience} mission={mission} act={act} />
+          </div>
+          <div hidden={inspectorTab !== "overview"}>
+            <h2 className="n-preserve">{mission.definition.objective}</h2>
+            {mission.definition.scope ? (
+              <p className="n-preserve">{mission.definition.scope}</p>
+            ) : null}
+            <MissionControl
+              key={startReviewRequest}
+              reviewStart={startReviewRequest > 0}
+              mission={mission}
+              isOwner={mission.owner === owner}
+              blocked={blocked}
+              busy={busy}
+              open
+              agents={workAgents}
+              nextAction={nextAction}
+              contributions={contributions}
+              perform={perform}
+              updated={updated}
+              prepare={() => prepare("coordinator")}
+            />
+            <MissionProgress
+              mission={mission}
+              owner={owner}
+              agents={workAgents}
+              busy={busy}
+              perform={perform}
+              updated={updated}
+              openArtifact={(id) => {
+                setArtifactId(id);
+                setPanel("artifacts");
+              }}
+            />
+          </div>
         </ContextPanel>
       ) : null}
-      <div className="n-mission-brief">
-        <details>
-          <summary>
-            <ChevronRight size={15} aria-hidden="true" />
-            <span className="n-objective">{mission.definition.objective}</span>
-            <span className="n-details-label">Mission details</span>
-          </summary>
-          <h2 className="n-preserve">{mission.definition.objective}</h2>
-          {mission.definition.scope ? (
-            <p className="n-preserve">{mission.definition.scope}</p>
-          ) : null}
-          <ul className="n-success-criteria">
-            {mission.definition.criteria.map((criterion, i) => (
-              <li key={i}>
-                <span className="n-square" />
-                {criterion}
-              </li>
-            ))}
-          </ul>
-          <dl className="d-facts">
-            <div>
-              <dt>Coordination</dt>
-              <dd>
-                {mission.definition.policy?.coordination === "coordinated"
-                  ? mission.lifecycle.coordinator
-                    ? `Coordinator-led · ${mission.lifecycle.coordinator.identity.label}`
-                    : "Coordinator-led · awaiting appointment"
-                  : "Peer collaboration"}
-              </dd>
-            </div>
-            <div>
-              <dt>Budget</dt>
-              <dd>
-                {budget?.mode === "unlimited"
-                  ? "No budget · Unlimited"
-                  : budget?.mode === "limited"
-                    ? `${budget.turns ?? "Uncapped"} turns · ${budget.concurrency ?? "Uncapped"} concurrent`
-                    : "Policy unavailable"}
-              </dd>
-            </div>
-            <div>
-              <dt>Participation</dt>
-              <dd>
-                {mission.definition.policy?.participation === "approval"
-                  ? "Approval required · owner controls public listing"
-                  : "Private invitation"}
-              </dd>
-            </div>
-          </dl>
-        </details>
-        {blocked ? (
-          <div className="n-preparing">
-            <span className="n-square" />
-            <span>
-              {withdrawal
-                ? "You withdrew this node. Saved history remains readable; new contributions and mission synchronization are stopped."
-                : revoked
-                  ? "Your membership was revoked. Your saved history remains readable; new contributions are blocked."
-                  : blocked
-                    ? "Conflicting signed history needs recovery. New messages are suspended."
-                    : "Use Main for shared discussion. Joining grants membership; Start and local contribution consent govern work."}
-            </span>
-          </div>
-        ) : null}
-      </div>
       <MissionJourney
-        mission={mission}
-        owner={owner}
-        agents={workAgents}
-        contributions={contributions}
-        controls={openControls}
-        people={() => {
-          setMemberTab("people");
-          setPanel("members");
-        }}
-        setup={prepare}
-        agent={openAgent}
-      />
-      <ExecutionSummary
-        mission={mission}
-        agents={workAgents}
-        contributions={contributions}
-        open={openAgent}
+        value={experience}
+        act={act}
+        inspect={inspect}
+        inspectorOpen={panel !== null}
       />
       {workError ? (
         <p className="d-alert" role="alert">
@@ -1286,21 +1332,7 @@ function MissionWorkspace({
         </p>
       ) : null}
       <Conversation
-        decisions={
-          <MissionDecisions
-            mission={mission}
-            owner={owner}
-            agents={workAgents}
-            contributions={contributions}
-            controls={openControls}
-            people={() => {
-              setMemberTab("people");
-              setPanel("members");
-            }}
-            setup={prepare}
-            agent={openAgent}
-          />
-        }
+        decisions={<MissionDecisions value={experience} act={act} />}
         contributions={contributions}
         streams={streams}
         taskCount={taskCount}

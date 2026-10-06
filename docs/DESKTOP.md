@@ -6,7 +6,7 @@ The desktop on `pivot/renting-the-rent` creates local missions and connects peop
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.3 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.3 adds guided Coordinator and bulk-agent setup, in-app Lima installation and guest sign-in, consistent lifecycle states, and durable drafts/setup recovery. Follow the [isolated runtime setup](EXECUTION.md#first-run-043).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.4 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.4 adds continuous onboarding, limited contribution windows, grouped agent approvals, Start and run, device capacity queues, decision Inbox and optional background controls. **Update every participating Mac to 0.4.4; it cannot exchange peer data with 0.4.3 or earlier.** See [continuous onboarding](#continuous-onboarding-044) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
 
 Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
@@ -17,7 +17,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-Version 0.4.4 uses peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
+Versions 0.4.4 and 0.4.5 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 
@@ -48,6 +48,51 @@ Copy the app into **Applications** before launching it. A generic Finder alert d
 
 A valid ad-hoc signature verifies file integrity; it does **not** establish an identified developer or Gatekeeper acceptance. If macOS specifically blocks an unidentified developer, Apple's [Open Anyway procedure](https://support.apple.com/102445) describes a per-app exception. That exception does not fix an incompatible or damaged bundle. The public release gate remains Developer ID signing, notarization and a first-launch test on a clean Mac.
 
+### Simpler mission experience (0.4.5)
+
+The mission header and one compact summary show **mission phase**, **observed
+agent activity** and **what needs your decision**. Click the mission name for
+its brief and controls, or **Inspect status** for the supporting observations.
+The inspector offers **Overview**, **Decisions** and **Technical** without
+leaving Main. The primary forward action moves into its inspector when open.
+**Pause mission** affects the shared mission; **Stop my agents** cancels local
+continuation and requests termination on this Mac. Unconfirmed remote stops
+remain explicit.
+
+Agent lists use **Setting up, Working, Waiting, Stopped, Unknown**, plus the
+transient **Stopping**. Remote activity is marked **reported** and expires;
+absence of a report is not a stopped process. Each agent has **Activity**,
+**Access & limits** and **Technical** sections. Technical details include the
+source, observation time, dependencies, environment, saved session, searchable
+state/activity history and a native **Export diagnostics** action. The exported
+JSON contains only structured states/times; it excludes provider output,
+prompts, login codes, paths and identities.
+
+Preparation includes installing the verified isolation tools when needed,
+under the same explicit preparation consent. Group setup keeps one guest
+sign-in in focus and advances after its confirmation. Each VM still needs its
+own provider login. Completed agents collapse to rows; bounded approvals and
+human Start remain separate decisions. Interrupted Start reviews stay in the
+decision queue until their saved operation is completed or cancelled. An archived
+mission is labelled **Archived**, not automatically complete.
+
+Discovery searches **received public briefs**, not the entire internet. Its
+connection details show each configured/nearby peer's latest completed exchange,
+retry state, last success and typed failure. Disabled discovery, missing sources,
+failed exchanges, an empty catalog and a text search with no matches have
+different recovery instructions. It does not automatically connect to a directory
+or publish a mission.
+
+This source iteration is separate from the **0.4.4** download currently linked
+on the landing page. Peer protocol 11/schema 15 are unchanged. Native isolated
+journeys and service tests verify behavior; independently operated Macs and
+unassisted first-time usability remain separate validation gates.
+
+The local **0.4.5 Apple Silicon DMG** passes image and mounted-signature checks;
+its packaged UI/native service start and retain form drafts in an isolated
+profile. The full identity/mission/restart test passes in the development app;
+the newly signed package's Keychain identity test has not been repeated.
+
 ### Continuous onboarding (0.4.4)
 
 Main stays primary. The next action opens a contextual panel, preserving the conversation, drafts and reading position. **Invite people** brings another person's node; **Add my agents** prepares this Mac's contributions. An invitation offers **Connect and review**, followed by admission and either agent setup or conversation-only participation.
@@ -68,7 +113,7 @@ Background users can separately opt into macOS decision notifications. These cov
 
 **This device** also offers optional local onboarding timings. They contain bounded sampled state transitions and elapsed durations, without message text, login output or invitation secrets. They are off by default, never uploaded, and can be cleared. These diagnostics do not measure successful first-time usability.
 
-The landing page still serves the last published preview until a new release is explicitly published. Build the 0.4.4 DMG locally with the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
+The landing page serves the verified 0.4.4 DMG and its checksum. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
 
 ## Create an offline mission
 
@@ -76,13 +121,13 @@ The landing page still serves the last published preview until a new release is 
 2. Choose **Coordinator-led** or **Peer collaboration**, and private or approval-required participation. Participation policy is saved; nothing is advertised yet.
 3. Leave the budget unlimited, or record turn, concurrency and deadline limits. Allocate disjoint allowances later from Budget & permissions. Unlimited is supported; contributor consent still applies.
 4. **Create mission** explicitly enrolls this computer's new node identity if needed. Private keys are encrypted through the OS key store; unavailable secure storage blocks enrollment.
-5. The mission opens in **Preparing**, with a Main conversation and a collapsible brief. Add instructions, close the app and reopen the mission to read the same signed history.
+5. The mission opens in **Preparing**, with a Main conversation; click its name to inspect the brief. Add instructions, close the app and reopen the mission to read the same signed history.
 
 The creator's endpoint is recorded as the initial Coordinator host in coordinated mode. This does not fabricate a running Coordinator or grant permission to start an agent. Existing contribution preparations are separate and never auto-enroll, join or execute.
 
 ### Mission control: readiness, Start and Pause
 
-Open **Mission controls** within the channel. Main/private conversation remains the working surface; tasks and extra workstreams are optional.
+Click the mission name → **Overview** within the channel (called **Mission controls** in 0.4.4). Main/private conversation remains the working surface; tasks and extra workstreams are optional.
 
 - **Coordinator-led:** select **Set up Coordinator** in the mission and review the contribution. The guided flow prepares, shares and appoints the first local Coordinator. The appointment has a separate agent signing identity and a new authority revision. A prepared contribution is not a running agent. The signed protocol supports a Coordinator plan and acknowledgment of the exact plan/instructions. An owner running the local Coordinator uses **Review planning session → Approve and prepare plan** in agent details; this groups allocation, exact permission and local consent under one explicit review. Separate distributed permissions remain available in Budget. The real Coordinator publishes its plan and readiness through scoped tools. The human then starts the mission; the desktop never fabricates readiness.
 - **Peer collaboration:** the owner can select **Start mission** without a Coordinator, tasks or a mandatory plan. This changes shared mission authorization only. The contributor separately approves a current work permission in Local execution.

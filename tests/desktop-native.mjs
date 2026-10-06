@@ -186,6 +186,7 @@ try {
       "start",
       "stop",
       "exportFiles",
+      "exportDiagnostics",
       "importFiles",
     ].sort(),
   );
@@ -355,7 +356,11 @@ try {
     "Set up Coordinator",
     "--exact",
   );
-  browser("wait", "--text", "Set up your Coordinator");
+  browser(
+    "wait",
+    "--text",
+    "Choose the agent that will prepare your mission plan.",
+  );
   assert.ok(
     JSON.parse(
       browser(
@@ -367,6 +372,15 @@ try {
   );
   browser("screenshot", resolve("var/desktop/onboarding-guided-setup.png"));
   browser("press", "Escape");
+  assert.ok(
+    JSON.parse(
+      browser(
+        "eval",
+        "document.activeElement.matches('.n-mission-summary button') && document.activeElement.checkVisibility()",
+      ),
+    ),
+    "Closing setup restores focus to the original summary action or its stable status control",
+  );
   browser("snapshot", "-i");
   browser(
     "fill",
@@ -375,7 +389,47 @@ try {
   );
   click("button[type=submit]");
   browser("wait", "--text", "Start with hands-on experiments.");
-  click(".n-mission-brief summary");
+  assert.equal(
+    JSON.parse(
+      browser("eval", "document.querySelectorAll('.n-mission-summary').length"),
+    ),
+    1,
+  );
+  assert.equal(
+    JSON.parse(
+      browser(
+        "eval",
+        "document.querySelectorAll('.n-status-overview, .n-journey').length",
+      ),
+    ),
+    0,
+  );
+  browser("fill", "#main-message", "Saved while I inspect the mission");
+  click(".n-mission-title");
+  browser("wait", "--text", "Overview");
+  assert.equal(
+    JSON.parse(
+      browser(
+        "eval",
+        "document.querySelectorAll('.n-mission-summary .primary').length",
+      ),
+    ),
+    0,
+    "The primary action moves into the inspector",
+  );
+  browser("find", "role", "button", "click", "--name", "Technical", "--exact");
+  browser("wait", "--text", "Mission records");
+  browser("press", "Escape");
+  assert.equal(
+    JSON.parse(
+      browser("eval", "document.querySelector('#main-message').value"),
+    ),
+    "Saved while I inspect the mission",
+  );
+  assert.equal(
+    JSON.parse(browser("eval", "document.activeElement.className")),
+    "n-mission-title",
+  );
   const savedNode = JSON.parse(
     browser("eval", "window.blackboardNode.state()"),
   );

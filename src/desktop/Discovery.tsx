@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  discoveryPresentation,
+  discoveryOutcomes,
+} from "../../shared/discovery-presentation.mjs";
 import { Compass, Copy, Radio, ShieldCheck } from "lucide-react";
 import { node, type DiscoveryState, type NodeState } from "./bridge";
 import type { InvitationReview, MissionView } from "./node-contract";
@@ -221,14 +225,19 @@ export function Discover({
   const discovery = useDiscovery(state?.status === "ready");
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState(false);
-  const visible =
-    discovery.state?.listings.filter(
-      (v) =>
-        v.status !== "unlisted" &&
-        `${v.advertisement.title} ${v.advertisement.summary} ${v.advertisement.capabilities.join(" ")}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-    ) ?? [];
+  const presentation = discoveryPresentation({
+    state: discovery.state,
+    online: !!state?.connection?.running,
+    query,
+    error: discovery.error,
+  });
+  const visible = presentation.visible;
+  const fix = () =>
+    presentation.action === "network"
+      ? network()
+      : presentation.action === "clear"
+        ? setQuery("")
+        : setSettings(true);
   return (
     <>
       <Heading
@@ -244,23 +253,55 @@ export function Discover({
           </button>
         }
       >
-        Public briefs from your community and nearby nodes. Review a live
-        mission before requesting a place.
+        Search public briefs received by this Mac. Open a mission to review its
+        current instructions and request to join.
       </Heading>
-      {!state?.connection?.running ? (
-        <section className="d-panel">
-          <h2>Connect your node</h2>
-          <p>
-            Enable peer networking on this device to discover and inspect
-            missions.
-          </p>
-          <button className="d-button primary" onClick={network}>
-            Open network settings
+      <section
+        className="d-panel n-discovery-health"
+        aria-label="Discovery connection status"
+      >
+        <h2 role="status">{presentation.title}</h2>
+        <p>{presentation.detail}</p>
+        {presentation.action && !settings ? (
+          <button className="d-button" onClick={fix}>
+            {presentation.action === "network"
+              ? "Connect to peers"
+              : presentation.action === "clear"
+                ? "Clear search"
+                : "Configure discovery"}
           </button>
-        </section>
-      ) : null}
+        ) : null}
+        {presentation.peers.length ? (
+          <details>
+            <summary>
+              Discovery connections · {presentation.peers.length}
+            </summary>
+            {presentation.peers.map((peer) => (
+              <div className="n-peer-row" key={peer.name}>
+                <div>
+                  <strong>{peer.name}</strong>
+                  <p>
+                    {discoveryOutcomes[peer.outcome]}
+                    {peer.checking && peer.outcome !== "contacting"
+                      ? " · retrying"
+                      : ""}
+                  </p>
+                  <p className="d-field-help">
+                    {peer.last_success_ms
+                      ? `Last exchange ${new Date(peer.last_success_ms).toLocaleTimeString()} · ${peer.received} briefs in that page`
+                      : "No successful exchange observed"}
+                    {peer.last_attempt_ms
+                      ? ` · Last attempt ${new Date(peer.last_attempt_ms).toLocaleTimeString()}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </details>
+        ) : null}
+      </section>
       {discovery.error ? <p role="alert">{discovery.error}</p> : null}
-      {discovery.state && (settings || !discovery.state.config.enabled) ? (
+      {discovery.state && settings ? (
         <DiscoverySettings
           value={discovery.state}
           busy={busy}
@@ -278,7 +319,7 @@ export function Discover({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search titles, briefs and capabilities"
+          placeholder="Search received titles, briefs and capabilities"
         />
       </label>
       <section className="n-discovery-list" aria-label="Discovered missions">
@@ -365,18 +406,6 @@ export function Discover({
             </div>
           </article>
         ))}
-        {!visible.length ? (
-          <div className="d-empty">
-            <Compass size={28} />
-            <h2>
-              {query ? "No matching missions" : "No public missions found yet"}
-            </h2>
-            <p>
-              Connect to a community peer or enable LAN discovery. Only missions
-              whose owners publish a brief appear here.
-            </p>
-          </div>
-        ) : null}
       </section>
       <div className="d-explainer">
         <ShieldCheck size={17} />

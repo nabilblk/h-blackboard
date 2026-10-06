@@ -55,8 +55,14 @@ export function ContextPanel({
         dialog.contains(document.activeElement);
       dialog.close();
       document.documentElement.classList.remove("n-inspector-open");
-      if (restore && previous?.isConnected)
-        previous.focus({ preventScroll: true });
+      if (restore) {
+        // The summary's primary action moves into the inspector and may no
+        // longer be mounted. Return to its stable status control in that case.
+        const target = previous?.isConnected
+          ? previous
+          : document.querySelector<HTMLElement>(".n-summary-inspect");
+        target?.focus({ preventScroll: true });
+      }
     };
   }, []);
   return createPortal(

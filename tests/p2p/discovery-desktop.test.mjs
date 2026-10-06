@@ -111,6 +111,14 @@ test(
     );
     const catalog = await c.handle("discoveryState", {});
     assert.equal(catalog.listings.length, 1);
+    assert.equal(catalog.health.running, true);
+    assert.equal(catalog.health.peers.length, 1);
+    assert.ok(catalog.health.peers[0].last_success_ms > 0);
+    assert.match(catalog.health.peers[0].outcome, /ok|contacting/);
+    assert.doesNotMatch(
+      JSON.stringify(catalog.health),
+      /harakiri:|127\.0\.0\.1|PRIVATE/,
+    );
     assert.equal((await c.state()).missions.length, 0);
     assert.ok(!JSON.stringify(catalog).includes(definition.scope));
     const reference = catalog.listings[0].reference;
@@ -241,5 +249,21 @@ test(
     await assert.rejects(b.handle("inspectInvitation", { ticket: reference }));
     for (const n of [a, b, c])
       assert.equal((await n.state()).execution, "unavailable");
+    await b.handle("configureNetwork", {
+      config: { mode: "offline", relays: [], allow_lan: false },
+    });
+    await until(
+      async () =>
+        (await c.handle("discoveryState", {})).health.peers.some(
+          (p) => p.outcome === "unreachable",
+        ),
+      "Discovery must expose an unreachable configured peer",
+    );
+    await c.handle("configureDiscovery", {
+      config: { ...discovery, enabled: false },
+    });
+    const stopped = await c.handle("discoveryState", {});
+    assert.equal(stopped.health.running, false);
+    assert.equal(stopped.health.peers.length, 0);
   },
 );

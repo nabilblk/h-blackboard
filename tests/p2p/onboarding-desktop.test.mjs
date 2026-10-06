@@ -311,6 +311,10 @@ test("approval waits for human Start and survives a host-service restart without
   const approved = await f.agreements.approve(f.input);
   await f.agreements.tick();
   assert.equal(f.provider.launches, 0);
+  assert.equal(
+    f.agreements.local(f.input.contributionId).waitingFor,
+    "mission_start",
+  );
   const reopened = new ContributionAgreements({
     directory: join(f.root, "agreements"),
     node: f.node,

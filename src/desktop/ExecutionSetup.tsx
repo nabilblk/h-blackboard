@@ -3,7 +3,15 @@ import type { Contribution } from "./bridge";
 import type { MissionView } from "./node-contract";
 import type { ExecutionState } from "./execution-types";
 import type { Preflight, PermissionRequest } from "./onboarding-types";
-export function ProviderSetup({ ready }: { ready?: (value: boolean) => void }) {
+export function ProviderSetup({
+  ready,
+  report,
+  integrated = false,
+}: {
+  ready?: (value: boolean) => void;
+  report?: (value: Preflight) => void;
+  integrated?: boolean;
+}) {
   const [state, setState] = useState<Preflight | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -16,6 +24,7 @@ export function ProviderSetup({ ready }: { ready?: (value: boolean) => void }) {
         const next = await window.blackboardSetup.preflight();
         if (!cancelled) {
           setState(next);
+          report?.(next);
           ready?.(
             next.available && next.freeDiskBytes >= next.minimumDiskBytes,
           );
@@ -31,7 +40,7 @@ export function ProviderSetup({ ready }: { ready?: (value: boolean) => void }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [ready]);
+  }, [ready, report]);
   if (state && state.freeDiskBytes < state.minimumDiskBytes)
     return (
       <p className="d-error" role="alert">
@@ -42,12 +51,10 @@ export function ProviderSetup({ ready }: { ready?: (value: boolean) => void }) {
   if (state?.available)
     return (
       <div>
-        <p className="d-field-help">
-          ✓ This Mac can prepare isolated agents · Up to {state.capacity}{" "}
-          environments at once.
-        </p>
         <details>
-          <summary>Device capacity and downloads</summary>
+          <summary>
+            This Mac · {state.capacity} agent environments at once
+          </summary>
           <p className="d-field-help">
             Each running environment uses 2 CPUs and 2 GiB RAM, with an 8 GiB
             sparse disk. {(state.freeDiskBytes / 1024 ** 3).toFixed(1)} GiB disk
@@ -110,9 +117,11 @@ export function ProviderSetup({ ready }: { ready?: (value: boolean) => void }) {
           ? "Checking the isolated environment provider…"
           : !state.supported
             ? "Agent execution currently requires Apple Silicon macOS."
-            : "Install Lima 2.1.1 in Harakiri’s private application storage. This downloads the verified official release; no administrator access or Homebrew changes are required."}
+            : integrated
+              ? "Preparing your first agent also downloads its verified isolation tools into Harakiri’s private storage."
+              : "Install Lima 2.1.1 in Harakiri’s private application storage. No administrator access or Homebrew changes are required."}
       </p>
-      {state?.supported ? (
+      {state?.supported && !integrated ? (
         <button
           className="d-button primary"
           disabled={installing}
@@ -282,9 +291,8 @@ export function RunApproval({
           : execution.direction?.text || "A current direction is required."}
       </p>
       <p>
-        This action allocates available mission resources, issues a permission
-        and approves execution on this Mac. The isolated workspace and your
-        local limits still apply.
+        Uses your subscription in this agent’s isolated workspace. You can stop
+        it at any time; your local limits still apply.
       </p>
       <div className="d-limit-fields">
         <label className="d-field">
@@ -300,7 +308,7 @@ export function RunApproval({
           />
         </label>
         <label className="d-field">
-          Permission window (minutes)
+          Time limit (minutes)
           <input
             type="number"
             required
@@ -313,8 +321,8 @@ export function RunApproval({
         </label>
       </div>
       <p className="d-field-help">
-        The window begins when permission is issued and continues while
-        disconnected. A new generation needs your approval again.
+        Time starts when you approve, including time disconnected. This approves
+        one session; continuing later requires another approval.
       </p>
       {restoring ? (
         <p role="status">Checking for an unfinished approval…</p>

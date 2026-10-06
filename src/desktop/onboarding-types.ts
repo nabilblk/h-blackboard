@@ -13,6 +13,16 @@ export type ContributionApproval = {
   followDirections: boolean;
 };
 export type ContributionAgreement = {
+  waitingFor?:
+    | "mission_start"
+    | "mission_resume"
+    | "direction"
+    | "new_work"
+    | "contributor"
+    | "setup"
+    | "capacity"
+    | "owner_permission"
+    | null;
   id: string;
   request: ContributionApproval;
   status: "active" | "stopped" | "expired" | "review" | "interrupted";

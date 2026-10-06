@@ -14,7 +14,7 @@ import {
   powerMonitor,
   Notification,
 } from "electron";
-import { readFile, statfs } from "node:fs/promises";
+import { readFile, statfs, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DesktopStore } from "./store.mjs";
@@ -39,6 +39,7 @@ import { LimaInstaller } from "./execution/installer.mjs";
 import { invitationLink } from "./invitation-links.mjs";
 import { LimaProvider } from "./execution/lima.mjs";
 import { exportWorkspace, readImportFiles } from "./execution/files.mjs";
+import { executionDiagnostics } from "./execution/diagnostics.mjs";
 import {
   APP_URL,
   CONTENT_SECURITY_POLICY,
@@ -566,6 +567,24 @@ else {
                 return executions.stop(id);
               },
               executionExport: () => executions.transfer(id, "export"),
+              executionDiagnostics: async () => {
+                const diagnostic = executionDiagnostics(
+                  await executions.state(id),
+                );
+                const picked = await dialog.showSaveDialog(window, {
+                  title: "Export execution diagnostics",
+                  defaultPath: "harakiri-agent-diagnostics.json",
+                  filters: [{ name: "JSON", extensions: ["json"] }],
+                });
+                if (picked.canceled || !picked.filePath)
+                  return { cancelled: true };
+                await writeFile(
+                  picked.filePath,
+                  JSON.stringify(diagnostic, null, 2) + "\n",
+                  { mode: 0o600 },
+                );
+                return { cancelled: false };
+              },
               executionImport: () => executions.transfer(id, "import"),
             };
             return { ok: true, value: await actions[method]() };

@@ -132,10 +132,11 @@ export function AgentRoster({
           <Plus size={15} /> Add agents
         </button>
       </header>
-      <p>
-        See each agent’s execution state and what it needs next. Select an agent
-        to continue setup, approve a run or recover its saved session.
-      </p>
+      {selected ? (
+        <button className="d-button" onClick={() => setSelected(null)}>
+          ← All agents
+        </button>
+      ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {available.length ? (
         <form
@@ -189,7 +190,7 @@ export function AgentRoster({
           </button>
         </form>
       ) : null}
-      {agents.length ? (
+      {agents.length && !selected ? (
         <label className="d-field n-agent-filter">
           <span className="sr-only">Find an agent</span>
           <input
@@ -203,293 +204,310 @@ export function AgentRoster({
       {!loaded && !error ? <p role="status">Loading agents…</p> : null}
       {loaded && !agents.length ? (
         <div className="n-empty-members">
-          <p>
-            No agents shared yet. Prepare a contribution, then share it here so
-            everyone can see its role and direction.
-          </p>
+          <p>No agents yet. Add an agent to contribute from this Mac.</p>
         </div>
       ) : null}
       {loaded && agents.length > 0 && !filtered.length ? (
         <p>No matching agents.</p>
       ) : null}
       <div className="n-agent-list">
-        {filtered.map((a) => {
-          const c = local.find((c) => c.sharedAgent?.registration === a.id);
-          const expanded = selected === a.id;
-          const canDirect =
-            isOwner &&
-            mission.lifecycle.phase === "active" &&
-            ["direction_assigned", "waiting_for_direction"].includes(a.status);
-          return (
-            <article key={a.id} className="n-agent-row" data-agent={a.id}>
-              <button
-                className="n-agent-summary"
-                aria-expanded={expanded}
-                onClick={() => {
-                  setSelected(expanded ? null : a.id);
-                  setDirection(null);
-                  setWithdraw(null);
-                }}
-              >
-                <span className="n-avatar">
-                  {a.identity.runtime === "grok"
-                    ? "GR"
-                    : a.identity.runtime === "claude"
-                      ? "CC"
-                      : "CX"}
-                </span>
-                <span>
-                  <strong>{a.identity.label}</strong>
-                  <span className="d-field-help">
-                    {runtimeName(a.identity.runtime)} ·{" "}
-                    {a.identity.role === "coordinator"
-                      ? "Coordinator"
-                      : "Agent"}
+        {(selected ? agents.filter((a) => a.id === selected) : filtered).map(
+          (a) => {
+            const c = local.find((c) => c.sharedAgent?.registration === a.id);
+            const expanded = selected === a.id;
+            const canDirect =
+              isOwner &&
+              mission.lifecycle.phase === "active" &&
+              ["direction_assigned", "waiting_for_direction"].includes(
+                a.status,
+              );
+            return (
+              <article key={a.id} className="n-agent-row" data-agent={a.id}>
+                <button
+                  className="n-agent-summary"
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    setSelected(expanded ? null : a.id);
+                    setDirection(null);
+                    setWithdraw(null);
+                  }}
+                >
+                  <span className="n-avatar">
+                    {a.identity.runtime === "grok"
+                      ? "GR"
+                      : a.identity.runtime === "claude"
+                        ? "CC"
+                        : "CX"}
                   </span>
-                  <span className="d-field-help">
-                    Contributed by{" "}
-                    {agentContributorLabel(
-                      a,
-                      mission,
-                      a.contributor === localKey,
-                    )}
+                  <span>
+                    <strong>{a.identity.label}</strong>
+                    <span className="d-field-help">
+                      {runtimeName(a.identity.runtime)} ·{" "}
+                      {a.identity.role === "coordinator"
+                        ? "Coordinator"
+                        : "Agent"}
+                    </span>
+                    <span className="d-field-help">
+                      Contributed by{" "}
+                      {agentContributorLabel(
+                        a,
+                        mission,
+                        a.contributor === localKey,
+                      )}
+                    </span>
+                    <span
+                      className={`n-agent-state ${a.status === "waiting_for_direction" ? "waiting" : ""}`}
+                    >
+                      <AgentState
+                        agent={a}
+                        contribution={c}
+                        mission={mission}
+                      />
+                    </span>
                   </span>
-                  <span
-                    className={`n-agent-state ${a.status === "waiting_for_direction" ? "waiting" : ""}`}
-                  >
-                    <AgentState agent={a} contribution={c} mission={mission} />
-                  </span>
-                </span>
-              </button>
-              {expanded ? (
-                <div className="n-agent-detail">
-                  {c ? (
-                    <ExecutionPanel item={c} mission={mission} />
-                  ) : (
-                    <p className="d-field-help">
-                      {statuses[a.status]}. The contributor controls execution
-                      on their device.
-                    </p>
-                  )}
-                  <h4>Direction · Main</h4>
-                  <p className="n-preserve">
-                    {a.direction?.text ??
-                      (a.status === "waiting_for_direction"
-                        ? "The Coordinator or mission owner must give this late arrival a direction."
-                        : "No active direction.")}
-                  </p>
-                  {isOwner && !c ? (
-                    <ContributionConsent mission={mission} agent={a} isOwner />
-                  ) : null}
-                  <div className="n-action-row">
-                    <button
-                      className="d-button"
-                      disabled={
-                        busy ||
-                        [
-                          "revoked",
-                          "withdrawn",
-                          "conflict",
-                          "review_required",
-                        ].includes(a.status)
-                      }
-                      onClick={() => message(a, false)}
-                    >
-                      Address in Main
-                    </button>
-                    <button
-                      className="d-button"
-                      disabled={
-                        busy ||
-                        [
-                          "revoked",
-                          "withdrawn",
-                          "conflict",
-                          "review_required",
-                        ].includes(a.status)
-                      }
-                      onClick={() => message(a, true)}
-                    >
-                      Message privately
-                    </button>
-                  </div>
-                  {a.assignment ? (
-                    <p className="d-field-help">
-                      Workstream · {a.assignment.name}
-                      {a.assignment.stale
-                        ? " · Goal changed; new direction needed"
-                        : ""}
-                    </p>
-                  ) : null}
-                  {a.direction ? (
-                    <p className="d-field-help">
-                      {a.direction.author === mission.owner
-                        ? "Mission owner"
-                        : "Coordinator"}{" "}
-                      ·{" "}
-                      {a.direction.source === "individual"
-                        ? "Individual direction"
-                        : a.direction.source === "workstream"
-                          ? "Workstream direction"
-                          : "Shared mission direction"}
-                      .{" "}
-                      {a.acknowledgment
-                        ? "Direction acknowledged by this agent. Process status is reported by its contributor."
-                        : "Awaiting agent acknowledgment."}
-                    </p>
-                  ) : null}
-                  {canDirect ? (
-                    <button
-                      className="d-button"
-                      disabled={busy}
-                      onClick={() =>
-                        setDirection({
-                          id: a.id,
-                          revision: mission.lifecycle.revision,
-                          text:
-                            a.direction?.source === "individual"
-                              ? a.direction.text
-                              : "",
-                        })
-                      }
-                    >
-                      Give direction
-                    </button>
-                  ) : null}
-                  {direction?.id === a.id ? (
-                    <form
-                      className="n-agent-direction"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void perform(async () => {
-                          await node.directAgent(
-                            mission.id,
-                            direction.revision,
-                            a.id,
-                            direction.text,
-                          );
-                          setDirection(null);
-                          await refresh();
-                        });
-                      }}
-                    >
-                      <label className="d-field">
-                        Direction in Main
-                        <textarea
-                          required
-                          rows={4}
-                          maxLength={2048}
-                          value={direction.text}
-                          onChange={(e) =>
-                            setDirection({ ...direction, text: e.target.value })
-                          }
-                        />
-                      </label>
-                      <p className="d-field-help">
-                        Visible to the mission. Your instruction takes
-                        precedence over Coordinator direction.
-                      </p>
-                      {direction.revision !== mission.lifecycle.revision ? (
-                        <p role="status">
-                          Mission instructions changed. Reopen this editor
-                          before assigning.
+                </button>
+                {expanded ? (
+                  <div className="n-agent-detail">
+                    {c ? (
+                      <ExecutionPanel item={c} mission={mission} />
+                    ) : (
+                      <section aria-label="Remote execution source">
+                        <h4>Contributor report</h4>
+                        <AgentState agent={a} mission={mission} />
+                        <p className="d-field-help">
+                          Execution belongs to{" "}
+                          {agentContributorLabel(a, mission)}. Message them for
+                          device-level recovery.
                         </p>
-                      ) : null}
-                      <div className="n-action-row">
-                        <button
-                          type="button"
-                          className="d-button"
-                          onClick={() => setDirection(null)}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="d-button primary"
-                          disabled={
-                            busy ||
-                            !direction.text.trim() ||
-                            direction.revision !== mission.lifecycle.revision
-                          }
-                        >
-                          Assign direction
-                        </button>
-                      </div>
-                    </form>
-                  ) : null}
-                  {c ? (
-                    <details className="n-agent-device">
-                      <summary>On your computer</summary>
-                      <p className="d-mono n-key">{c.workspace}</p>
+                      </section>
+                    )}
+                    <h4>Direction · Main</h4>
+                    <p className="n-preserve">
+                      {a.direction?.text ??
+                        (a.status === "waiting_for_direction"
+                          ? "The Coordinator or mission owner must give this late arrival a direction."
+                          : "No active direction.")}
+                    </p>
+                    {isOwner && !c ? (
+                      <ContributionConsent
+                        mission={mission}
+                        agent={a}
+                        isOwner
+                      />
+                    ) : null}
+                    <div className="n-action-row">
+                      <button
+                        className="d-button"
+                        disabled={
+                          busy ||
+                          [
+                            "revoked",
+                            "withdrawn",
+                            "conflict",
+                            "review_required",
+                          ].includes(a.status)
+                        }
+                        onClick={() => message(a, false)}
+                      >
+                        Address in Main
+                      </button>
+                      <button
+                        className="d-button"
+                        disabled={
+                          busy ||
+                          [
+                            "revoked",
+                            "withdrawn",
+                            "conflict",
+                            "review_required",
+                          ].includes(a.status)
+                        }
+                        onClick={() => message(a, true)}
+                      >
+                        Message privately
+                      </button>
+                    </div>
+                    {a.assignment ? (
+                      <p className="d-field-help">
+                        Workstream · {a.assignment.name}
+                        {a.assignment.stale
+                          ? " · Goal changed; new direction needed"
+                          : ""}
+                      </p>
+                    ) : null}
+                    {a.direction ? (
+                      <p className="d-field-help">
+                        {a.direction.author === mission.owner
+                          ? "Mission owner"
+                          : "Coordinator"}{" "}
+                        ·{" "}
+                        {a.direction.source === "individual"
+                          ? "Individual direction"
+                          : a.direction.source === "workstream"
+                            ? "Workstream direction"
+                            : "Shared mission direction"}
+                        .{" "}
+                        {a.acknowledgment
+                          ? "Direction acknowledged by this agent. Process status is reported by its contributor."
+                          : "Awaiting agent acknowledgment."}
+                      </p>
+                    ) : null}
+                    {canDirect ? (
                       <button
                         className="d-button"
                         disabled={busy}
                         onClick={() =>
-                          void perform(async () => {
-                            await desktop.reveal(c.id);
+                          setDirection({
+                            id: a.id,
+                            revision: mission.lifecycle.revision,
+                            text:
+                              a.direction?.source === "individual"
+                                ? a.direction.text
+                                : "",
                           })
                         }
                       >
-                        <FolderOpen size={15} /> Open workspace
+                        Give direction
                       </button>
-                      <p className="d-field-help">
-                        Local consent:{" "}
-                        {c.status === "prepared" ? "prepared" : "revoked"}.
-                        Runtime controls apply only on this device.
-                      </p>
-                      {c.status === "prepared" ? (
-                        <button
-                          className="d-button"
-                          disabled={busy}
-                          onClick={() => setWithdraw(c.id)}
-                        >
-                          Withdraw agent…
-                        </button>
-                      ) : null}
-                    </details>
-                  ) : null}
-                  {withdraw === c?.id && c ? (
-                    <div className="n-withdraw-confirm">
-                      <p>
-                        Revoke this contribution and tell the mission it is
-                        withdrawn? Its workspace and previous history are
-                        preserved.
-                      </p>
-                      <div className="n-action-row">
-                        <button
-                          className="d-button"
-                          onClick={() => setWithdraw(null)}
-                        >
-                          Cancel
-                        </button>
+                    ) : null}
+                    {direction?.id === a.id ? (
+                      <form
+                        className="n-agent-direction"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void perform(async () => {
+                            await node.directAgent(
+                              mission.id,
+                              direction.revision,
+                              a.id,
+                              direction.text,
+                            );
+                            setDirection(null);
+                            await refresh();
+                          });
+                        }}
+                      >
+                        <label className="d-field">
+                          Direction in Main
+                          <textarea
+                            required
+                            rows={4}
+                            maxLength={2048}
+                            value={direction.text}
+                            onChange={(e) =>
+                              setDirection({
+                                ...direction,
+                                text: e.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <p className="d-field-help">
+                          Visible to the mission. Your instruction takes
+                          precedence over Coordinator direction.
+                        </p>
+                        {direction.revision !== mission.lifecycle.revision ? (
+                          <p role="status">
+                            Mission instructions changed. Reopen this editor
+                            before assigning.
+                          </p>
+                        ) : null}
+                        <div className="n-action-row">
+                          <button
+                            type="button"
+                            className="d-button"
+                            onClick={() => setDirection(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className="d-button primary"
+                            disabled={
+                              busy ||
+                              !direction.text.trim() ||
+                              direction.revision !== mission.lifecycle.revision
+                            }
+                          >
+                            Assign direction
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+                    {c ? (
+                      <details className="n-agent-device">
+                        <summary>On your computer</summary>
+                        <p className="d-mono n-key">{c.workspace}</p>
                         <button
                           className="d-button"
                           disabled={busy}
                           onClick={() =>
                             void perform(async () => {
-                              await node.withdrawAgent(mission.id, c.id);
-                              setWithdraw(null);
-                              await refresh();
+                              await desktop.reveal(c.id);
                             })
                           }
                         >
-                          Withdraw agent
+                          <FolderOpen size={15} /> Open workspace
                         </button>
+                        <p className="d-field-help">
+                          Local consent:{" "}
+                          {c.status === "prepared" ? "prepared" : "revoked"}.
+                          Runtime controls apply only on this device.
+                        </p>
+                        {c.status === "prepared" ? (
+                          <button
+                            className="d-button"
+                            disabled={busy}
+                            onClick={() => setWithdraw(c.id)}
+                          >
+                            Withdraw agent…
+                          </button>
+                        ) : null}
+                      </details>
+                    ) : null}
+                    {withdraw === c?.id && c ? (
+                      <div className="n-withdraw-confirm">
+                        <p>
+                          Revoke this contribution and tell the mission it is
+                          withdrawn? Its workspace and previous history are
+                          preserved.
+                        </p>
+                        <div className="n-action-row">
+                          <button
+                            className="d-button"
+                            onClick={() => setWithdraw(null)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className="d-button"
+                            disabled={busy}
+                            onClick={() =>
+                              void perform(async () => {
+                                await node.withdrawAgent(mission.id, c.id);
+                                setWithdraw(null);
+                                await refresh();
+                              })
+                            }
+                          >
+                            Withdraw agent
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
-                  <details className="n-agent-device">
-                    <summary>Identity details</summary>
-                    <p className="d-field-help">
-                      Display names are chosen by contributors. This signing
-                      identity distinguishes agents with the same name.
-                    </p>
-                    <code className="n-key">{a.identity.author}</code>
-                  </details>
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
+                    ) : null}
+                    <details className="n-agent-device">
+                      <summary>Identity details</summary>
+                      <p className="d-field-help">
+                        Display names are chosen by contributors. This signing
+                        identity distinguishes agents with the same name.
+                      </p>
+                      <code className="n-key">{a.identity.author}</code>
+                    </details>
+                  </div>
+                ) : null}
+              </article>
+            );
+          },
+        )}
       </div>
     </section>
   );

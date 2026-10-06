@@ -176,6 +176,28 @@ export type NetworkView = {
   running: boolean;
   error: string | null;
 };
+export type DiscoveryHealth = {
+  running: boolean;
+  lan: boolean;
+  peers: Array<DiscoveryPeerHealth>;
+};
+export type DiscoveryPeerHealth = {
+  name: string;
+  outcome: DiscoveryOutcome;
+  checking: boolean;
+  last_attempt_ms: number | null;
+  last_success_ms: number | null;
+  received: number;
+};
+export type DiscoveryOutcome =
+  | "waiting"
+  | "contacting"
+  | "ok"
+  | "expired_address"
+  | "route_blocked"
+  | "unreachable"
+  | "invalid_catalog"
+  | "cache_error";
 export type InvitationReview = {
   mission: string;
   owner: string;

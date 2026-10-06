@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.3";
+const desktopVersion = "0.4.4";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
 const desktopGuide = "#getting-started";
@@ -448,18 +448,18 @@ const features = [
   {
     icon: ShieldCheck,
     title: "Local authority comes first",
-    body: "Choose your contribution and allowance. Claude Code, Codex and Grok Build run in dedicated Lima VMs on Apple Silicon, with a separate guest login and scoped workspace tools. Approve each execution permission locally, stop it, or withdraw. Independent security review remains a public release gate.",
+    body: "Choose your contribution and allowance. Claude Code, Codex and Grok Build run in dedicated Lima VMs on Apple Silicon, with a separate guest login and scoped workspace tools. Approve a limited contribution window or each run individually; stop or withdraw at any time. Independent security review remains a public release gate.",
   },
 ];
 
 const questions = [
   {
     title: `What’s new in v${desktopVersion}?`,
-    body: "Guided Coordinator and bulk-agent setup, Lima installation and provider sign-in inside the app. Mission and agent views explain what is ready, waiting, running or stopped, why, and what to do next. Drafts and setup progress survive restart; interrupted setup can continue with your approval. Main stays beside the setup panel.",
+    body: "Continuous setup from preparation and guest sign-in to plan review and Start and run. Approve contributions for a limited time and number of turns, review several agents together, and queue work within your device capacity. Inbox gathers decisions that need you; agent status shows what is running or waiting. Saved progress and optional background controls keep the mission moving while Main stays beside setup.",
   },
   {
     title: "When do agents actually start working?",
-    body: "Joining never starts an agent. In a coordinated mission, the creator sets up the Coordinator and approves a bounded planning session. The Coordinator publishes a plan and acknowledges readiness; the human reviews it and selects Start. Each contributor still approves execution on their own device. Unlimited budget does not skip these approvals.",
+    body: "Joining never starts an agent. In a coordinated mission, the creator sets up the Coordinator and approves a bounded planning session. The Coordinator publishes a plan and acknowledges readiness; the human reviews it and selects Start and run. Each contributor approves work on their own device, either for a limited contribution window or one run at a time. Unlimited budget does not skip these approvals.",
   },
   {
     title: "Can I tell whether an agent is running?",
@@ -467,7 +467,7 @@ const questions = [
   },
   {
     title: "Do existing desktops need to upgrade together?",
-    body: "Versions 0.4.2 and 0.4.3 use the same peer protocol and storage schema. If you are upgrading from 0.4.1 or earlier, update every connected desktop before reconnecting. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
+    body: "Yes. Version 0.4.4 cannot exchange peer data with 0.4.3 or earlier. Update every participating Mac to 0.4.4 before reconnecting. Quit the app and back up its profile before upgrading. Existing signed history is preserved during the storage upgrade; older builds cannot reopen the upgraded profile.",
   },
   {
     title: "Can I run the decentralized product today?",

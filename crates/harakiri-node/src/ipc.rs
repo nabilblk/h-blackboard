@@ -455,7 +455,7 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
                 Command::NetworkState {} => Ok(serde_json::to_value(network.view())?),
                 Command::ConfigureNetwork {config} => {network.configure(config).await?;Ok(serde_json::to_value(network.view())?)},
                 Command::ConfigureDiscovery{config}=>{network.configure_discovery(config).await?;Ok(serde_json::Value::Null)},
-                Command::DiscoveryState{}=>with_store(&store,|s|Ok(serde_json::json!({"config":s.discovery_config()?,"listings":s.listing_views()?,"peer_ticket":if s.discovery_config()?.enabled {network.peer_ticket().ok()} else {None}}))),
+                Command::DiscoveryState{}=>with_store(&store,|s|Ok(serde_json::json!({"config":s.discovery_config()?,"listings":s.listing_views()?,"health":network.discovery_health(),"peer_ticket":if s.discovery_config()?.enabled {network.peer_ticket().ok()} else {None}}))),
                 Command::PublishListing{mission,summary,capabilities,active}=>Ok(serde_json::json!({"reference":network.publish(&mission,summary,capabilities,active).await?})),
                 Command::IssueInvitation {mission} => Ok(serde_json::json!({"ticket":network.issue(&mission).await?})),
                 Command::InspectInvitation {ticket} => {
@@ -641,6 +641,9 @@ pub fn typescript() -> String {
         crate::contact::NetworkMode::decl(&cfg),
         NetworkConfig::decl(&cfg),
         crate::network::NetworkView::decl(&cfg),
+        crate::discovery_health::DiscoveryHealth::decl(&cfg),
+        crate::discovery_health::DiscoveryPeerHealth::decl(&cfg),
+        crate::discovery_health::DiscoveryOutcome::decl(&cfg),
         crate::admission::InvitationReview::decl(&cfg),
         crate::admission::JoinView::decl(&cfg),
         crate::admission::LocalJoinView::decl(&cfg),

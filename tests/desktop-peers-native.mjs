@@ -79,7 +79,7 @@ async function app(name) {
   };
   const button = (label, scope = "document") => {
     const selector = evaluate(`(()=>{
-      const root=${scope};const e=[...root.querySelectorAll('button')].find(b=>{const label=b.cloneNode(true);label.querySelectorAll('.d-count').forEach(e=>e.remove());return label.textContent.trim()===${JSON.stringify(label)}});
+      const root=${scope};const e=[...root.querySelectorAll('button')].find(b=>{const label=b.cloneNode(true);label.querySelectorAll('.d-count').forEach(e=>e.remove());return b.checkVisibility({visibilityProperty:true}) && label.textContent.trim()===${JSON.stringify(label)}});
       if(!e) return null;const parts=[];for(let x=e;x&&x!==document.documentElement;x=x.parentElement) parts.unshift(x.tagName.toLowerCase()+':nth-child('+([...x.parentElement.children].indexOf(x)+1)+')');return 'html>'+parts.join('>');
     })()`);
     assert.ok(selector, `${name}: missing ${label}`);
@@ -234,7 +234,7 @@ async function rosterProof(a, b) {
   assert.ok(
     b
       .evaluate("document.querySelector('.n-agents').textContent")
-      .includes("Setup needed"),
+      .includes("Setting up"),
   );
   b.browser("screenshot", join(evidence, "agent-shared.png"));
   b.click(".n-agent-summary");
@@ -300,15 +300,15 @@ async function rosterProof(a, b) {
   clearComposer(b);
   b.browser("set", "viewport", "1440", "900");
   members(b);
-  b.button("Mission controls");
+  b.click(".n-mission-title");
   await b.wait(
-    "document.querySelector('.n-context-panel > header h2')?.textContent === 'Mission controls'",
+    "document.querySelector('.n-context-panel > header h2')?.textContent === 'Mission'",
     "Panel did not switch in context",
   );
   closePanel(b);
   assert.equal(
-    b.evaluate("document.activeElement.textContent.trim()"),
-    "Mission controls",
+    b.evaluate("document.activeElement.className"),
+    "n-mission-title",
   );
   members(a);
   a.button("Agents");
@@ -327,7 +327,7 @@ async function rosterProof(a, b) {
   assert.match(remoteAgent, /Contributed by Participant [a-f0-9]{8}/);
   assert.match(
     remoteAgent,
-    /(?:Execution is controlled by Participant [a-f0-9]{8}|Participant [a-f0-9]{8} reports this status)/,
+    /(?:reported|Waiting for a fresh report from Participant [a-f0-9]{8})/,
   );
   assert.doesNotMatch(remoteAgent, /controlled by you\b/i);
   a.browser("screenshot", join(evidence, "mission-members.png"));
@@ -848,6 +848,8 @@ async function send(app, text) {
 }
 
 async function discoverySetup(node, bootstrap = "") {
+  if (!node.evaluate("!!document.querySelector('.n-discovery-settings')"))
+    node.button("Discovery settings");
   node.browser("check", ".n-discovery-settings .n-check:first-of-type input");
   node.browser("fill", ".n-discovery-settings textarea", bootstrap);
   node.button("Save discovery settings");
@@ -913,7 +915,13 @@ async function discoveryProof(a) {
     c,
     "I will investigate accessible activities and share the evidence here.",
   );
-  c.button("Your contribution");
+  closePanel(c);
+  c.click(".n-more-actions summary");
+  c.button("Your contribution", "document.querySelector('.n-more-actions')");
+  await c.wait(
+    "!!document.querySelector('.n-participation')",
+    "Contribution review did not open",
+  );
   c.browser("select", ".n-participation select", "coordinator");
   assert.ok(
     c.evaluate(
@@ -924,8 +932,8 @@ async function discoveryProof(a) {
   c.browser("screenshot", join(evidence, "remote-coordinator-preparation.png"));
   c.button("Prepare contribution");
   await c.wait(
-    "!!document.querySelector('.n-reviewed-terms')",
-    "Local offer has no signed terms",
+    "!!document.querySelector('.n-guided-setup')",
+    "Local Coordinator setup did not open",
   );
   c.browser("screenshot", join(evidence, "local-contribution.png"));
   assert.equal(
@@ -938,12 +946,13 @@ async function discoveryProof(a) {
     c.evaluate("window.blackboardNode.state()").execution,
     "unavailable",
   );
-  c.button("Back to mission");
-  c.button("Your contribution");
+  closePanel(c);
+  c.click(".n-more-actions summary");
+  c.button("Your contribution", "document.querySelector('.n-more-actions')");
   c.button("Withdraw from mission…");
   c.button("Withdraw participation");
   await c.wait(
-    "document.querySelector('.n-preparing')?.textContent.includes('You withdrew')",
+    "document.querySelector('.n-mission-summary')?.textContent.includes('You withdrew')",
     "Withdrawal was not visible",
   );
   assert.equal(
@@ -965,7 +974,7 @@ async function discoveryProof(a) {
   await c.start();
   assert.ok(c.evaluate("!!document.querySelector('.n-conversations')"));
   await c.wait(
-    "document.querySelector('.n-preparing')?.textContent.includes('You withdrew')",
+    "document.querySelector('.n-mission-summary')?.textContent.includes('You withdrew')",
     "Withdrawal did not survive restart",
   );
   c.browser("set", "viewport", "900", "650");
@@ -1002,7 +1011,7 @@ async function discoveryProof(a) {
 async function lifecycleProof(a, b, c) {
   closePanel(a);
   if (!a.evaluate("!!document.querySelector('.n-control')"))
-    a.button("Mission controls");
+    a.click(".n-mission-title");
   assert.equal(
     a.evaluate(
       "document.querySelector('.n-control-bar button').textContent.trim()",
@@ -1041,7 +1050,7 @@ async function lifecycleProof(a, b, c) {
   );
   closePanel(a);
   if (rosterMode) await rosterProof(a, b);
-  a.button("Review and start", "document.querySelector('.n-journey')");
+  a.button("Review and start", "document.querySelector('.n-mission-summary')");
   a.button("Start and run");
   for (const n of [a, b, c])
     await n.wait(
@@ -1067,7 +1076,7 @@ async function lifecycleProof(a, b, c) {
     "Start did not survive restart",
   );
   if (!a.evaluate("!!document.querySelector('.n-control')"))
-    a.button("Mission controls");
+    a.click(".n-mission-title");
   a.button("Pause mission");
   for (const n of [a, b, c])
     await n.wait(
@@ -1075,14 +1084,15 @@ async function lifecycleProof(a, b, c) {
       "Pause did not replicate",
     );
   a.browser("screenshot", join(evidence, "mission-paused.png"));
-  a.button("Review and resume", "document.querySelector('.n-journey')");
+  closePanel(a);
+  a.button("Review and resume", "document.querySelector('.n-mission-summary')");
   a.button("Resume and run");
   await a.wait(
     "(async() => (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'active')()",
     "Resume not applied",
   );
   if (!a.evaluate("!!document.querySelector('.n-control')"))
-    a.button("Mission controls");
+    a.click(".n-mission-title");
   a.button("Edit instructions");
   a.browser(
     "fill",
@@ -1110,7 +1120,7 @@ async function lifecycleProof(a, b, c) {
       "unavailable",
     );
   if (!a.evaluate("!!document.querySelector('.n-control')"))
-    a.button("Mission controls");
+    a.click(".n-mission-title");
   people(a);
 }
 
@@ -1295,7 +1305,7 @@ try {
     );
     a.click(".n-revoke button.primary");
     await b.wait(
-      `document.querySelector('.n-preparing')?.textContent.includes('membership was revoked')`,
+      `document.querySelector('.n-mission-summary')?.textContent.includes('membership was revoked')`,
       "Revoked participant did not see the stop notice",
     );
     assert.equal(

@@ -112,6 +112,7 @@ export type PeerState = {
   requests: JoinView[];
 };
 export type DiscoveryState = {
+  health: import("./node-contract").DiscoveryHealth;
   config: DiscoveryConfig;
   listings: ListingView[];
   peer_ticket: string | null;

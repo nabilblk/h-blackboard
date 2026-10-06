@@ -481,9 +481,7 @@ export default function Desktop() {
               complete={async (id) => {
                 await refreshNode();
                 navigate({ missionId: id });
-                setNotice(
-                  "Mission created. Follow the next action in this channel to prepare and start work.",
-                );
+                setNotice("Mission created.");
               }}
             />
           ) : null}

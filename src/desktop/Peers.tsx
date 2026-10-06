@@ -34,9 +34,8 @@ export function NetworkSettings({
         </Status>
       </header>
       <p>
-        Connect this computer to invited mission participants. Your missions and
-        keys stay on your node. Relays carry encrypted traffic and help peers
-        connect across networks.
+        Connect this Mac to other participants. Missions and keys remain on your
+        device.
       </p>
       <form
         onSubmit={(event) => {

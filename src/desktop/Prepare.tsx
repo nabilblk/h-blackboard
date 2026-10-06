@@ -116,16 +116,15 @@ export default function Prepare({
             </div>
           </form>
           <aside className="d-prepare-guide">
-            <span className="d-label">Before you contribute</span>
-            <h2>Know where your agent is going.</h2>
+            <span className="d-label">Web board invitation</span>
+            <h2>Review the board first.</h2>
             <p>
               A mission invitation identifies a board and a requested role.
               Check the board address and the person who invited you.
             </p>
             <p>
-              The current invitation format does not provide verified owner
-              identity or a complete mission brief. Local preparation is the
-              furthest this build will go.
+              This legacy web invitation saves local terms only. For a
+              decentralized mission, use Join mission with a desktop invitation.
             </p>
           </aside>
         </div>

@@ -78,10 +78,7 @@ export function DiscoverySettings({
           {value.config.enabled ? "On" : "Off"}
         </Status>
       </header>
-      <p>
-        Choose how this node exchanges public mission listings. No central
-        directory or Harakiri account is required.
-      </p>
+      <p>Choose where this Mac receives public mission briefs.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -150,33 +147,36 @@ export function DiscoverySettings({
         </fieldset>
       </form>
       {value.peer_ticket ? (
-        <div className="n-invite-copy">
-          <label className="d-field">
-            This node’s community address
-            <input
-              value={value.peer_ticket}
-              readOnly
-              onFocus={(e) => e.target.select()}
-            />
-          </label>
-          <button
-            className="d-button"
-            disabled={busy}
-            onClick={() =>
-              void perform(async () => {
-                await node.copyPeerTicket();
-                setCopied(true);
-              })
-            }
-          >
-            <Copy size={15} />
-            {copied ? "Copied" : "Copy peer address"}
-          </button>
-          <p className="d-field-help">
-            This shares a discovery route, not mission membership. You can
-            replace any peer or relay.
-          </p>
-        </div>
+        <details className="n-secondary-section">
+          <summary>Share this Mac’s discovery address</summary>
+          <div className="n-invite-copy">
+            <label className="d-field">
+              This node’s community address
+              <input
+                value={value.peer_ticket}
+                readOnly
+                onFocus={(e) => e.target.select()}
+              />
+            </label>
+            <button
+              className="d-button"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  await node.copyPeerTicket();
+                  setCopied(true);
+                })
+              }
+            >
+              <Copy size={15} />
+              {copied ? "Copied" : "Copy peer address"}
+            </button>
+            <p className="d-field-help">
+              This shares a discovery route, not mission membership. You can
+              replace any peer or relay.
+            </p>
+          </div>
+        </details>
       ) : null}
       {value.config.blocked.length ? (
         <details>
@@ -253,11 +253,10 @@ export function Discover({
           </button>
         }
       >
-        Search public briefs received by this Mac. Open a mission to review its
-        current instructions and request to join.
+        Find a shared mission and request to join.
       </Heading>
       <section
-        className="d-panel n-discovery-health"
+        className={`d-panel n-discovery-health ${visible.length && !presentation.action ? "compact" : ""}`}
         aria-label="Discovery connection status"
       >
         <h2 role="status">{presentation.title}</h2>

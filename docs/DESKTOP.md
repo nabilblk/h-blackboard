@@ -6,7 +6,7 @@ The desktop on `pivot/renting-the-rent` creates local missions and connects peop
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.5 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.5 adds one mission summary, contextual decisions and technical inspection, simpler preparation/sign-in, and discovery connection diagnostics. **0.4.4 and 0.4.5 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [the 0.4.5 changes](#simpler-mission-experience-045) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.6 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.6 extends the mission simplification to contextual controls, agent setup, sign-in, contributions and budgets. **0.4.4 through 0.4.6 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [the 0.4.6 changes](#contextual-inspectors-046) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
 
 Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
@@ -17,7 +17,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-Versions 0.4.4 and 0.4.5 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
+Versions 0.4.4 through 0.4.6 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 
@@ -48,12 +48,44 @@ Copy the app into **Applications** before launching it. A generic Finder alert d
 
 A valid ad-hoc signature verifies file integrity; it does **not** establish an identified developer or Gatekeeper acceptance. If macOS specifically blocks an unidentified developer, Apple's [Open Anyway procedure](https://support.apple.com/102445) describes a per-app exception. That exception does not fix an incompatible or damaged bundle. The public release gate remains Developer ID signing, notarization and a first-launch test on a clean Mac.
 
-### Simpler mission experience (0.4.5)
+### Contextual inspectors (0.4.6)
+
+Mission **Overview** shows the labeled goal, scope and current next step. New
+missions ask for Coordinator setup; they do not report a missing acknowledgment
+before a Coordinator exists. **Needs you** uses the same decision queue as the
+mission summary. Inspector tabs stay accessible while you scroll.
+
+**Success criteria** show the expected outcomes. Expand a criterion to inspect
+its evidence or **Update assessment**. Existing reports, stale evidence and
+attribution remain visible; an assessment never closes a mission automatically.
+**Edit mission** is beside the goal. Manual plan editing and coordination mode
+are under **Mission settings**. Plan revisions and Coordinator handover have
+separate controls, shown when those objects exist.
+
+Agent setup keeps the current agent ahead of adding another. Sign-in shows one
+relevant action, replaces expired codes with a fresh sign-in action and retains
+provider diagnostics. Running agents retain Stop on every inspector view.
+Contribution details lead with observed execution; saved consent is labeled
+**Local terms**, independently of whether a process runs.
+
+Budget **Overview** shows the mission limit, charged/reserved turns and per-person
+usage. **Technical** retains exact allocations, permissions, receipts and
+reconciliation. An unresolved expired execution is surfaced in Overview; an
+ordinary running reservation is not labeled a recovery failure. Manual task
+controls are under **Manage this task** or **Create a task yourself**.
+
+No protocol, permission, sandbox or storage-schema change accompanies this UI
+release. The desktop journey and a three-profile roster/lifecycle test passed
+on one Mac. Renderer fixtures cover eight inspector states plus narrow sign-in;
+they do not establish live provider behavior or unassisted usability.
+
+### Simpler mission experience (0.4.5, retained)
+
 
 The mission header and one compact summary show **mission phase**, **observed
 agent activity** and **what needs your decision**. Click the mission name for
 its brief and controls, or **Inspect status** for the supporting observations.
-The inspector offers **Overview**, **Decisions** and **Technical** without
+The inspector offers **Overview**, **Needs you** and **Technical** without
 leaving Main. The primary forward action moves into its inspector when open.
 **Pause mission** affects the shared mission; **Stop my agents** cancels local
 continuation and requests termination on this Mac. Unconfirmed remote stops
@@ -83,12 +115,12 @@ failed exchanges, an empty catalog and a text search with no matches have
 different recovery instructions. It does not automatically connect to a directory
 or publish a mission.
 
-The landing page serves the **0.4.5** installer and checksum. Peer protocol
+The landing page serves the **0.4.6** installer and checksum. Peer protocol
 11/schema 15 are unchanged from 0.4.4. Native isolated
 journeys and service tests verify behavior; independently operated Macs and
 unassisted first-time usability remain separate validation gates.
 
-The published **0.4.5 Apple Silicon DMG** passes image and mounted-signature checks;
+The published **0.4.6 Apple Silicon DMG** passes image and mounted-signature checks;
 its packaged UI/native service start and retain form drafts in an isolated
 profile. The full identity/mission/restart test passes in the development app;
 the newly signed package's Keychain identity test has not been repeated.
@@ -113,7 +145,7 @@ Background users can separately opt into macOS decision notifications. These cov
 
 **This device** also offers optional local onboarding timings. They contain bounded sampled state transitions and elapsed durations, without message text, login output or invitation secrets. They are off by default, never uploaded, and can be cleared. These diagnostics do not measure successful first-time usability.
 
-These 0.4.4 capabilities are retained in the current 0.4.5 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
+These 0.4.4 capabilities are retained in the current 0.4.6 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
 
 ## Create an offline mission
 
@@ -133,7 +165,7 @@ Click the mission name → **Overview** within the channel (called **Mission con
 - **Peer collaboration:** the owner can select **Start mission** without a Coordinator, tasks or a mandatory plan. This changes shared mission authorization only. The contributor separately approves a current work permission in Local execution.
 - **Pause mission:** records an owner decision shared with reachable peers. **Resume mission** requires a fresh Coordinator acknowledgment in coordinated mode. Peer mode needs only the owner. Pausing is not a receipt that a process has terminated, and an offline node cannot learn a new pause instantly.
 - **Review plan to resume:** a paused coordinated mission with a saved plan offers this recovery action when fresh readiness is missing. Confirm the plan to return to Preparing, approve the Coordinator's planning session, then review and Start again. The signed plan review preserves existing contribution terms and identities; an artifact plan retains its exact revision. A changed mission invalidates an open review. This action never starts agents or supplies their readiness.
-- **Edit instructions**, **Set shared plan** or **Change coordination** returns the mission to Preparing and clears earlier readiness. Instruction/mode changes also invalidate the local terms review. An open stale editor cannot overwrite a newer control revision. Applying Coordinator-led again removes the old appointment; it does not enable peer collaboration.
+- **Edit mission**, a manual shared-plan edit or **Change coordination** returns the mission to Preparing and clears earlier readiness. Instruction/mode changes also invalidate the local terms review. An open stale editor cannot overwrite a newer control revision. Applying Coordinator-led again removes the old appointment; it does not enable peer collaboration.
 - Human-supplied plans are clearly attributed to the owner; a Coordinator must still acknowledge them. Plans and control changes are recorded in Main. A late old plan cannot undo an owner’s already accepted Start.
 
 Only the mission owner controls these mission-wide actions. Other contributors can discuss setup, read the current state and withdraw their own participation. No global launcher or harness configuration changes. Readiness is an attestation about the plan, not a heartbeat or proof of runtime liveness. Shared agent direction, including the late-arrival rule, is implemented. Scoped runtime execution and exact agent acknowledgments are implemented. Owner-authorized handover is explicit; it never grants another device execution consent.
@@ -225,7 +257,7 @@ Assignment is not execution. Changed goals invalidate the old direction acknowle
 
 **Tasks** opens beside the conversation from the sidebar or the wide-window channel header. **View task** on a task activity opens the same detail directly. Filter the whole saved task list by status, workstream, agent/contributor or text. Each task shows its outcome, criteria and separate attempts, including approach, assigned agent, reported progress and evidence. Two agents can explore one task, or an agent can make another explicitly allocated attempt. Assignment starts an attempt as **Planned**; it never claims a running process. A missing/withdrawn agent stays visible with its previous work.
 
-Normally the Coordinator and Agents create and maintain tasks. **Human overrides** holds manual creation, definition changes, extra attempts and attributed status corrections. An ordinary Agent can create its own task and report its own attempts; in coordinated mode it cannot allocate other agents. Agent task creation defaults to itself and its assigned workstream. Tasks are never required to Start or collaborate.
+Normally the Coordinator and Agents create and maintain tasks. **Manage this task** (or **Create a task yourself** from the list) holds manual creation, definition changes, extra attempts and attributed status corrections. An ordinary Agent can create its own task and report its own attempts; in coordinated mode it cannot allocate other agents. Agent task creation defaults to itself and its assigned workstream. Tasks are never required to Start or collaborate.
 
 Evidence opens inline: public messages render with the shared Markdown reader; an artifact shows its title and file manifest, with its exact revision available in Artifacts. An agent's **Complete** report requires a complete artifact signed by the reporting agent (earlier immutable publications remain valid historical evidence); a human override is visibly attributed. **Submitted**, **Complete**, publication, verification and mission acceptance remain separate. Task-definition, mission or artifact-input changes mark earlier reports as needing review. Saved files can also be opened directly from task evidence. Task counts never close a mission.
 
@@ -339,6 +371,7 @@ npm run desktop:build
 npm run test:desktop:native # macOS with the agent-browser CLI installed
 npm run test:desktop:package # exercise the actual packaged .app too
 npm run test:desktop:peers # three isolated native UI profiles
+node tests/desktop-inspectors.mjs # renderer states with read-only fixtures
 node tests/desktop-peers-native.mjs --packaged # after packaging
 node tests/desktop-peers-native.mjs --discovery # three-node public discovery journey
 node tests/desktop-peers-native.mjs --packaged --discovery

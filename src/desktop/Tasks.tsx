@@ -323,7 +323,9 @@ export function TaskPanel({
       ) : null}
       {editable ? (
         <details className="n-work-overrides">
-          <summary>Human overrides</summary>
+          <summary>
+            {detail ? "Manage this task" : "Create a task yourself"}
+          </summary>
           <p className="d-field-help">
             Normally, the Coordinator and agents maintain tasks. Your changes
             are attributed to you.

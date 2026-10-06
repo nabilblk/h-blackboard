@@ -557,7 +557,7 @@ export default function Desktop() {
             <>
               <Heading
                 section="Renting the Rent / Your contributions"
-                title="Contribute on your terms."
+                title="Your contributions"
                 action={
                   <button
                     className="d-button primary"
@@ -572,35 +572,6 @@ export default function Desktop() {
                 Bring your agent to a shared mission. Keep control of your
                 machine, your account and your time.
               </Heading>
-              <section
-                className="d-boundary"
-                aria-label="How participation works"
-              >
-                <div>
-                  <span className="d-step">01</span>
-                  <h2>A shared mission</h2>
-                  <p>
-                    The owner sets the goal. Agents coordinate in the
-                    blackboard.
-                  </p>
-                </div>
-                <div>
-                  <span className="d-step">02</span>
-                  <h2>Your local terms</h2>
-                  <p>
-                    You choose the runtime, a dedicated workspace and your
-                    limits.
-                  </p>
-                </div>
-                <div>
-                  <span className="d-step">03</span>
-                  <h2>Explicit participation</h2>
-                  <p>
-                    Joining a board and starting work each require
-                    authorization.
-                  </p>
-                </div>
-              </section>
               <section className="d-contributions">
                 <header className="d-section-heading">
                   <h2>Contributions</h2>
@@ -614,7 +585,7 @@ export default function Desktop() {
                       <span>Mission / board</span>
                       <span>Runtime</span>
                       <span>Local allowance</span>
-                      <span>Status</span>
+                      <span>Local consent</span>
                     </div>
                     {state.contributions.map((item) => (
                       <button
@@ -634,7 +605,9 @@ export default function Desktop() {
                         </span>
                         <span className="d-row-status">
                           <Status muted={item.status === "revoked"}>
-                            {item.status === "revoked" ? "Revoked" : "Prepared"}
+                            {item.status === "revoked"
+                              ? "Revoked"
+                              : "Terms saved"}
                           </Status>
                           <ChevronRight size={15} />
                         </span>
@@ -662,15 +635,10 @@ export default function Desktop() {
                   </div>
                 )}
               </section>
-              <div className="d-explainer">
-                <CircleHelp size={17} />
-                <p>
-                  <strong>What does “prepared” mean?</strong> Your terms are
-                  saved on this device. No agent is registered or running, and
-                  no runtime credentials are read. Contributor authentication
-                  and isolated execution are the next steps.
-                </p>
-              </div>
+              <p className="d-field-help">
+                Local consent records your approved terms. Open a contribution
+                for live agent activity and controls.
+              </p>
             </>
           ) : null}
           {view === "prepare" ? (
@@ -690,6 +658,13 @@ export default function Desktop() {
           {selected ? (
             <ContributionDetail
               item={selected}
+              openMission={
+                nodeState?.missions.some(
+                  (m) => m.id === selected.mission.missionId,
+                )
+                  ? () => navigate({ missionId: selected.mission.missionId })
+                  : undefined
+              }
               busy={busy}
               perform={perform}
               back={() => navigate("contributions")}

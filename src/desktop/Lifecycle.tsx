@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
-import { Pause, Play, Plus, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Pause, Plus, X } from "lucide-react";
 import { node, type Contribution } from "./bridge";
 import type { Coordination, MissionView, AgentView } from "./node-contract";
 import { Status, type Perform } from "./ui";
 import { StartMissionReview } from "./ContributionApproval";
 import type { StartJob } from "./onboarding-types";
+import type {
+  MissionPresentation,
+  PresentationAction,
+} from "../../shared/mission-presentation.mjs";
 
 export const phaseLabel = (mission: MissionView) =>
   mission.conflicted
@@ -45,10 +49,11 @@ type Props = {
   contributions: Contribution[];
   perform: Perform;
   updated: () => Promise<void>;
-  prepare: () => void;
-  nextAction?: { label: string; act: () => void };
+  presentation: MissionPresentation;
+  act: (action: PresentationAction) => void;
   agents?: AgentView[];
   reviewStart?: boolean;
+  children?: ReactNode;
 };
 type Edit = {
   kind: "instructions" | "plan" | "coordination";
@@ -65,10 +70,11 @@ export function MissionControl({
   contributions,
   perform,
   updated,
-  prepare,
-  nextAction,
+  presentation,
+  act,
   agents = [],
   reviewStart = false,
+  children,
 }: Props) {
   const { lifecycle: l, definition } = mission;
   const [edit, setEdit] = useState<Edit | null>(null);
@@ -100,7 +106,14 @@ export function MissionControl({
       cancelled = true;
     };
   }, [mission.id, isOwner, reviewStart]);
-  const [planReview, setPlanReview] = useState<string | null>(null);
+  const [planReview, setPlanReview] = useState<string | null>(
+    reviewStart &&
+      l.phase === "paused" &&
+      l.plan &&
+      l.start_blockers.includes("coordinator_not_ready")
+      ? l.revision
+      : null,
+  );
   const coordinated = definition.policy?.coordination === "coordinated";
   const candidates = contributions.filter(
     (c) =>
@@ -126,7 +139,7 @@ export function MissionControl({
       setEdit(null);
       setPlanReview(null);
     });
-  const reason =
+  const fallbackReason =
     l.phase === "active"
       ? "Started by the mission owner."
       : l.phase === "paused"
@@ -136,68 +149,107 @@ export function MissionControl({
           : coordinated
             ? "Coordinator ready. The mission owner can start."
             : "Peer collaboration · waiting for the mission owner to start.";
+  const next = presentation.next;
+  const editable =
+    isOwner && !blocked && !["closed", "archived"].includes(l.phase);
+  const reason = blocked
+    ? presentation.summary
+    : (next?.reason ??
+      (presentation.rows.length ? presentation.summary : fallbackReason));
   return (
     <section className="n-control" aria-label="Mission control">
+      <section className="n-mission-brief" aria-label="Mission instructions">
+        <div className="n-section-heading">
+          <h3 className="d-label">Goal</h3>
+          {editable ? (
+            <button
+              className="d-back"
+              disabled={busy}
+              onClick={() =>
+                setEdit({ kind: "instructions", snapshot: mission })
+              }
+            >
+              Edit mission
+            </button>
+          ) : null}
+        </div>
+        <p className="n-mission-objective n-preserve">{definition.objective}</p>
+        {definition.scope ? (
+          <>
+            <h3 className="d-label">Scope</h3>
+            <p className="n-preserve">{definition.scope}</p>
+          </>
+        ) : null}
+        {edit?.kind === "instructions" ? (
+          <ControlEditor
+            key={edit.snapshot.lifecycle.revision}
+            edit={edit}
+            busy={busy}
+            changed={edit.snapshot.lifecycle.revision !== l.revision}
+            cancel={() => setEdit(null)}
+            save={change}
+          />
+        ) : null}
+      </section>
       {!detailsOnly ? (
         <>
-          <div className="n-control-bar">
+          <div
+            className="n-control-bar n-current-step"
+            hidden={!!startReview || !!planReview}
+          >
             <div>
-              <span className="d-label">{phaseLabel(mission)}</span>
+              <span className="d-label">
+                {next ? "Next step" : phaseLabel(mission)}
+              </span>
+              {next ? (
+                <h3>
+                  {next.kind === "agent" ? next.action.label : next.title}
+                </h3>
+              ) : null}
               <p role="status">{reason}</p>
             </div>
-            {isOwner &&
-            !startReview &&
-            !planReview &&
-            !["closed", "archived"].includes(l.phase) ? (
-              l.phase === "active" ? (
-                <button
-                  className="d-button"
-                  disabled={busy || blocked}
-                  onClick={() =>
-                    change(() =>
-                      node.pauseMission(
-                        mission.id,
-                        l.revision,
-                        "Paused by the mission owner.",
-                      ),
+            {!startReview && !planReview && next ? (
+              <button
+                className="d-button primary"
+                disabled={busy || blocked}
+                onClick={() => {
+                  if (
+                    next.action.destination === "controls" &&
+                    next.action.review
+                  ) {
+                    if (
+                      l.phase === "paused" &&
+                      l.start_blockers.includes("coordinator_not_ready") &&
+                      l.plan
                     )
-                  }
-                >
-                  <Pause size={15} />
-                  Pause mission
-                </button>
-              ) : l.phase === "paused" &&
-                l.plan &&
-                l.start_blockers.includes("coordinator_not_ready") ? (
-                <button
-                  className="d-button primary"
-                  disabled={busy || blocked}
-                  onClick={() => setPlanReview(l.revision)}
-                >
-                  Review plan to resume
-                </button>
-              ) : l.start_blockers.length ? (
-                nextAction ? (
-                  <button
-                    className="d-button primary"
-                    disabled={busy || blocked}
-                    onClick={nextAction.act}
-                  >
-                    {nextAction.label}
-                  </button>
-                ) : null
-              ) : (
-                <button
-                  className="d-button primary"
-                  disabled={busy || blocked || l.start_blockers.length > 0}
-                  onClick={() => setStartReview(l.revision)}
-                >
-                  <Play size={15} />
-                  {l.phase === "paused"
-                    ? "Review and resume"
-                    : "Review and start"}
-                </button>
-              )
+                      setPlanReview(l.revision);
+                    else
+                      setStartReview(
+                        pendingStart?.request.revision ?? l.revision,
+                      );
+                  } else act(next.action);
+                }}
+              >
+                {next.action.label}
+              </button>
+            ) : null}
+            {editable && l.phase === "active" ? (
+              <button
+                className="d-button"
+                disabled={busy || blocked}
+                onClick={() =>
+                  change(() =>
+                    node.pauseMission(
+                      mission.id,
+                      l.revision,
+                      "Paused by the mission owner.",
+                    ),
+                  )
+                }
+              >
+                <Pause size={15} />
+                Pause mission
+              </button>
             ) : null}
           </div>
           {planReview && l.phase === "paused" && l.plan ? (
@@ -247,7 +299,7 @@ export function MissionControl({
               </div>
             </section>
           ) : null}
-          {pendingStart && !startReview ? (
+          {pendingStart && !startReview && next?.kind !== "start" ? (
             <p role="status">
               An earlier Start review has an unfinished step.{" "}
               <button
@@ -283,31 +335,22 @@ export function MissionControl({
               contribution.
             </p>
           ) : null}
-          <dl className="d-facts">
-            <div>
-              <dt>Coordination</dt>
-              <dd>{coordinated ? "Coordinator-led" : "Peer collaboration"}</dd>
+          {coordinated && l.coordinator ? (
+            <div className="n-coordinator-summary">
+              <span className="d-label">Coordinator</span>
+              <strong>{l.coordinator.identity.label}</strong>
+              <span className="d-field-help">
+                {l.readiness
+                  ? "Current plan acknowledged"
+                  : (presentation.rows.find(
+                      (r) =>
+                        r.agent.identity.author ===
+                        l.coordinator?.identity.author,
+                    )?.status.label ?? "Activity unknown")}
+              </span>
             </div>
-            {coordinated ? (
-              <>
-                <div>
-                  <dt>Coordinator</dt>
-                  <dd>{l.coordinator?.identity.label ?? "Not appointed"}</dd>
-                </div>
-                <div>
-                  <dt>Readiness</dt>
-                  <dd>
-                    {l.readiness
-                      ? l.phase === "active"
-                        ? "Acknowledgment accepted by owner"
-                        : "Current plan acknowledged"
-                      : "Awaiting Coordinator acknowledgment"}
-                  </dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
-          {l.plan ? (
+          ) : null}
+          {l.plan && !startReview && !planReview ? (
             <details className="n-control-plan" open>
               <summary>
                 Shared plan ·{" "}
@@ -317,16 +360,15 @@ export function MissionControl({
               </summary>
               <p className="n-preserve">{l.plan.text}</p>
             </details>
-          ) : (
-            <p>
-              No shared plan yet.
-              {!coordinated
-                ? " A plan is optional in peer collaboration."
-                : " Tasks and additional workstreams are optional."}
-            </p>
-          )}
+          ) : null}
+          {children}
           {isOwner && !blocked && !["closed", "archived"].includes(l.phase) ? (
-            <>
+            <details className="n-secondary-section">
+              <summary>Mission settings</summary>
+              <p className="d-field-help">
+                {coordinated ? "Coordinator-led" : "Peer collaboration"} · Your
+                changes update the mission’s shared instructions.
+              </p>
               {coordinated && !l.coordinator ? (
                 <div className="n-coordinator-choice">
                   {candidates.length ? (
@@ -375,18 +417,9 @@ export function MissionControl({
                 <button
                   className="d-button"
                   disabled={busy}
-                  onClick={() =>
-                    setEdit({ kind: "instructions", snapshot: mission })
-                  }
-                >
-                  Edit instructions
-                </button>
-                <button
-                  className="d-button"
-                  disabled={busy}
                   onClick={() => setEdit({ kind: "plan", snapshot: mission })}
                 >
-                  Set shared plan
+                  {l.plan ? "Edit shared plan" : "Write a plan yourself"}
                 </button>
                 <button
                   className="d-button"
@@ -398,7 +431,7 @@ export function MissionControl({
                   Change coordination
                 </button>
               </div>
-              {edit ? (
+              {edit && edit.kind !== "instructions" ? (
                 <ControlEditor
                   key={`${edit.kind}:${edit.snapshot.lifecycle.revision}`}
                   edit={edit}
@@ -408,13 +441,8 @@ export function MissionControl({
                   save={change}
                 />
               ) : null}
-            </>
-          ) : (
-            <p className="d-field-help">
-              The mission owner controls Start, Pause and mission instructions.
-              Contributors retain authority over their own devices.
-            </p>
-          )}
+            </details>
+          ) : null}
         </div>
       ) : null}
     </section>

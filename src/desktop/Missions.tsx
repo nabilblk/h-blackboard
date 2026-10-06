@@ -807,19 +807,6 @@ function MissionWorkspace({
     } else if (action.destination === "technical") inspect("technical");
     else openControls(action.review);
   };
-  const coordinatorAction = experience.rows.find(
-    (r) =>
-      r.agent.identity.author ===
-      mission.lifecycle.coordinator?.identity.author,
-  )?.status.action;
-  const nextAction =
-    !mission.lifecycle.coordinator &&
-    mission.definition.policy?.coordination === "coordinated" &&
-    mission.owner === owner
-      ? { label: "Set up Coordinator", act: () => prepare("coordinator") }
-      : coordinatorAction
-        ? { label: coordinatorAction.label, act: () => act(coordinatorAction) }
-        : undefined;
   const localAgents = contributions.filter(
     (c) =>
       c.mission.missionId === mission.id && !!executionStates?.[c.id]?.record,
@@ -1274,7 +1261,7 @@ function MissionWorkspace({
                 {tab === "overview"
                   ? "Overview"
                   : tab === "decisions"
-                    ? `Decisions${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`
+                    ? `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`
                     : "Technical"}
               </button>
             ))}
@@ -1286,10 +1273,6 @@ function MissionWorkspace({
             <MissionActivity value={experience} mission={mission} act={act} />
           </div>
           <div hidden={inspectorTab !== "overview"}>
-            <h2 className="n-preserve">{mission.definition.objective}</h2>
-            {mission.definition.scope ? (
-              <p className="n-preserve">{mission.definition.scope}</p>
-            ) : null}
             <MissionControl
               key={startReviewRequest}
               reviewStart={startReviewRequest > 0}
@@ -1299,24 +1282,25 @@ function MissionWorkspace({
               busy={busy}
               open
               agents={workAgents}
-              nextAction={nextAction}
+              presentation={experience}
+              act={act}
               contributions={contributions}
               perform={perform}
               updated={updated}
-              prepare={() => prepare("coordinator")}
-            />
-            <MissionProgress
-              mission={mission}
-              owner={owner}
-              agents={workAgents}
-              busy={busy}
-              perform={perform}
-              updated={updated}
-              openArtifact={(id) => {
-                setArtifactId(id);
-                setPanel("artifacts");
-              }}
-            />
+            >
+              <MissionProgress
+                mission={mission}
+                owner={owner}
+                agents={workAgents}
+                busy={busy}
+                perform={perform}
+                updated={updated}
+                openArtifact={(id) => {
+                  setArtifactId(id);
+                  setPanel("artifacts");
+                }}
+              />
+            </MissionControl>
           </div>
         </ContextPanel>
       ) : null}

@@ -59,6 +59,40 @@ const project = (f, more = {}) =>
     ...more,
   });
 
+test("a new mission has one setup dependency; peer collaboration does not invent a Coordinator requirement", () => {
+  const f = fixture();
+  f.mission.lifecycle.coordinator = null;
+  f.mission.lifecycle.start_blockers = ["coordinator_missing", "plan_missing"];
+  let p = project(f, { agents: [], contributions: [] });
+  assert.equal(p.decisions.length, 1);
+  assert.equal(p.next.kind, "setup");
+  assert.match(p.next.reason, /approve planning and mission Start separately/);
+  p = project(f, { agents: [], contributions: [], viewer: "visitor" });
+  assert.equal(p.next, null);
+  assert.equal(p.waiting[0].responsible, "the mission owner");
+  f.mission.definition.policy.coordination = "peer";
+  f.mission.lifecycle.start_blockers = [];
+  p = project(f, { agents: [], contributions: [] });
+  assert.equal(p.next.kind, "start");
+  assert.equal(
+    p.decisions.some((d) => d.kind === "setup"),
+    false,
+  );
+});
+
+test("paused plan re-review is the same next step in the summary and inspector", () => {
+  const f = fixture();
+  f.mission.lifecycle.phase = "paused";
+  f.mission.lifecycle.plan = { text: "Compare the alternatives" };
+  const p = project(f, { agents: [], contributions: [] });
+  assert.equal(p.decisions.length, 1);
+  assert.equal(p.next.action.label, "Review plan to resume");
+  assert.equal(p.next.action.review, true);
+  assert.equal(project(f, { viewer: "visitor", agents: [] }).next, null);
+  f.mission.lifecycle.phase = "archived";
+  assert.equal(project(f, { agents: [] }).next, null);
+});
+
 test("planning, human Start and execution are separate without competing next actions", () => {
   const f = fixture();
   assert.equal(project(f).next.action.label, "Review planning session");

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, FolderOpen, LockKeyhole } from "lucide-react";
 import runtimes from "../../shared/runtimes.json";
 import { desktop, type Contribution } from "./bridge";
-import { Heading, Status, date, type Perform } from "./ui";
+import { Heading, date, type Perform } from "./ui";
 import { ExecutionPanel } from "./ExecutionPanel";
 
 export default function ContributionDetail({
@@ -11,12 +11,14 @@ export default function ContributionDetail({
   perform,
   back,
   revoke,
+  openMission,
 }: {
   item: Contribution;
   busy: boolean;
   perform: Perform;
   back: () => void;
   revoke: () => Promise<void>;
+  openMission?: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
   return (
@@ -26,18 +28,28 @@ export default function ContributionDetail({
         Contributions
       </button>
       <Heading
-        section="Your contribution / Local preparation"
+        section="Your contribution"
         title={item.mission.name}
         action={
-          <Status muted={item.status === "revoked"}>
-            {item.status === "revoked" ? "Revoked" : "Prepared"}
-          </Status>
+          openMission ? (
+            <button
+              className="d-button"
+              onClick={openMission}
+              disabled={!openMission}
+            >
+              Open mission
+            </button>
+          ) : undefined
         }
       >
         {item.mission.origin}
       </Heading>
-      <div className="d-two-columns">
-        <section className="d-panel">
+      <ExecutionPanel item={item} />
+      <details className="n-secondary-section">
+        <summary>
+          Local terms · {item.status === "revoked" ? "Revoked" : "Saved"}
+        </summary>
+        <section>
           <header>
             <h2>Your contribution</h2>
             <span className="d-runtime-badge">
@@ -81,8 +93,7 @@ export default function ContributionDetail({
             </div>
           </dl>
         </section>
-        <ExecutionPanel item={item} />
-      </div>
+      </details>
       <section className="d-panel d-workspace-panel">
         <header>
           <div>
@@ -113,12 +124,12 @@ export default function ContributionDetail({
             <h2>
               {confirm
                 ? "Revoke this local preparation?"
-                : "You can withdraw your consent."}
+                : "Withdraw this contribution"}
             </h2>
             <p>
               {confirm
                 ? "Your files and this record will stay on the device. Prepare a new contribution to approve different terms."
-                : "A coordinator cannot restore or expand the terms you approved here."}
+                : "Stop this contribution and keep your exported files."}
             </p>
           </div>
           <div>

@@ -342,7 +342,7 @@ export function ContributionConsent({
         >
           Stop contribution
         </button>
-      ) : (
+      ) : !review ? (
         <div className="n-action-row">
           {agreement?.status === "interrupted" &&
           agreement.expiresAt > Date.now() ? (
@@ -368,7 +368,7 @@ export function ContributionConsent({
             Review contribution
           </button>
         </div>
-      )}
+      ) : null}
       {review ? (
         <form
           onSubmit={(e) => {

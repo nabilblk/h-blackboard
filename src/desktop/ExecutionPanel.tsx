@@ -131,6 +131,12 @@ export function ExecutionPanel({
       })
     : null;
   const permission = grants.find((g) => g.id === selected) ?? grants.at(-1);
+  const authentication = state?.authentication;
+  const signInOpen =
+    !!authentication &&
+    !["complete", "cancelled"].includes(authentication.status);
+  const signInExpired =
+    !!authentication?.expiresAt && authentication.expiresAt <= Date.now();
   return (
     <section className="d-panel n-execution" aria-label="Local agent execution">
       <header>
@@ -141,7 +147,7 @@ export function ExecutionPanel({
           This Mac
         </span>
       </header>
-      <p role="status">
+      <p role="status" hidden={tab === "activity" && signInOpen}>
         {effective?.reason ||
           state?.record?.reason ||
           (supported
@@ -162,7 +168,9 @@ export function ExecutionPanel({
           </button>
         ))}
       </nav>
-      {status === "stopped" && state?.record?.interruption ? (
+      {tab === "activity" &&
+      status === "stopped" &&
+      state?.record?.interruption ? (
         <div className="d-panel" role="status">
           <h4>Direction changed · review before resuming</h4>
           <p>
@@ -179,7 +187,7 @@ export function ExecutionPanel({
           ) : null}
         </div>
       ) : null}
-      {state?.permissionProblem ? (
+      {tab === "access" && state?.permissionProblem ? (
         <p className="d-field-help">{state.permissionProblem}</p>
       ) : null}
       <section hidden={tab !== "technical"} aria-label="Environment and source">
@@ -303,8 +311,8 @@ export function ExecutionPanel({
               {!working &&
               state?.record &&
               !state.busy &&
-              (status === "login_required" ||
-                state.authentication?.status === "failed") ? (
+              !signInOpen &&
+              status === "login_required" ? (
                 <button
                   className="d-button primary"
                   disabled={busy}
@@ -330,7 +338,7 @@ export function ExecutionPanel({
             state.authentication.status !== "complete" &&
             state.authentication.status !== "cancelled" ? (
               <section className="d-panel" aria-label="Provider sign-in">
-                <h4>Sign in inside this agent’s environment</h4>
+                <h4>{runtimeLabel} sign-in</h4>
                 {state.authentication.status === "failed" ||
                 (state.authentication.expiresAt &&
                   state.authentication.expiresAt <= Date.now()) ? (
@@ -348,17 +356,21 @@ export function ExecutionPanel({
                   </button>
                 ) : null}
                 <p role="status">
-                  {state.authentication.status === "failed"
-                    ? state.authentication.failure === "expired"
-                      ? "This code expired. Get a fresh code when you are ready."
-                      : state.authentication.failure === "denied"
-                        ? "Sign-in was declined. Retry when you are ready."
-                        : "Sign-in did not complete. Retry below; your environment and files are saved."
-                    : state.authentication.status === "starting"
-                      ? "Checking your existing guest login and preparing sign-in…"
-                      : "Open the provider in your browser and complete sign-in. Keep this step open until confirmation."}
+                  {signInExpired
+                    ? "This code expired. Get a fresh code when you are ready."
+                    : state.authentication.status === "failed"
+                      ? state.authentication.failure === "expired"
+                        ? "This code expired. Get a fresh code when you are ready."
+                        : state.authentication.failure === "denied"
+                          ? "Sign-in was declined. Retry when you are ready."
+                          : "Sign-in did not complete. Retry below; your environment and files are saved."
+                      : state.authentication.status === "starting"
+                        ? "Checking your existing guest login and preparing sign-in…"
+                        : "Complete sign-in in your browser. Confirmation appears here automatically."}
                 </p>
-                {state.authentication.code ? (
+                {state.authentication.code &&
+                !signInExpired &&
+                state.authentication.status === "waiting" ? (
                   <label className="d-field">
                     Provider code
                     <input
@@ -368,13 +380,16 @@ export function ExecutionPanel({
                     />
                   </label>
                 ) : null}
-                {state.authentication.expiresAt ? (
+                {state.authentication.expiresAt && !signInExpired ? (
                   <p className="d-field-help">
-                    {state.authentication.expiresAt <= Date.now()
-                      ? "Code expired. Cancel this sign-in and retry for a new code."
-                      : `Code expires at ${new Date(state.authentication.expiresAt).toLocaleTimeString()}.`}
+                    Code expires at{" "}
+                    {new Date(
+                      state.authentication.expiresAt,
+                    ).toLocaleTimeString()}
+                    .
                   </p>
-                ) : state.authentication.status === "waiting" ? (
+                ) : state.authentication.status === "waiting" &&
+                  !signInExpired ? (
                   <p className="d-field-help">
                     The provider did not report a code expiry. If it rejects the
                     code, cancel and retry to get a fresh one.
@@ -394,7 +409,8 @@ export function ExecutionPanel({
                 ).map((url) => (
                   <button
                     key={url}
-                    className="d-button"
+                    className="d-button primary"
+                    disabled={busy}
                     onClick={() => void act(() => api.openLogin(item.id, url))}
                   >
                     Open provider sign-in
@@ -404,7 +420,7 @@ export function ExecutionPanel({
                   state.authentication.status,
                 ) ? (
                   <>
-                    {item.runtime === "claude" ? (
+                    {item.runtime === "claude" && !signInExpired ? (
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
@@ -652,7 +668,9 @@ export function ExecutionPanel({
           ) : null}
         </>
       ) : null}
-      {state?.record && status !== "preparing" ? (
+      {state?.record &&
+      status !== "preparing" &&
+      (working || status === "recovery_required" || tab === "technical") ? (
         <div className="n-action-row">
           <button
             className="d-button"

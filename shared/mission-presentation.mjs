@@ -350,6 +350,26 @@ export function missionDecisions({
         review: true,
       },
     });
+  if (
+    !unfinished &&
+    mission.lifecycle.phase === "paused" &&
+    mission.lifecycle.plan &&
+    mission.lifecycle.start_blockers.includes("coordinator_not_ready")
+  )
+    decisions.push({
+      id: `resume-plan:${mission.lifecycle.revision}`,
+      kind: "start",
+      priority: 20,
+      title: "Review the plan to resume",
+      reason:
+        "Confirm the plan, then let the Coordinator prepare a fresh readiness acknowledgment. You approve Start separately.",
+      responsible: "you",
+      action: {
+        label: "Review plan to resume",
+        destination: "controls",
+        review: true,
+      },
+    });
   if (criteria.length && criteria.every((c) => c.met && !c.stale))
     decisions.push({
       id: `results:${mission.lifecycle.revision}`,
@@ -451,7 +471,9 @@ export function missionPresentation({
       title: isOwner
         ? "Set up your Coordinator"
         : "Waiting for the mission owner",
-      reason: "The Coordinator prepares the plan before human Start.",
+      reason: isOwner
+        ? "Choose an agent to prepare the plan. You approve planning and mission Start separately."
+        : "The owner needs to appoint a Coordinator before planning can begin.",
       responsible: isOwner ? "you" : "the mission owner",
       action: {
         label: isOwner ? "Set up Coordinator" : "Inspect mission",

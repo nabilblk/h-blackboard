@@ -326,7 +326,7 @@ for a live subscription test. See `var/node/g5-runtimes/` for local evidence.
 ## Inspect without losing the conversation
 
 The mission summary links to its current decision and observed activity. Click
-its name for **Overview**, **Decisions** and **Technical**. **Members → Agents**
+its name for **Overview**, **Needs you** and **Technical**. **Members → Agents**
 opens an agent’s **Activity**, **Access & limits** or **Technical** section.
 Use Technical to inspect the exact state, freshness, environment and searchable
 operation history; export structured diagnostics through the native save dialog.

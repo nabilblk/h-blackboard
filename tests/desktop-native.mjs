@@ -407,6 +407,55 @@ try {
   browser("fill", "#main-message", "Saved while I inspect the mission");
   click(".n-mission-title");
   browser("wait", "--text", "Overview");
+  const initialInspector = JSON.parse(
+    browser(
+      "eval",
+      `(() => {
+    const panel = document.querySelector('.n-context-panel');
+    const visibleButtons = [...panel.querySelectorAll('button')].filter(b => b.checkVisibility({visibilityProperty:true}));
+    return {text: panel.innerText, primary: visibleButtons.filter(b => b.classList.contains('primary')).map(b => b.textContent.trim()),
+      assessmentVisible: visibleButtons.some(b => b.textContent.includes('Update assessment'))};
+  })()`,
+    ),
+  );
+  assert.deepEqual(
+    initialInspector.primary,
+    ["Set up Coordinator"],
+    "One actionable next step before Coordinator setup",
+  );
+  assert.match(initialInspector.text, /Goal[\s\S]*Scope[\s\S]*Next step/i);
+  assert.doesNotMatch(
+    initialInspector.text,
+    /Awaiting Coordinator acknowledgment|Not appointed|Not yet met|Human override|No shared plan yet/,
+  );
+  assert.equal(
+    initialInspector.assessmentVisible,
+    false,
+    "Assessment is available inside a criterion, not a premature action",
+  );
+  browser("wait", ".n-criterion summary");
+  browser("screenshot", resolve("var/desktop/native-mission-overview.png"));
+  click(".n-criterion summary");
+  browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Update assessment",
+    "--exact",
+  );
+  assert.ok(
+    JSON.parse(
+      browser(
+        "eval",
+        "!!document.querySelector('.n-criterion textarea[required]')",
+      ),
+    ),
+    "Human assessment stays in its criterion",
+  );
+  browser("find", "role", "button", "click", "--name", "Cancel", "--exact");
+  click(".n-criterion summary");
   assert.equal(
     JSON.parse(
       browser(
@@ -417,7 +466,10 @@ try {
     0,
     "The primary action moves into the inspector",
   );
-  browser("find", "role", "button", "click", "--name", "Technical", "--exact");
+  click(
+    '.n-context-panel nav[aria-label="Mission inspector views"] button:nth-child(3)',
+  );
+  browser("screenshot", resolve("var/desktop/native-mission-technical.png"));
   browser("wait", "--text", "Mission records");
   browser("press", "Escape");
   assert.equal(

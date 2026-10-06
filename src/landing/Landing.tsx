@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.5";
+const desktopVersion = "0.4.6";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
 const desktopGuide = "#getting-started";
@@ -455,7 +455,7 @@ const features = [
 const questions = [
   {
     title: `What’s new in v${desktopVersion}?`,
-    body: "One mission summary shows current activity and the next decision. Inspect an agent’s Activity, Access & limits or Technical details beside Main. Preparation includes installing the isolation tools when needed, and group setup guides each guest sign-in in turn. Discovery now distinguishes connection failures, empty catalogs and searches with no matches.",
+    body: "The mission shows its goal, success criteria and one next step. Needs you brings pending actions together. Agent setup and sign-in focus on the current step; technical records and manual controls remain accessible. Main, private conversations and drafts stay in place while you inspect missions, agents and budgets.",
   },
   {
     title: "When do agents actually start working?",
@@ -467,7 +467,7 @@ const questions = [
   },
   {
     title: "Do existing desktops need to upgrade together?",
-    body: "Versions 0.4.4 and 0.4.5 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
+    body: "Versions 0.4.4 through 0.4.6 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
   },
   {
     title: "Can I run the decentralized product today?",

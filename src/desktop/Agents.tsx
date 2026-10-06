@@ -138,57 +138,60 @@ export function AgentRoster({
         </button>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
-      {available.length ? (
-        <form
-          className="n-share-agent"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const label = String(
-              new FormData(event.currentTarget).get("label") ?? "",
-            ).trim();
-            if (choice)
-              void perform(async () => {
-                await node.shareAgent(mission.id, choice.id, label);
-                await refresh();
-              });
-          }}
-        >
-          <h4>Share a prepared agent</h4>
-          <label className="d-field">
-            Local contribution
-            <select
-              aria-label="Prepared agent"
-              value={choice?.id ?? ""}
-              onChange={(e) => setSharing(e.target.value)}
-              disabled={busy}
-            >
-              {available.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {runtimes[c.runtime]} ·{" "}
-                  {c.mission.role === "coordinator" ? "Coordinator" : "Agent"} ·{" "}
-                  {c.id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="d-field">
-            Agent name
-            <input
-              name="label"
-              required
-              maxLength={120}
-              placeholder="For example, accessibility-researcher"
-              disabled={busy}
-            />
-          </label>
-          <p className="d-field-help">
-            Shares this name, your display name, runtime and role with the
-            mission. Your workspace and local allowance stay on this device.
-          </p>
-          <button className="d-button primary" disabled={busy || !choice}>
-            Share agent
-          </button>
-        </form>
+      {available.length && !selected ? (
+        <details className="n-secondary-section">
+          <summary>Share a prepared agent · {available.length}</summary>
+          <form
+            className="n-share-agent"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const label = String(
+                new FormData(event.currentTarget).get("label") ?? "",
+              ).trim();
+              if (choice)
+                void perform(async () => {
+                  await node.shareAgent(mission.id, choice.id, label);
+                  await refresh();
+                });
+            }}
+          >
+            <h4>Share a prepared agent</h4>
+            <label className="d-field">
+              Local contribution
+              <select
+                aria-label="Prepared agent"
+                value={choice?.id ?? ""}
+                onChange={(e) => setSharing(e.target.value)}
+                disabled={busy}
+              >
+                {available.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {runtimes[c.runtime]} ·{" "}
+                    {c.mission.role === "coordinator" ? "Coordinator" : "Agent"}{" "}
+                    · {c.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="d-field">
+              Agent name
+              <input
+                name="label"
+                required
+                maxLength={120}
+                placeholder="For example, accessibility-researcher"
+                disabled={busy}
+              />
+            </label>
+            <p className="d-field-help">
+              Shares this name, your display name, runtime and role with the
+              mission. Your workspace and local allowance stay on this device.
+            </p>
+            <button className="d-button primary" disabled={busy || !choice}>
+              Share agent
+            </button>
+          </form>
+        </details>
       ) : null}
       {agents.length && !selected ? (
         <label className="d-field n-agent-filter">
@@ -281,13 +284,17 @@ export function AgentRoster({
                         </p>
                       </section>
                     )}
-                    <h4>Direction · Main</h4>
-                    <p className="n-preserve">
-                      {a.direction?.text ??
-                        (a.status === "waiting_for_direction"
-                          ? "The Coordinator or mission owner must give this late arrival a direction."
-                          : "No active direction.")}
-                    </p>
+                    {a.direction || a.status === "waiting_for_direction" ? (
+                      <>
+                        <h4>Current direction</h4>
+                        <p className="n-preserve">
+                          {a.direction?.text ??
+                            (a.status === "waiting_for_direction"
+                              ? "The Coordinator or mission owner must give this late arrival a direction."
+                              : "")}
+                        </p>
+                      </>
+                    ) : null}
                     {isOwner && !c ? (
                       <ContributionConsent
                         mission={mission}
@@ -446,7 +453,7 @@ export function AgentRoster({
                             })
                           }
                         >
-                          <FolderOpen size={15} /> Open workspace
+                          <FolderOpen size={15} /> Open exported files
                         </button>
                         <p className="d-field-help">
                           Local consent:{" "}

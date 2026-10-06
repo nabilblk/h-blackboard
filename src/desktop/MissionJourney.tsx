@@ -44,7 +44,7 @@ export function MissionJourney({
           }
         >
           {value.decisions.length > 1
-            ? `Review ${value.decisions.length} decisions`
+            ? `Needs you · ${value.decisions.length}`
             : value.next.action.label}
         </button>
       ) : !inspectorOpen &&
@@ -70,7 +70,7 @@ export function MissionJourney({
           }
         >
           {value.decisions.length
-            ? `${value.decisions.length} ${value.decisions.length === 1 ? "decision" : "decisions"}`
+            ? `Needs you · ${value.decisions.length}`
             : "Inspect status"}
         </button>
       )}
@@ -103,7 +103,9 @@ export function MissionDecisions({ value, act }: Props) {
       {value.decisions.length ? (
         value.decisions.map(row)
       ) : (
-        <p className="d-field-help">Nothing needs your decision.</p>
+        <p className="d-field-help">
+          You’re up to date. Nothing needs your attention.
+        </p>
       )}
       {value.waiting.length ? (
         <>
@@ -165,6 +167,26 @@ export function MissionActivity({
       ))}
       <h3>Mission records</h3>
       <dl className="d-facts">
+        <div>
+          <dt>Coordination</dt>
+          <dd>
+            {mission.definition.policy?.coordination === "coordinated"
+              ? "Coordinator-led"
+              : "Peer collaboration"}
+          </dd>
+        </div>
+        {mission.lifecycle.coordinator ? (
+          <div>
+            <dt>Plan readiness</dt>
+            <dd>
+              {mission.lifecycle.readiness
+                ? "Current plan acknowledged"
+                : mission.lifecycle.plan
+                  ? "Current plan not yet acknowledged"
+                  : "Planning not complete"}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>Control revision</dt>
           <dd className="n-key">{mission.lifecycle.revision}</dd>

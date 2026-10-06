@@ -221,6 +221,7 @@ async function rosterProof(a, b) {
     "!!document.querySelector('.n-share-agent')",
     "Prepared contribution missing",
   );
+  b.click(".n-agents > details > summary");
   b.browser(
     "fill",
     '.n-share-agent input[name="label"]',
@@ -1022,7 +1023,8 @@ async function lifecycleProof(a, b, c) {
     b.evaluate("!!document.querySelector('.n-control-bar button')"),
     false,
   );
-  a.button("Set shared plan");
+  a.click(".n-control-details > details.n-secondary-section > summary");
+  a.button("Write a plan yourself");
   a.browser(
     "fill",
     "textarea[name=plan]",
@@ -1093,7 +1095,7 @@ async function lifecycleProof(a, b, c) {
   );
   if (!a.evaluate("!!document.querySelector('.n-control')"))
     a.click(".n-mission-title");
-  a.button("Edit instructions");
+  a.button("Edit mission");
   a.browser(
     "fill",
     "textarea[name=scope]",

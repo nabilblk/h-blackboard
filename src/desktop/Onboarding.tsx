@@ -159,11 +159,193 @@ export function AgentSetup({
   }, [authenticating?.id, signedIn.map((c) => c.id).join(":")]);
   const current =
     authenticating ??
-    local.find((c) => c.id === selected) ??
-    local.find((c) => !signedIn.includes(c)) ??
-    (local.length === 1 ? local[0] : undefined);
+    (selected === ""
+      ? undefined
+      : (local.find((c) => c.id === selected) ??
+        local.find((c) => !signedIn.includes(c)) ??
+        (local.length === 1 ? local[0] : undefined)));
   const pending = jobs.filter(
     (j) => !["complete", "cancelled"].includes(j.status),
+  );
+  const setupForm = (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void act(async () => {
+          const request: SetupRequest = {
+            id: requestId,
+            mission: mission.id,
+            terms,
+            role,
+            runtime: draft.runtime,
+            label: draft.name.trim(),
+            count: role === "coordinator" ? 1 : draft.count,
+            limits:
+              draft.mode === "unlimited"
+                ? { mode: "unlimited", concurrency: 1 }
+                : {
+                    mode: "bounded",
+                    concurrency: 1,
+                    turns: draft.turns,
+                    minutes: draft.minutes,
+                  },
+            workspaceChoiceId: workspace?.id ?? null,
+          };
+          if (!device?.available)
+            await window.blackboardSetup.installProvider();
+          await window.blackboardSetup.setup(request);
+          clear();
+          setRequestId(crypto.randomUUID());
+        });
+      }}
+    >
+      <fieldset
+        className="n-fields"
+        disabled={busy || pending.some((j) => j.status === "running")}
+      >
+        <label className="d-field">
+          Agent name
+          <input
+            required
+            maxLength={90}
+            value={draft.name}
+            onChange={(e) => save({ ...draft, name: e.target.value })}
+          />
+        </label>
+        <label className="d-field">
+          Runtime
+          <select
+            value={draft.runtime}
+            onChange={(e) =>
+              save({ ...draft, runtime: e.target.value as Runtime })
+            }
+          >
+            <option value="grok">Grok Build</option>
+            <option value="claude">Claude Code</option>
+            <option value="codex">Codex</option>
+          </select>
+        </label>
+        {role === "agent" ? (
+          <label className="d-field">
+            Number of agents
+            <input
+              type="number"
+              min={1}
+              max={32}
+              required
+              value={draft.count}
+              onChange={(e) =>
+                save({ ...draft, count: Number(e.target.value) })
+              }
+            />
+          </label>
+        ) : null}
+        <details>
+          <summary>
+            Local limits ·{" "}
+            {draft.mode === "unlimited"
+              ? "Unlimited"
+              : `${draft.turns} turns · ${draft.minutes} minutes`}
+          </summary>
+          <label className="d-field">
+            Local allowance per agent
+            <select
+              value={draft.mode}
+              onChange={(e) =>
+                save({
+                  ...draft,
+                  mode: e.target.value as AgentDraft["mode"],
+                })
+              }
+            >
+              <option value="bounded">Set turn and time limits</option>
+              <option value="unlimited">Unlimited</option>
+            </select>
+          </label>
+          {draft.mode === "bounded" ? (
+            <div className="d-limit-fields">
+              <label className="d-field">
+                Runtime turns
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={10000}
+                  value={draft.turns}
+                  onChange={(e) =>
+                    save({ ...draft, turns: Number(e.target.value) })
+                  }
+                />
+              </label>
+              <label className="d-field">
+                Minutes from first run
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={10080}
+                  value={draft.minutes}
+                  onChange={(e) =>
+                    save({ ...draft, minutes: Number(e.target.value) })
+                  }
+                />
+              </label>
+            </div>
+          ) : (
+            <p>
+              No total local allowance. You still approve finite execution
+              windows, either together or one session at a time. Provider
+              subscription limits apply.
+            </p>
+          )}
+        </details>
+        <p>
+          Separate isolated workspaces. Sign in with your subscription for each
+          agent; your Mac’s credentials and folders stay private.
+        </p>
+        <details>
+          <summary>Export location</summary>
+          <p className="n-key">
+            {workspace?.path ??
+              "Documents / Harakiri Exports · a separate folder for each agent"}
+          </p>
+          <p>Files reach this Mac only when you explicitly export them.</p>
+          <button
+            type="button"
+            className="d-button"
+            onClick={() =>
+              void act(async () => {
+                const selected = await desktop.chooseWorkspace();
+                if (selected) setWorkspace(selected);
+              })
+            }
+          >
+            Change export location…
+          </button>
+        </details>
+        <label className="n-check">
+          <input type="checkbox" required />I approve these local limits,
+          downloading the verified environment, and sharing these agents’ names
+          and runtimes with this mission. Running requires a separate approval.
+        </label>
+        {terms !== mission.lifecycle.terms_revision ? (
+          <p role="alert">
+            Mission instructions changed. Close and reopen this panel to review
+            the current terms.
+          </p>
+        ) : null}
+        <button
+          className="d-button primary"
+          disabled={!available || terms !== mission.lifecycle.terms_revision}
+        >
+          {busy
+            ? "Preparing…"
+            : role === "coordinator"
+              ? "Prepare Coordinator"
+              : "Prepare agents"}
+        </button>
+      </fieldset>
+    </form>
   );
   return (
     <section className="n-guided-setup" aria-label="Guided agent setup">
@@ -189,7 +371,6 @@ export function AgentSetup({
           </button>
         </section>
       ) : null}
-      <ProviderSetup report={setDevice} integrated />
       {error || draftError ? (
         <p role="alert" className="d-error">
           {error || draftError}
@@ -243,194 +424,7 @@ export function AgentSetup({
           </div>
         </section>
       ))}
-      <details open={!local.length && !pending.length}>
-        <summary>
-          {local.length
-            ? "Add another contribution"
-            : "Review this contribution"}
-        </summary>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(async () => {
-              const request: SetupRequest = {
-                id: requestId,
-                mission: mission.id,
-                terms,
-                role,
-                runtime: draft.runtime,
-                label: draft.name.trim(),
-                count: role === "coordinator" ? 1 : draft.count,
-                limits:
-                  draft.mode === "unlimited"
-                    ? { mode: "unlimited", concurrency: 1 }
-                    : {
-                        mode: "bounded",
-                        concurrency: 1,
-                        turns: draft.turns,
-                        minutes: draft.minutes,
-                      },
-                workspaceChoiceId: workspace?.id ?? null,
-              };
-              if (!device?.available)
-                await window.blackboardSetup.installProvider();
-              await window.blackboardSetup.setup(request);
-              clear();
-              setRequestId(crypto.randomUUID());
-            });
-          }}
-        >
-          <fieldset
-            className="n-fields"
-            disabled={busy || pending.some((j) => j.status === "running")}
-          >
-            <label className="d-field">
-              Agent name
-              <input
-                required
-                maxLength={90}
-                value={draft.name}
-                onChange={(e) => save({ ...draft, name: e.target.value })}
-              />
-            </label>
-            <label className="d-field">
-              Runtime
-              <select
-                value={draft.runtime}
-                onChange={(e) =>
-                  save({ ...draft, runtime: e.target.value as Runtime })
-                }
-              >
-                <option value="grok">Grok Build</option>
-                <option value="claude">Claude Code</option>
-                <option value="codex">Codex</option>
-              </select>
-            </label>
-            {role === "agent" ? (
-              <label className="d-field">
-                Number of agents
-                <input
-                  type="number"
-                  min={1}
-                  max={32}
-                  required
-                  value={draft.count}
-                  onChange={(e) =>
-                    save({ ...draft, count: Number(e.target.value) })
-                  }
-                />
-              </label>
-            ) : null}
-            <details>
-              <summary>
-                Local limits ·{" "}
-                {draft.mode === "unlimited"
-                  ? "Unlimited"
-                  : `${draft.turns} turns · ${draft.minutes} minutes`}
-              </summary>
-              <label className="d-field">
-                Local allowance per agent
-                <select
-                  value={draft.mode}
-                  onChange={(e) =>
-                    save({
-                      ...draft,
-                      mode: e.target.value as AgentDraft["mode"],
-                    })
-                  }
-                >
-                  <option value="bounded">Set turn and time limits</option>
-                  <option value="unlimited">Unlimited</option>
-                </select>
-              </label>
-              {draft.mode === "bounded" ? (
-                <div className="d-limit-fields">
-                  <label className="d-field">
-                    Runtime turns
-                    <input
-                      type="number"
-                      required
-                      min={1}
-                      max={10000}
-                      value={draft.turns}
-                      onChange={(e) =>
-                        save({ ...draft, turns: Number(e.target.value) })
-                      }
-                    />
-                  </label>
-                  <label className="d-field">
-                    Minutes from first run
-                    <input
-                      type="number"
-                      required
-                      min={1}
-                      max={10080}
-                      value={draft.minutes}
-                      onChange={(e) =>
-                        save({ ...draft, minutes: Number(e.target.value) })
-                      }
-                    />
-                  </label>
-                </div>
-              ) : (
-                <p>
-                  No total local allowance. You still approve finite execution
-                  windows, either together or one session at a time. Provider
-                  subscription limits apply.
-                </p>
-              )}
-            </details>
-            <p>
-              Separate isolated workspaces. Sign in with your subscription for
-              each agent; your Mac’s credentials and folders stay private.
-            </p>
-            <details>
-              <summary>Export location</summary>
-              <p className="n-key">
-                {workspace?.path ??
-                  "Documents / Harakiri Exports · a separate folder for each agent"}
-              </p>
-              <p>Files reach this Mac only when you explicitly export them.</p>
-              <button
-                type="button"
-                className="d-button"
-                onClick={() =>
-                  void act(async () => {
-                    const selected = await desktop.chooseWorkspace();
-                    if (selected) setWorkspace(selected);
-                  })
-                }
-              >
-                Change export location…
-              </button>
-            </details>
-            <label className="n-check">
-              <input type="checkbox" required />I approve these local limits,
-              downloading the verified environment, and sharing these agents’
-              names and runtimes with this mission. Running requires a separate
-              approval.
-            </label>
-            {terms !== mission.lifecycle.terms_revision ? (
-              <p role="alert">
-                Mission instructions changed. Close and reopen this panel to
-                review the current terms.
-              </p>
-            ) : null}
-            <button
-              className="d-button primary"
-              disabled={
-                !available || terms !== mission.lifecycle.terms_revision
-              }
-            >
-              {busy
-                ? "Preparing…"
-                : role === "coordinator"
-                  ? "Prepare Coordinator"
-                  : "Prepare agents"}
-            </button>
-          </fieldset>
-        </form>
-      </details>
+      {!local.length && !pending.length ? setupForm : null}
       {local.length ? (
         <section aria-label="Your prepared agents">
           <h3>
@@ -464,10 +458,10 @@ export function AgentSetup({
                   className="d-button"
                   aria-expanded={current?.id === c.id}
                   disabled={!!authenticating && authenticating.id !== c.id}
-                  onClick={() => setSelected(selected === c.id ? null : c.id)}
+                  onClick={() => setSelected(current?.id === c.id ? "" : c.id)}
                 >
                   {current?.id === c.id
-                    ? "Selected"
+                    ? "Hide details"
                     : signedIn.includes(c)
                       ? "Inspect"
                       : "Continue"}
@@ -515,6 +509,13 @@ export function AgentSetup({
           ))}
         </section>
       ) : null}
+      {local.length || pending.length ? (
+        <details className="n-secondary-section">
+          <summary>Add another agent</summary>
+          {setupForm}
+        </details>
+      ) : null}
+      <ProviderSetup report={setDevice} integrated />
     </section>
   );
 }

@@ -1,4 +1,5 @@
-import type { MissionView } from "./node-contract";
+import { Button } from "../ui/Button";
+import type { MissionView } from "../application/contracts/node";
 import type {
   Decision,
   MissionPresentation,
@@ -35,8 +36,8 @@ export function MissionJourney({
         <span role="status">{value.summary}</span>
       </button>
       {!inspectorOpen && value.next ? (
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
           onClick={() =>
             value.decisions.length > 1
               ? inspect("decisions")
@@ -46,12 +47,12 @@ export function MissionJourney({
           {value.decisions.length > 1
             ? `Needs you · ${value.decisions.length}`
             : value.next.action.label}
-        </button>
+        </Button>
       ) : !inspectorOpen &&
         value.acceptedResult &&
         ["closed", "archived"].includes(value.phase) ? (
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
           onClick={() =>
             act({
               label: "Open accepted result",
@@ -61,10 +62,9 @@ export function MissionJourney({
           }
         >
           Open accepted result
-        </button>
+        </Button>
       ) : (
-        <button
-          className="d-button"
+        <Button
           onClick={() =>
             inspect(value.decisions.length ? "decisions" : "technical")
           }
@@ -72,7 +72,7 @@ export function MissionJourney({
           {value.decisions.length
             ? `Needs you · ${value.decisions.length}`
             : "Inspect status"}
-        </button>
+        </Button>
       )}
     </section>
   );
@@ -90,9 +90,7 @@ export function MissionDecisions({ value, act }: Props) {
         <p>{d.reason}</p>
         <span className="d-field-help">With {d.responsible}</span>
       </div>
-      <button className="d-button" onClick={() => act(d.action)}>
-        {d.action.label}
-      </button>
+      <Button onClick={() => act(d.action)}>{d.action.label}</Button>
     </div>
   );
   return (

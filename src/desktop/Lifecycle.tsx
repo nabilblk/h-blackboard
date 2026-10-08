@@ -1,10 +1,19 @@
+import { IconButton } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState, type ReactNode } from "react";
 import { Pause, Plus, X } from "lucide-react";
-import { node, type Contribution } from "./bridge";
-import type { Coordination, MissionView, AgentView } from "./node-contract";
+import { type Contribution } from "../application/contracts/workspace";
+import type {
+  Coordination,
+  MissionView,
+  AgentView,
+} from "../application/contracts/node";
 import { Status, type Perform } from "./ui";
 import { StartMissionReview } from "./ContributionApproval";
-import type { StartJob } from "./onboarding-types";
+import type { StartJob } from "../application/contracts/setup";
 import type {
   MissionPresentation,
   PresentationAction,
@@ -76,6 +85,7 @@ export function MissionControl({
   reviewStart = false,
   children,
 }: Props) {
+  const { setup, missions: node } = useApplication();
   const { lifecycle: l, definition } = mission;
   const [edit, setEdit] = useState<Edit | null>(null);
   const [choice, setChoice] = useState("");
@@ -90,7 +100,7 @@ export function MissionControl({
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
-    void window.blackboardSetup
+    void setup
       .startState(mission.id)
       .then((jobs) => {
         const pending = jobs.find(
@@ -105,7 +115,7 @@ export function MissionControl({
     return () => {
       cancelled = true;
     };
-  }, [mission.id, isOwner, reviewStart]);
+  }, [mission.id, isOwner, reviewStart, setup]);
   const [planReview, setPlanReview] = useState<string | null>(
     reviewStart &&
       l.phase === "paused" &&
@@ -209,8 +219,8 @@ export function MissionControl({
               <p role="status">{reason}</p>
             </div>
             {!startReview && !planReview && next ? (
-              <button
-                className="d-button primary"
+              <Button
+                variant="primary"
                 disabled={busy || blocked}
                 onClick={() => {
                   if (
@@ -231,11 +241,10 @@ export function MissionControl({
                 }}
               >
                 {next.action.label}
-              </button>
+              </Button>
             ) : null}
             {editable && l.phase === "active" ? (
-              <button
-                className="d-button"
+              <Button
                 disabled={busy || blocked}
                 onClick={() =>
                   change(() =>
@@ -249,7 +258,7 @@ export function MissionControl({
               >
                 <Pause size={15} />
                 Pause mission
-              </button>
+              </Button>
             ) : null}
           </div>
           {planReview && l.phase === "paused" && l.plan ? (
@@ -274,14 +283,9 @@ export function MissionControl({
                 </p>
               ) : null}
               <div className="n-action-row">
-                <button
-                  className="d-button"
-                  onClick={() => setPlanReview(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="d-button primary"
+                <Button onClick={() => setPlanReview(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
                   disabled={busy || blocked || planReview !== l.revision}
                   onClick={() =>
                     change(() =>
@@ -295,19 +299,18 @@ export function MissionControl({
                   }
                 >
                   Confirm plan and prepare
-                </button>
+                </Button>
               </div>
             </section>
           ) : null}
           {pendingStart && !startReview && next?.kind !== "start" ? (
             <p role="status">
               An earlier Start review has an unfinished step.{" "}
-              <button
-                className="d-button"
+              <Button
                 onClick={() => setStartReview(pendingStart.request.revision)}
               >
                 Continue saved Start review
-              </button>
+              </Button>
             </p>
           ) : null}
           {startReview ? (
@@ -351,20 +354,27 @@ export function MissionControl({
             </div>
           ) : null}
           {l.plan && !startReview && !planReview ? (
-            <details className="n-control-plan" open>
-              <summary>
-                Shared plan ·{" "}
-                {l.plan.author === mission.owner
-                  ? "set by mission owner"
-                  : "Coordinator"}
-              </summary>
+            <Disclosure
+              className="n-control-plan"
+              open
+              title={
+                <>
+                  Shared plan ·{" "}
+                  {l.plan.author === mission.owner
+                    ? "set by mission owner"
+                    : "Coordinator"}
+                </>
+              }
+            >
               <p className="n-preserve">{l.plan.text}</p>
-            </details>
+            </Disclosure>
           ) : null}
           {children}
           {isOwner && !blocked && !["closed", "archived"].includes(l.phase) ? (
-            <details className="n-secondary-section">
-              <summary>Mission settings</summary>
+            <Disclosure
+              className="n-secondary-section"
+              title={<>Mission settings</>}
+            >
               <p className="d-field-help">
                 {coordinated ? "Coordinator-led" : "Peer collaboration"} · Your
                 changes update the mission’s shared instructions.
@@ -373,7 +383,7 @@ export function MissionControl({
                 <div className="n-coordinator-choice">
                   {candidates.length ? (
                     <>
-                      <label className="d-field">
+                      <Field>
                         Prepared Coordinator
                         <select
                           value={selected}
@@ -393,9 +403,8 @@ export function MissionControl({
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <button
-                        className="d-button"
+                      </Field>
+                      <Button
                         disabled={busy || !selected}
                         onClick={() =>
                           change(() =>
@@ -408,28 +417,26 @@ export function MissionControl({
                         }
                       >
                         Appoint Coordinator
-                      </button>
+                      </Button>
                     </>
                   ) : null}
                 </div>
               ) : null}
               <div className="n-action-row">
-                <button
-                  className="d-button"
+                <Button
                   disabled={busy}
                   onClick={() => setEdit({ kind: "plan", snapshot: mission })}
                 >
                   {l.plan ? "Edit shared plan" : "Write a plan yourself"}
-                </button>
-                <button
-                  className="d-button"
+                </Button>
+                <Button
                   disabled={busy}
                   onClick={() =>
                     setEdit({ kind: "coordination", snapshot: mission })
                   }
                 >
                   Change coordination
-                </button>
+                </Button>
               </div>
               {edit && edit.kind !== "instructions" ? (
                 <ControlEditor
@@ -441,7 +448,7 @@ export function MissionControl({
                   save={change}
                 />
               ) : null}
-            </details>
+            </Disclosure>
           ) : null}
         </div>
       ) : null}
@@ -462,6 +469,7 @@ function ControlEditor({
   cancel: () => void;
   save: (operation: () => Promise<unknown>) => void;
 }) {
+  const { missions: node } = useApplication();
   const { snapshot: m, kind } = edit;
   const [criteria, setCriteria] = useState(m.definition.criteria);
   const [criterion, setCriterion] = useState("");
@@ -510,14 +518,13 @@ function ControlEditor({
               ? "Set the shared plan"
               : "Coordination mode"}
         </h2>
-        <button
-          className="d-icon"
+        <IconButton
           type="button"
           onClick={cancel}
           aria-label="Close mission editor"
         >
           <X size={17} />
-        </button>
+        </IconButton>
       </header>
       {changed ? (
         <p role="alert">
@@ -528,7 +535,7 @@ function ControlEditor({
       <fieldset className="n-fields" disabled={busy || changed}>
         {kind === "instructions" ? (
           <>
-            <label className="d-field">
+            <Field>
               Channel name
               <input
                 name="name"
@@ -536,8 +543,8 @@ function ControlEditor({
                 maxLength={120}
                 defaultValue={m.definition.name}
               />
-            </label>
-            <label className="d-field">
+            </Field>
+            <Field>
               Objective
               <textarea
                 name="objective"
@@ -546,8 +553,8 @@ function ControlEditor({
                 rows={3}
                 defaultValue={m.definition.objective}
               />
-            </label>
-            <label className="d-field">
+            </Field>
+            <Field>
               Scope
               <textarea
                 name="scope"
@@ -555,7 +562,7 @@ function ControlEditor({
                 rows={3}
                 defaultValue={m.definition.scope}
               />
-            </label>
+            </Field>
             <div className="d-field">
               <span>Completion criteria · {criteria.length}</span>
               <ul className="n-edit-criteria">
@@ -572,8 +579,7 @@ function ControlEditor({
                         )
                       }
                     />
-                    <button
-                      className="d-icon"
+                    <IconButton
                       type="button"
                       aria-label={`Remove criterion ${i + 1}`}
                       onClick={() =>
@@ -583,7 +589,7 @@ function ControlEditor({
                       }
                     >
                       <X size={16} />
-                    </button>
+                    </IconButton>
                   </li>
                 ))}
               </ul>
@@ -602,20 +608,19 @@ function ControlEditor({
                       }
                     }}
                   />
-                  <button
-                    className="d-button"
+                  <Button
                     type="button"
                     onClick={add}
                     disabled={!criterion.trim()}
                   >
                     Add
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
           </>
         ) : kind === "plan" ? (
-          <label className="d-field">
+          <Field>
             Shared plan
             <textarea
               name="plan"
@@ -628,9 +633,9 @@ function ControlEditor({
               Recorded as your human direction. In coordinator-led mode, the
               Coordinator must acknowledge it before Start.
             </span>
-          </label>
+          </Field>
         ) : (
-          <label className="d-field">
+          <Field>
             Mode
             <select
               name="mode"
@@ -644,7 +649,7 @@ function ControlEditor({
               Selecting Coordinator-led keeps the mission waiting for a new
               appointment.
             </span>
-          </label>
+          </Field>
         )}
         <p className="d-field-help">
           Saving returns this mission to Preparing and clears earlier readiness.
@@ -653,16 +658,16 @@ function ControlEditor({
             : null}
         </p>
         <div className="n-action-row">
-          <button className="d-button" type="button" onClick={cancel}>
+          <Button type="button" onClick={cancel}>
             Cancel
-          </button>
-          <button className="d-button primary" type="submit">
+          </Button>
+          <Button variant="primary" type="submit">
             {kind === "instructions"
               ? "Save instructions"
               : kind === "plan"
                 ? "Save shared plan"
                 : "Apply coordination mode"}
-          </button>
+          </Button>
         </div>
       </fieldset>
     </form>

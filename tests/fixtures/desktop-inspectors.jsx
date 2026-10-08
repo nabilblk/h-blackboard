@@ -1,3 +1,4 @@
+import { ApplicationProvider } from "../../src/desktop/ApplicationProvider";
 // Renderer-only fixtures. No database, native authority, provider or credentials.
 import { createRoot } from "react-dom/client";
 import "@fontsource/ibm-plex-sans/latin-400.css";
@@ -93,9 +94,9 @@ const execution = {
 };
 const denied = () =>
   Promise.reject(new Error("Renderer fixture cannot execute native actions"));
-Object.assign(window, {
-  contributor: {},
-  blackboardNode: {
+const client = {
+  workspace: {},
+  missions: {
     state: async () => ({ identity: { owner: "owner" }, missions: [mission] }),
     governance: async () => ({
       criteria: [],
@@ -145,35 +146,37 @@ Object.assign(window, {
     }),
     artifacts: async () => ({ items: [], after: null }),
   },
-  blackboardExecution: {
+  execution: {
     state: async () => ({ ...execution, observedAt: Date.now() }),
     signIn: denied,
     stop: denied,
   },
-  blackboardSetup: {
+  setup: {
     agreements: async () => [],
     startState: async () => [],
     completionState: async () => [],
   },
-});
+};
 const { ExecutionPanel } = await import("../../src/desktop/ExecutionPanel");
 const { BudgetPanel } = await import("../../src/desktop/BudgetPanel");
 createRoot(document.getElementById("root")).render(
-  <main style={{ width: "min(100%, 500px)", margin: "24px auto" }}>
-    <p className="d-label">Isolated UI fixture · {scene}</p>
-    <div className="n-context-body">
-      {scene.startsWith("budget") ? (
-        <BudgetPanel
-          mission={mission}
-          owner="owner"
-          agents={[]}
-          contributions={[]}
-          busy={false}
-          perform={denied}
-        />
-      ) : (
-        <ExecutionPanel item={item} mission={mission} />
-      )}
-    </div>
-  </main>,
+  <ApplicationProvider client={client}>
+    <main style={{ width: "min(100%, 500px)", margin: "24px auto" }}>
+      <p className="d-label">Isolated UI fixture · {scene}</p>
+      <div className="n-context-body">
+        {scene.startsWith("budget") ? (
+          <BudgetPanel
+            mission={mission}
+            owner="owner"
+            agents={[]}
+            contributions={[]}
+            busy={false}
+            perform={denied}
+          />
+        ) : (
+          <ExecutionPanel item={item} mission={mission} />
+        )}
+      </div>
+    </main>
+  </ApplicationProvider>,
 );

@@ -1,14 +1,25 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 import {
   discoveryPresentation,
   discoveryOutcomes,
 } from "../../shared/discovery-presentation.mjs";
 import { Compass, Copy, Radio, ShieldCheck } from "lucide-react";
-import { node, type DiscoveryState, type NodeState } from "./bridge";
-import type { InvitationReview, MissionView } from "./node-contract";
+import {
+  type DiscoveryState,
+  type NodeState,
+} from "../application/contracts/workspace";
+import type {
+  InvitationReview,
+  MissionView,
+} from "../application/contracts/node";
 import { Heading, Status, date, type Perform } from "./ui";
 
 function useDiscovery(ready: boolean) {
+  const { missions: node } = useApplication();
   const [state, setState] = useState<DiscoveryState | null>(null);
   const [error, setError] = useState("");
   const refresh = async () => setState(await node.discoveryState());
@@ -36,7 +47,7 @@ function useDiscovery(ready: boolean) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [ready]);
+  }, [ready, node]);
   return { state, error, refresh };
 }
 
@@ -53,6 +64,7 @@ export function DiscoverySettings({
   updated: () => Promise<void>;
   allowLan: boolean;
 }) {
+  const { missions: node } = useApplication();
   const [enabled, setEnabled] = useState(value.config.enabled);
   const [lan, setLan] = useState(value.config.lan);
   const [bootstrap, setBootstrap] = useState(value.config.bootstrap.join("\n"));
@@ -124,7 +136,7 @@ export function DiscoverySettings({
             LAN discovery broadcasts your node identity and connection addresses
             to nearby devices. Enable local IP routes in Peer network first.
           </p>
-          <label className="d-field">
+          <Field>
             Community peer addresses
             <textarea
               value={bootstrap}
@@ -138,28 +150,29 @@ export function DiscoverySettings({
               peer can forward listings from others. Addresses expire; ask for a
               fresh one if a route no longer works.
             </span>
-          </label>
+          </Field>
           <div className="n-action-row">
-            <button className="d-button primary" type="submit">
+            <Button variant="primary" type="submit">
               Save discovery settings
-            </button>
+            </Button>
           </div>
         </fieldset>
       </form>
       {value.peer_ticket ? (
-        <details className="n-secondary-section">
-          <summary>Share this Mac’s discovery address</summary>
+        <Disclosure
+          className="n-secondary-section"
+          title={<>Share this Mac’s discovery address</>}
+        >
           <div className="n-invite-copy">
-            <label className="d-field">
+            <Field>
               This node’s community address
               <input
                 value={value.peer_ticket}
                 readOnly
                 onFocus={(e) => e.target.select()}
               />
-            </label>
-            <button
-              className="d-button"
+            </Field>
+            <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -170,22 +183,22 @@ export function DiscoverySettings({
             >
               <Copy size={15} />
               {copied ? "Copied" : "Copy peer address"}
-            </button>
+            </Button>
             <p className="d-field-help">
               This shares a discovery route, not mission membership. You can
               replace any peer or relay.
             </p>
           </div>
-        </details>
+        </Disclosure>
       ) : null}
       {value.config.blocked.length ? (
-        <details>
-          <summary>Hidden publishers · {value.config.blocked.length}</summary>
+        <Disclosure
+          title={<>Hidden publishers · {value.config.blocked.length}</>}
+        >
           {value.config.blocked.map((key) => (
             <div className="n-peer-row" key={key}>
               <code className="n-key">{key}</code>
-              <button
-                className="d-button"
+              <Button
                 disabled={busy}
                 onClick={() =>
                   void perform(async () => {
@@ -198,10 +211,10 @@ export function DiscoverySettings({
                 }
               >
                 Show again
-              </button>
+              </Button>
             </div>
           ))}
-        </details>
+        </Disclosure>
       ) : null}
     </section>
   );
@@ -222,6 +235,7 @@ export function Discover({
   network: () => void;
   review: (reference: string, value: InvitationReview) => void;
 }) {
+  const { missions: node } = useApplication();
   const discovery = useDiscovery(state?.status === "ready");
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState(false);
@@ -244,13 +258,12 @@ export function Discover({
         section="Your space / Discover"
         title="Find a mission to join."
         action={
-          <button
-            className="d-button"
+          <Button
             onClick={() => setSettings((v) => !v)}
             aria-expanded={settings}
           >
             Discovery settings
-          </button>
+          </Button>
         }
       >
         Find a shared mission and request to join.
@@ -262,19 +275,18 @@ export function Discover({
         <h2 role="status">{presentation.title}</h2>
         <p>{presentation.detail}</p>
         {presentation.action && !settings ? (
-          <button className="d-button" onClick={fix}>
+          <Button onClick={fix}>
             {presentation.action === "network"
               ? "Connect to peers"
               : presentation.action === "clear"
                 ? "Clear search"
                 : "Configure discovery"}
-          </button>
+          </Button>
         ) : null}
         {presentation.peers.length ? (
-          <details>
-            <summary>
-              Discovery connections · {presentation.peers.length}
-            </summary>
+          <Disclosure
+            title={<>Discovery connections · {presentation.peers.length}</>}
+          >
             {presentation.peers.map((peer) => (
               <div className="n-peer-row" key={peer.name}>
                 <div>
@@ -296,7 +308,7 @@ export function Discover({
                 </div>
               </div>
             ))}
-          </details>
+          </Disclosure>
         ) : null}
       </section>
       {discovery.error ? <p role="alert">{discovery.error}</p> : null}
@@ -312,7 +324,7 @@ export function Discover({
           }}
         />
       ) : null}
-      <label className="d-field">
+      <Field>
         Find a public mission
         <input
           type="search"
@@ -320,7 +332,7 @@ export function Discover({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search received titles, briefs and capabilities"
         />
-      </label>
+      </Field>
       <section className="n-discovery-list" aria-label="Discovered missions">
         {visible.map((item) => (
           <article
@@ -343,24 +355,23 @@ export function Discover({
                 Looking for · {item.advertisement.capabilities.join(" / ")}
               </p>
             ) : null}
-            <details>
-              <summary>
-                Signed publisher · {item.publisher.slice(0, 12)}
-              </summary>
+            <Disclosure
+              title={<>Signed publisher · {item.publisher.slice(0, 12)}</>}
+            >
               <code className="n-key">{item.publisher}</code>
               <p className="d-field-help">
                 The signature identifies this key. Live review checks its
                 authority over the mission; it does not verify a person’s
                 identity.
               </p>
-            </details>
+            </Disclosure>
             <p className="d-field-help">
               Listing v{item.advertisement.revision} · expires{" "}
               {date(new Date(item.advertisement.expires_ms).toISOString())}
             </p>
             <div className="n-action-row">
-              <button
-                className="d-button primary"
+              <Button
+                variant="primary"
                 disabled={
                   busy ||
                   !state?.connection?.running ||
@@ -376,10 +387,9 @@ export function Discover({
                 }
               >
                 Review mission
-              </button>
+              </Button>
               {item.publisher !== state?.identity?.owner ? (
-                <button
-                  className="d-button"
+                <Button
                   disabled={
                     busy ||
                     !discovery.state ||
@@ -400,7 +410,7 @@ export function Discover({
                   }
                 >
                   Hide publisher
-                </button>
+                </Button>
               ) : null}
             </div>
           </article>
@@ -429,6 +439,7 @@ export function PublishMission({
   perform: Perform;
   network: () => void;
 }) {
+  const { missions: node } = useApplication();
   const discovery = useDiscovery(true);
   const [summary, setSummary] = useState("");
   const [capabilities, setCapabilities] = useState("");
@@ -472,9 +483,7 @@ export function PublishMission({
       {discovery.error ? <p role="alert">{discovery.error}</p> : null}
       {!discovery.state?.config.enabled ? (
         <div className="n-action-row">
-          <button className="d-button" onClick={network}>
-            Enable discovery in This device
-          </button>
+          <Button onClick={network}>Enable discovery in This device</Button>
         </div>
       ) : null}
       <form
@@ -495,7 +504,7 @@ export function PublishMission({
         }}
       >
         <fieldset className="n-fields" disabled={busy}>
-          <label className="d-field">
+          <Field>
             Public summary
             <input
               value={summary}
@@ -504,8 +513,8 @@ export function PublishMission({
               required
               placeholder="What can people help with?"
             />
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Requested capabilities · optional
             <input
               value={capabilities}
@@ -515,20 +524,19 @@ export function PublishMission({
             <span className="d-field-help">
               Up to eight, separated by commas.
             </span>
-          </label>
+          </Field>
           <div className="n-action-row">
-            <button
-              className="d-button primary"
+            <Button
+              variant="primary"
               disabled={!discovery.state?.config.enabled}
               type="submit"
             >
               {item?.status === "available"
                 ? "Update public brief"
                 : "Publish public brief"}
-            </button>
+            </Button>
             {item?.advertisement.active ? (
-              <button
-                className="d-button"
+              <Button
                 type="button"
                 onClick={() =>
                   void perform(async () => {
@@ -543,7 +551,7 @@ export function PublishMission({
                 }
               >
                 Stop listing
-              </button>
+              </Button>
             ) : null}
           </div>
         </fieldset>

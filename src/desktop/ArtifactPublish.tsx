@@ -1,5 +1,9 @@
+import { Button } from "../ui/Button";
+import { Disclosure } from "../ui/Disclosure";
+import { Field } from "../ui/Field";
+import { useApplication } from "./ApplicationProvider";
 import { useState } from "react";
-import { node } from "./bridge";
+
 import type {
   ArtifactDetail,
   ArtifactDocument,
@@ -7,7 +11,7 @@ import type {
   ArtifactStage,
   MissionView,
   WorkstreamView,
-} from "./node-contract";
+} from "../application/contracts/node";
 import type { Perform } from "./ui";
 const logicalPath = (file: File) =>
   file.webkitRelativePath?.split("/").slice(1).join("/") || file.name;
@@ -30,6 +34,7 @@ export function ArtifactPublish({
   done: (id: string) => Promise<void>;
   cancel: () => void;
 }) {
+  const { missions: node } = useApplication();
   const [control] = useState(mission.lifecycle.revision);
   const [parents] = useState(detail?.artifact.heads ?? []);
   const [files, setFiles] = useState<File[]>([]);
@@ -144,7 +149,7 @@ export function ArtifactPublish({
           each before publishing.
         </p>
       ) : null}
-      <label className="d-field">
+      <Field>
         Title
         <input
           name="title"
@@ -152,8 +157,8 @@ export function ArtifactPublish({
           maxLength={240}
           defaultValue={existing?.title}
         />
-      </label>
-      <label className="d-field">
+      </Field>
+      <Field>
         What is this for?
         <textarea
           name="summary"
@@ -163,9 +168,9 @@ export function ArtifactPublish({
           defaultValue={existing?.summary}
           placeholder="A short description for the person opening it."
         />
-      </label>
+      </Field>
       <div className="n-artifact-fields">
-        <label className="d-field">
+        <Field>
           Kind
           <select name="kind" defaultValue={existing?.kind ?? "report"}>
             {["application", "report", "plan", "data", "code", "document"].map(
@@ -176,17 +181,17 @@ export function ArtifactPublish({
               ),
             )}
           </select>
-        </label>
-        <label className="d-field">
+        </Field>
+        <Field>
           Stage
           <select name="stage" defaultValue={existing?.stage ?? "draft"}>
             <option value="draft">Draft</option>
             <option value="complete">Complete contribution</option>
           </select>
-        </label>
+        </Field>
       </div>
       {!detail ? (
-        <label className="d-field">
+        <Field>
           Conversation
           <select value={channel} onChange={(e) => setChannel(e.target.value)}>
             <option value="main">Main</option>
@@ -199,9 +204,9 @@ export function ArtifactPublish({
               <option value={conversation}>This private conversation</option>
             ) : null}
           </select>
-        </label>
+        </Field>
       ) : null}
-      <label className="d-field">
+      <Field>
         Files
         <input
           type="file"
@@ -212,8 +217,8 @@ export function ArtifactPublish({
           Up to 32 files, 16 MiB each, 32 MiB total. HTML should include its
           assets and work offline.
         </span>
-      </label>
-      <label className="d-field">
+      </Field>
+      <Field>
         Or choose an application folder
         <input
           type="file"
@@ -225,7 +230,7 @@ export function ArtifactPublish({
           Relative asset paths are preserved. Select a built, offline
           application, not a source repository.
         </span>
-      </label>
+      </Field>
       {files.length ? (
         <p className="d-field-help">{files.map(logicalPath).join(" · ")}</p>
       ) : null}
@@ -246,7 +251,7 @@ export function ArtifactPublish({
           Keep {f.path}
         </label>
       ))}
-      <label className="d-field">
+      <Field>
         Open first
         <select
           name="entrypoint"
@@ -260,8 +265,8 @@ export function ArtifactPublish({
             </option>
           ))}
         </select>
-      </label>
-      <label className="d-field">
+      </Field>
+      <Field>
         Limitations
         <textarea
           name="limitations"
@@ -270,10 +275,9 @@ export function ArtifactPublish({
           defaultValue={existing?.limitations}
           placeholder="What remains incomplete or untested?"
         />
-      </label>
-      <details>
-        <summary>Input revisions</summary>
-        <label className="d-field">
+      </Field>
+      <Disclosure title={<>Input revisions</>}>
+        <Field>
           Exact revision references
           <textarea
             name="inputs"
@@ -281,11 +285,11 @@ export function ArtifactPublish({
             defaultValue={existing?.inputs.join("\n")}
             placeholder="Copy revision references from the artifacts this output depends on."
           />
-        </label>
+        </Field>
         <p className="d-field-help">
           A changed input flags this output for review.
         </p>
-      </details>
+      </Disclosure>
       {progress ? <p role="status">{progress}</p> : null}
       {control !== mission.lifecycle.revision ? (
         <p className="d-alert">
@@ -294,22 +298,18 @@ export function ArtifactPublish({
         </p>
       ) : null}
       <div className="n-action-row">
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
+          type="submit"
           disabled={
             busy || !choices.length || control !== mission.lifecycle.revision
           }
         >
           Publish
-        </button>
-        <button
-          className="d-button"
-          type="button"
-          disabled={busy}
-          onClick={cancel}
-        >
+        </Button>
+        <Button type="button" disabled={busy} onClick={cancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

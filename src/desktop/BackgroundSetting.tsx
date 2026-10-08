@@ -1,5 +1,9 @@
+import { Button } from "../ui/Button";
+import { Disclosure } from "../ui/Disclosure";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 export function BackgroundSetting() {
+  const { setup } = useApplication();
   const [enabled, setEnabled] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
@@ -8,7 +12,7 @@ export function BackgroundSetting() {
   const [notificationsSupported, setNotificationsSupported] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    void window.blackboardSetup
+    void setup
       .journeyDiagnostics()
       .then((v) => {
         if (!cancelled) setDiagnostics(v);
@@ -16,7 +20,7 @@ export function BackgroundSetting() {
       .catch((e) => {
         if (!cancelled) setError(e.message);
       });
-    void window.blackboardSetup
+    void setup
       .appPreferences()
       .then((v) => {
         if (!cancelled) {
@@ -32,7 +36,7 @@ export function BackgroundSetting() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setup]);
   return (
     <section className="d-panel">
       <h2>When you close the window</h2>
@@ -46,9 +50,7 @@ export function BackgroundSetting() {
             setReady(false);
             setError("");
             try {
-              setEnabled(
-                (await window.blackboardSetup.setBackground(next)).background,
-              );
+              setEnabled((await setup.setBackground(next)).background);
             } catch (e) {
               setError((e as Error).message);
             } finally {
@@ -76,8 +78,7 @@ export function BackgroundSetting() {
                 setReady(false);
                 try {
                   setNotifications(
-                    (await window.blackboardSetup.setNotifications(next))
-                      .notifications,
+                    (await setup.setNotifications(next)).notifications,
                   );
                 } catch (e) {
                   setError((e as Error).message);
@@ -97,18 +98,16 @@ export function BackgroundSetting() {
         </>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
-      <details>
-        <summary>Onboarding diagnostics · stays on this Mac</summary>
+      <Disclosure title={<>Onboarding diagnostics · stays on this Mac</>}>
         <label className="n-check-label">
           <input
             type="checkbox"
             checked={diagnostics.enabled}
             onChange={async (e) => {
               try {
-                const value =
-                  await window.blackboardSetup.setJourneyDiagnostics(
-                    e.target.checked,
-                  );
+                const value = await setup.setJourneyDiagnostics(
+                  e.target.checked,
+                );
                 setDiagnostics({ ...diagnostics, ...value });
               } catch (e) {
                 setError((e as Error).message);
@@ -123,11 +122,10 @@ export function BackgroundSetting() {
           with no messages, provider output, invitation links or sign-in codes.
           Nothing is sent to Harakiri.
         </p>
-        <button
-          className="d-button"
+        <Button
           onClick={async () => {
             try {
-              await window.blackboardSetup.clearJourneyDiagnostics();
+              await setup.clearJourneyDiagnostics();
               setDiagnostics({ ...diagnostics, events: 0 });
             } catch (e) {
               setError((e as Error).message);
@@ -135,8 +133,8 @@ export function BackgroundSetting() {
           }}
         >
           Clear saved timings
-        </button>
-      </details>
+        </Button>
+      </Disclosure>
     </section>
   );
 }

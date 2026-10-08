@@ -71,12 +71,6 @@ export type DesktopAPI = {
   reveal(contributionId: string): Promise<null>;
   rename(name: string): Promise<LocalState>;
 };
-declare global {
-  interface Window {
-    contributor: DesktopAPI;
-  }
-}
-export const desktop = window.contributor;
 
 import type {
   Coordination,
@@ -95,7 +89,7 @@ import type {
   DiscoveryConfig,
   ListingView,
   WithdrawalView,
-} from "./node-contract";
+} from "./node";
 export type NodeState = {
   status: "not_enrolled" | "ready";
   identity: { owner: string; endpoint: string; version: number } | null;
@@ -112,7 +106,7 @@ export type PeerState = {
   requests: JoinView[];
 };
 export type DiscoveryState = {
-  health: import("./node-contract").DiscoveryHealth;
+  health: import("./node").DiscoveryHealth;
   config: DiscoveryConfig;
   listings: ListingView[];
   peer_ticket: string | null;
@@ -126,25 +120,25 @@ export type ContributionReview = {
 export type NodeAPI = {
   observations(
     mission: string,
-  ): Promise<import("./execution-types").RemoteObservation[]>;
+  ): Promise<import("./execution").RemoteObservation[]>;
   artifacts(
     mission: string,
-    query?: Partial<import("./node-contract").ArtifactQuery>,
-  ): Promise<import("./node-contract").ArtifactPage>;
+    query?: Partial<import("./node").ArtifactQuery>,
+  ): Promise<import("./node").ArtifactPage>;
   copyArtifactReference(mission: string, revision: string): Promise<void>;
   artifactDetail(
     mission: string,
     revision: string,
-  ): Promise<import("./node-contract").ArtifactDetail>;
+  ): Promise<import("./node").ArtifactDetail>;
   artifactAction(
     mission: string,
     control: string,
     conversation: string,
-    action: import("./node-contract").ArtifactAction,
+    action: import("./node").ArtifactAction,
   ): Promise<{ event: string }>;
   artifactTransfer(
     mission: string,
-    transfer: import("./node-contract").ArtifactTransfer,
+    transfer: import("./node").ArtifactTransfer,
   ): Promise<{
     upload?: string;
     event?: string;
@@ -182,18 +176,16 @@ export type NodeAPI = {
     grant: string,
     contributionId: string,
   ): Promise<{ event: string }>;
-  governance(
-    mission: string,
-  ): Promise<import("./node-contract").GovernanceView>;
+  governance(mission: string): Promise<import("./node").GovernanceView>;
   govern(
     mission: string,
     control: string,
-    action: import("./node-contract").GovernanceAction,
+    action: import("./node").GovernanceAction,
   ): Promise<{ event: string }>;
   missionAction(
     mission: string,
     revision: string,
-    action: import("./node-contract").ControlAction,
+    action: import("./node").ControlAction,
   ): Promise<{ event: string }>;
   privateRecovery(
     mission: string,
@@ -229,23 +221,21 @@ export type NodeAPI = {
   workEvidence(
     mission: string,
     event: string,
-  ): Promise<import("./node-contract").WorkEvidence>;
-  workstreams(
-    mission: string,
-  ): Promise<import("./node-contract").WorkstreamView[]>;
+  ): Promise<import("./node").WorkEvidence>;
+  workstreams(mission: string): Promise<import("./node").WorkstreamView[]>;
   tasks(
     mission: string,
-    query?: Partial<import("./node-contract").TaskQuery>,
-  ): Promise<import("./node-contract").TaskPage>;
+    query?: Partial<import("./node").TaskQuery>,
+  ): Promise<import("./node").TaskPage>;
   work(
     mission: string,
     revision: string,
-    action: import("./node-contract").WorkAction,
+    action: import("./node").WorkAction,
   ): Promise<{ event: string }>;
   agents(
     mission: string,
     after?: string | null,
-  ): Promise<import("./node-contract").AgentPage>;
+  ): Promise<import("./node").AgentPage>;
   shareAgent(
     mission: string,
     contributionId: string,
@@ -312,9 +302,3 @@ export type NodeAPI = {
     audience?: string,
   ): Promise<MessagePage>;
 };
-declare global {
-  interface Window {
-    blackboardNode: NodeAPI;
-  }
-}
-export const node = window.blackboardNode;

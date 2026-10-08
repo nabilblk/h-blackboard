@@ -1,7 +1,15 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 import { CompleteMission } from "./CompleteMission";
-import { node } from "./bridge";
-import type { AgentView, MissionView, ArtifactSummary } from "./node-contract";
+
+import type {
+  AgentView,
+  MissionView,
+  ArtifactSummary,
+} from "../application/contracts/node";
 import type { Perform } from "./ui";
 import { Status } from "./ui";
 import { useLedger, short } from "./useGovernance";
@@ -22,6 +30,7 @@ export function MissionProgress({
   updated: () => Promise<void>;
   openArtifact: (id: string) => void;
 }) {
+  const { missions: node } = useApplication();
   const { data, error, refresh } = useLedger(mission.id);
   const [edit, setEdit] = useState<{
     index: number;
@@ -52,7 +61,7 @@ export function MissionProgress({
     return () => {
       active = false;
     };
-  }, [mission.id, edit]);
+  }, [mission.id, edit, node]);
   const own = owner === mission.owner;
   const archived = mission.lifecycle.phase === "archived";
   const readyForReview =
@@ -85,7 +94,7 @@ export function MissionProgress({
           });
         }}
       >
-        <label className="d-field">
+        <Field>
           <span>Evidence or remaining gap</span>
           <textarea
             required
@@ -93,7 +102,7 @@ export function MissionProgress({
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
           />
-        </label>
+        </Field>
         <label className="n-check">
           <input
             name="criterionMet"
@@ -127,15 +136,16 @@ export function MissionProgress({
             </label>
           ))}
         <div className="n-action-row">
-          <button
+          <Button
             type="button"
-            className="d-button"
+
             onClick={() => setEdit(null)}
           >
             Cancel
-          </button>
-          <button
-            className="d-button primary"
+          </Button>
+          <Button
+            variant="primary"
+            type="submit"
             disabled={
               busy ||
               edit.control !== mission.lifecycle.revision ||
@@ -143,7 +153,7 @@ export function MissionProgress({
             }
           >
             Save assessment
-          </button>
+          </Button>
         </div>
       </form>
     ) : null;
@@ -161,13 +171,13 @@ export function MissionProgress({
             Only the mission owner closes the mission.
           </p>
           {[...new Set(data!.criteria.flatMap((c) => c.evidence))].map((id) => (
-            <button
+            <Button
               key={id}
-              className="d-button"
+
               onClick={() => openArtifact(id)}
             >
               Open result · {short(id)}
-            </button>
+            </Button>
           ))}
         </section>
       ) : null}
@@ -183,19 +193,26 @@ export function MissionProgress({
       {error ? <p role="alert">{error}</p> : null}
       <div className="n-criteria-list">
         {data?.criteria.map((c) => (
-          <details className="n-criterion" key={c.index}>
-            <summary>
-              <span>{c.wording}</span>
-              {c.author || c.met || c.stale ? (
-                <Status muted={!c.met || c.stale}>
-                  {c.stale
-                    ? "Evidence needs review"
-                    : c.met
-                      ? "Reported met"
-                      : "Not yet met"}
-                </Status>
-              ) : null}
-            </summary>
+          <Disclosure
+            className="n-criterion"
+            key={c.index}
+            title={
+              <>
+                <span>{c.wording}</span>
+                {c.author || c.met || c.stale ? (
+                  <Status
+                    tone={c.stale ? "warning" : c.met ? "success" : "neutral"}
+                  >
+                    {c.stale
+                      ? "Evidence needs review"
+                      : c.met
+                        ? "Reported met"
+                        : "Not yet met"}
+                  </Status>
+                ) : null}
+              </>
+            }
+          >
             <div className="n-criterion-detail">
               {c.summary ? (
                 <p>{c.summary}</p>
@@ -213,17 +230,16 @@ export function MissionProgress({
               ) : null}
               <div className="n-action-row">
                 {c.evidence.map((id) => (
-                  <button
+                  <Button
                     key={id}
-                    className="d-button"
+
                     onClick={() => openArtifact(id)}
                   >
                     Evidence · {short(id)}
-                  </button>
+                  </Button>
                 ))}
                 {own && !archived && edit?.index !== c.index ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() => {
                       setEdit({
@@ -237,30 +253,29 @@ export function MissionProgress({
                     }}
                   >
                     Update assessment
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               {edit?.index === c.index ? assessment : null}
             </div>
-          </details>
+          </Disclosure>
         ))}
       </div>
       {mission.lifecycle.plan?.artifact ? (
-        <button
-          className="d-button"
-          onClick={() => openArtifact(mission.lifecycle.plan!.artifact!)}
-        >
+        <Button onClick={() => openArtifact(mission.lifecycle.plan!.artifact!)}>
           Open shared plan artifact
-        </button>
+        </Button>
       ) : null}
       {own && !archived && mission.lifecycle.phase !== "closed" ? (
         <>
           {mission.lifecycle.plan ||
           artifacts.some((a) => a.kind === "plan") ? (
-            <details className="n-secondary-section">
-              <summary>Plan revisions</summary>
+            <Disclosure
+              className="n-secondary-section"
+              title={<>Plan revisions</>}
+            >
               <h3>Shared plan</h3>
-              <label className="d-field">
+              <Field>
                 <span>Select a complete plan artifact</span>
                 <select
                   defaultValue=""
@@ -289,12 +304,14 @@ export function MissionProgress({
                       </option>
                     ))}
                 </select>
-              </label>
-            </details>
+              </Field>
+            </Disclosure>
           ) : null}
           {mission.lifecycle.coordinator ? (
-            <details className="n-secondary-section">
-              <summary>Change Coordinator</summary>
+            <Disclosure
+              className="n-secondary-section"
+              title={<>Change Coordinator</>}
+            >
               <p className="d-field-help">
                 The contributor must share a prepared Coordinator. Handover
                 returns the mission to Preparing; a fresh plan, readiness and
@@ -307,7 +324,7 @@ export function MissionProgress({
                   reconciliation and sealing.
                 </p>
               ) : null}
-              <label className="d-field">
+              <Field>
                 <span>Prepared Coordinator</span>
                 <select
                   value={target}
@@ -331,9 +348,8 @@ export function MissionProgress({
                       </option>
                     ))}
                 </select>
-              </label>
-              <button
-                className="d-button"
+              </Field>
+              <Button
                 disabled={
                   busy ||
                   !target ||
@@ -358,46 +374,36 @@ export function MissionProgress({
                 }}
               >
                 Hand over coordination
-              </button>
-            </details>
+              </Button>
+            </Disclosure>
           ) : null}
         </>
       ) : null}
       {own ? (
-        <details
+        <Disclosure
           className="n-secondary-section"
           open={archived || mission.lifecycle.phase === "closed"}
+          title={
+            <>
+              {archived ? "Restore this channel" : "Close or archive mission"}
+            </>
+          }
         >
-          <summary>
-            {archived ? "Restore this channel" : "Close or archive mission"}
-          </summary>
           <div className="n-action-row">
             {archived ? (
-              <button
-                className="d-button"
-                disabled={busy}
-                onClick={() => act({ type: "restore" })}
-              >
+              <Button disabled={busy} onClick={() => act({ type: "restore" })}>
                 Restore channel
-              </button>
+              </Button>
             ) : (
               <>
                 {mission.lifecycle.phase !== "closed" ? (
-                  <button
-                    className="d-button"
-                    disabled={busy}
-                    onClick={() => setClosing("close")}
-                  >
+                  <Button disabled={busy} onClick={() => setClosing("close")}>
                     Close mission
-                  </button>
+                  </Button>
                 ) : null}
-                <button
-                  className="d-button"
-                  disabled={busy}
-                  onClick={() => setClosing("archive")}
-                >
+                <Button disabled={busy} onClick={() => setClosing("archive")}>
                   Archive channel
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -416,7 +422,7 @@ export function MissionProgress({
                 Outstanding executions and reservations remain visible until
                 reconciled.
               </p>
-              <label className="d-field">
+              <Field>
                 <span>Reason</span>
                 <textarea
                   required
@@ -424,22 +430,18 @@ export function MissionProgress({
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />
-              </label>
+              </Field>
               <div className="n-action-row">
-                <button
-                  className="d-button"
-                  type="button"
-                  onClick={() => setClosing(null)}
-                >
+                <Button type="button" onClick={() => setClosing(null)}>
                   Cancel
-                </button>
-                <button className="d-button primary" disabled={busy}>
+                </Button>
+                <Button variant="primary" type="submit" disabled={busy}>
                   Confirm {closing}
-                </button>
+                </Button>
               </div>
             </form>
           ) : null}
-        </details>
+        </Disclosure>
       ) : null}
     </section>
   );

@@ -1,5 +1,5 @@
-import type { AgentView, GrantView } from "./node-contract";
-import type { ContributionAgreement } from "./onboarding-types";
+import type { AgentView, GrantView } from "./node";
+import type { ContributionAgreement } from "./setup";
 export type RemoteObservation = {
   contributor: string;
   remaining_ms: number;
@@ -66,8 +66,3 @@ export type ExecutionAPI = {
   exportDiagnostics(id: string): Promise<{ cancelled: boolean }>;
   importFiles(id: string): Promise<{ imported?: number; cancelled?: boolean }>;
 };
-declare global {
-  interface Window {
-    blackboardExecution: ExecutionAPI;
-  }
-}

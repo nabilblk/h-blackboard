@@ -1,6 +1,13 @@
+import { Button } from "../ui/Button";
+import { Disclosure } from "../ui/Disclosure";
+import { Field } from "../ui/Field";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useRef, useState } from "react";
-import { desktop, node, type Contribution, type Runtime } from "./bridge";
-import type { MissionView } from "./node-contract";
+import {
+  type Contribution,
+  type Runtime,
+} from "../application/contracts/workspace";
+import type { MissionView } from "../application/contracts/node";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { useSetupDraft } from "./useSetupDraft";
 import { AgentState, useExecutionStates } from "./ExecutionStatus";
@@ -10,7 +17,7 @@ import type {
   SetupRequest,
   AgentSetupJob,
   Preflight,
-} from "./onboarding-types";
+} from "../application/contracts/setup";
 type AgentDraft = {
   runtime: Runtime;
   name: string;
@@ -53,6 +60,7 @@ export function AgentSetup({
   updated: () => Promise<void>;
   reviewMission?: () => void;
 }) {
+  const { setup, workspace: desktop, missions: node } = useApplication();
   const [draft, save, clear, draftError] = useSetupDraft<AgentDraft>(
     `${mission.id}:${role}`,
     {
@@ -94,7 +102,7 @@ export function AgentSetup({
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const value = await window.blackboardSetup.state(mission.id);
+        const value = await setup.state(mission.id);
         if (!cancelled) setJobs(value.filter((j) => j.kind === "setup"));
       } catch (e) {
         if (!cancelled)
@@ -109,7 +117,7 @@ export function AgentSetup({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mission.id]);
+  }, [mission.id, setup]);
   const act = async (operation: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
@@ -191,9 +199,8 @@ export function AgentSetup({
                   },
             workspaceChoiceId: workspace?.id ?? null,
           };
-          if (!device?.available)
-            await window.blackboardSetup.installProvider();
-          await window.blackboardSetup.setup(request);
+          if (!device?.available) await setup.installProvider();
+          await setup.setup(request);
           clear();
           setRequestId(crypto.randomUUID());
         });
@@ -203,7 +210,7 @@ export function AgentSetup({
         className="n-fields"
         disabled={busy || pending.some((j) => j.status === "running")}
       >
-        <label className="d-field">
+        <Field>
           Agent name
           <input
             required
@@ -211,8 +218,8 @@ export function AgentSetup({
             value={draft.name}
             onChange={(e) => save({ ...draft, name: e.target.value })}
           />
-        </label>
-        <label className="d-field">
+        </Field>
+        <Field>
           Runtime
           <select
             value={draft.runtime}
@@ -224,9 +231,9 @@ export function AgentSetup({
             <option value="claude">Claude Code</option>
             <option value="codex">Codex</option>
           </select>
-        </label>
+        </Field>
         {role === "agent" ? (
-          <label className="d-field">
+          <Field>
             Number of agents
             <input
               type="number"
@@ -238,16 +245,19 @@ export function AgentSetup({
                 save({ ...draft, count: Number(e.target.value) })
               }
             />
-          </label>
+          </Field>
         ) : null}
-        <details>
-          <summary>
-            Local limits ·{" "}
-            {draft.mode === "unlimited"
-              ? "Unlimited"
-              : `${draft.turns} turns · ${draft.minutes} minutes`}
-          </summary>
-          <label className="d-field">
+        <Disclosure
+          title={
+            <>
+              Local limits ·{" "}
+              {draft.mode === "unlimited"
+                ? "Unlimited"
+                : `${draft.turns} turns · ${draft.minutes} minutes`}
+            </>
+          }
+        >
+          <Field>
             Local allowance per agent
             <select
               value={draft.mode}
@@ -261,10 +271,10 @@ export function AgentSetup({
               <option value="bounded">Set turn and time limits</option>
               <option value="unlimited">Unlimited</option>
             </select>
-          </label>
+          </Field>
           {draft.mode === "bounded" ? (
             <div className="d-limit-fields">
-              <label className="d-field">
+              <Field>
                 Runtime turns
                 <input
                   type="number"
@@ -276,8 +286,8 @@ export function AgentSetup({
                     save({ ...draft, turns: Number(e.target.value) })
                   }
                 />
-              </label>
-              <label className="d-field">
+              </Field>
+              <Field>
                 Minutes from first run
                 <input
                   type="number"
@@ -289,7 +299,7 @@ export function AgentSetup({
                     save({ ...draft, minutes: Number(e.target.value) })
                   }
                 />
-              </label>
+              </Field>
             </div>
           ) : (
             <p>
@@ -298,21 +308,20 @@ export function AgentSetup({
               subscription limits apply.
             </p>
           )}
-        </details>
+        </Disclosure>
         <p>
           Separate isolated workspaces. Sign in with your subscription for each
           agent; your Mac’s credentials and folders stay private.
         </p>
-        <details>
-          <summary>Export location</summary>
+        <Disclosure title={<>Export location</>}>
           <p className="n-key">
             {workspace?.path ??
               "Documents / Harakiri Exports · a separate folder for each agent"}
           </p>
           <p>Files reach this Mac only when you explicitly export them.</p>
-          <button
+          <Button
             type="button"
-            className="d-button"
+
             onClick={() =>
               void act(async () => {
                 const selected = await desktop.chooseWorkspace();
@@ -321,8 +330,8 @@ export function AgentSetup({
             }
           >
             Change export location…
-          </button>
-        </details>
+          </Button>
+        </Disclosure>
         <label className="n-check">
           <input type="checkbox" required />I approve these local limits,
           downloading the verified environment, and sharing these agents’ names
@@ -334,8 +343,9 @@ export function AgentSetup({
             the current terms.
           </p>
         ) : null}
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
+          type="submit"
           disabled={!available || terms !== mission.lifecycle.terms_revision}
         >
           {busy
@@ -343,7 +353,7 @@ export function AgentSetup({
             : role === "coordinator"
               ? "Prepare Coordinator"
               : "Prepare agents"}
-        </button>
+        </Button>
       </fieldset>
     </form>
   );
@@ -366,9 +376,9 @@ export function AgentSetup({
             The Coordinator acknowledged the plan. Review it to start mission
             work.
           </p>
-          <button className="d-button primary" onClick={reviewMission}>
+          <Button variant="primary" onClick={reviewMission}>
             Review plan and Start
-          </button>
+          </Button>
         </section>
       ) : null}
       {error || draftError ? (
@@ -388,8 +398,8 @@ export function AgentSetup({
           <p role="status">{job.message}</p>
           <div className="n-action-row">
             {job.status !== "running" ? (
-              <button
-                className="d-button primary"
+              <Button
+                variant="primary"
                 disabled={
                   busy ||
                   !available ||
@@ -397,14 +407,13 @@ export function AgentSetup({
                 }
                 onClick={() =>
                   void act(async () => {
-                    if (!device?.available)
-                      await window.blackboardSetup.installProvider();
-                    return window.blackboardSetup.setup(job.request);
+                    if (!device?.available) await setup.installProvider();
+                    return setup.setup(job.request);
                   })
                 }
               >
                 Continue saved setup
-              </button>
+              </Button>
             ) : (
               <progress
                 aria-label="Preparing agents"
@@ -412,15 +421,12 @@ export function AgentSetup({
                 max={job.contributions.length}
               />
             )}
-            <button
-              className="d-button"
+            <Button
               disabled={busy}
-              onClick={() =>
-                void act(() => window.blackboardSetup.cancel(job.id))
-              }
+              onClick={() => void act(() => setup.cancel(job.id))}
             >
               Cancel setup
-            </button>
+            </Button>
           </div>
         </section>
       ))}
@@ -454,8 +460,7 @@ export function AgentSetup({
                   <strong>{c.sharedAgent?.label ?? c.runtime}</strong>
                   <AgentState mission={mission} contribution={c} />
                 </span>
-                <button
-                  className="d-button"
+                <Button
                   aria-expanded={current?.id === c.id}
                   disabled={!!authenticating && authenticating.id !== c.id}
                   onClick={() => setSelected(current?.id === c.id ? "" : c.id)}
@@ -465,11 +470,10 @@ export function AgentSetup({
                     : signedIn.includes(c)
                       ? "Inspect"
                       : "Continue"}
-                </button>
+                </Button>
               </div>
               {!c.sharedAgent ? (
-                <button
-                  className="d-button"
+                <Button
                   onClick={() =>
                     void act(() =>
                       node.shareAgent(
@@ -481,14 +485,14 @@ export function AgentSetup({
                   }
                 >
                   Share this prepared agent
-                </button>
+                </Button>
               ) : null}
               {mission.owner === localKey &&
               !mission.lifecycle.coordinator &&
               c.mission.role === "coordinator" &&
               c.nodeBinding?.revision === mission.lifecycle.terms_revision ? (
-                <button
-                  className="d-button primary"
+                <Button
+                  variant="primary"
                   onClick={() =>
                     void act(() =>
                       node.appointCoordinator(
@@ -500,7 +504,7 @@ export function AgentSetup({
                   }
                 >
                   Appoint this Coordinator
-                </button>
+                </Button>
               ) : null}
               {current?.id === c.id ? (
                 <ExecutionPanel item={c} mission={mission} />
@@ -510,10 +514,12 @@ export function AgentSetup({
         </section>
       ) : null}
       {local.length || pending.length ? (
-        <details className="n-secondary-section">
-          <summary>Add another agent</summary>
+        <Disclosure
+          className="n-secondary-section"
+          title={<>Add another agent</>}
+        >
           {setupForm}
-        </details>
+        </Disclosure>
       ) : null}
       <ProviderSetup report={setDevice} integrated />
     </section>

@@ -1,3 +1,7 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -7,7 +11,7 @@ import {
   Plus,
   Star,
 } from "lucide-react";
-import { node, type ArtifactInspection } from "./bridge";
+import { type ArtifactInspection } from "../application/contracts/workspace";
 import { Text } from "../Markdown";
 import { ArtifactPublish } from "./ArtifactPublish";
 import { ReviewChecks, checksFromForm, reviewMethods } from "./ReviewChecks";
@@ -19,7 +23,7 @@ import type {
   AgentView,
   WorkstreamView,
   MissionView,
-} from "./node-contract";
+} from "../application/contracts/node";
 import type { Perform } from "./ui";
 const status = (value: string) =>
   ({
@@ -64,6 +68,7 @@ export function ArtifactPanel({
   changed: () => Promise<void>;
   openConversation: (channel: string) => void;
 }) {
+  const { missions: node } = useApplication();
   const [selected, setSelected] = useState(initial);
   const [items, setItems] = useState<ArtifactSummary[]>([]);
   const [detail, setDetail] = useState<ArtifactDetail | null>(null);
@@ -149,7 +154,7 @@ export function ArtifactPanel({
       gone = true;
       clearTimeout(timer);
     };
-  }, [mission.id, selected, search, channel, limit, refresh]);
+  }, [mission.id, selected, search, channel, limit, refresh, node]);
   const choose = (id: string | null) => {
     setDetail(null);
     setSelected(id);
@@ -199,9 +204,9 @@ export function ArtifactPanel({
       ) : null}
       {selected ? (
         <>
-          <button className="d-button n-back" onClick={() => choose(null)}>
+          <Button className="n-back" onClick={() => choose(null)}>
             <ArrowLeft size={15} /> All artifacts
-          </button>
+          </Button>
           {detail ? (
             <>
               <div className="n-artifact-eyebrow">
@@ -216,8 +221,8 @@ export function ArtifactPanel({
                 {label(detail.author)} · Revision {detail.revision.slice(0, 10)}
               </p>
               <div className="n-action-row">
-                <button
-                  className="d-button primary"
+                <Button
+                  variant="primary"
                   disabled={busy}
                   onClick={() =>
                     void perform(() =>
@@ -231,10 +236,9 @@ export function ArtifactPanel({
                   }
                 >
                   <ArrowUpRight size={16} /> Open artifact
-                </button>
+                </Button>
                 {/\.html?$/i.test(detail.document.entrypoint ?? "") ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() =>
                       void perform(async () => {
@@ -248,14 +252,13 @@ export function ArtifactPanel({
                     }
                   >
                     Check layout
-                  </button>
+                  </Button>
                 ) : null}
-                <button
-                  className="d-button"
+                <Button
                   onClick={() => openConversation(detail.artifact.conversation)}
                 >
                   {channelName(detail.artifact.conversation)}
-                </button>
+                </Button>
               </div>
               {inspection?.revision === detail.revision ? (
                 <section className="d-panel">
@@ -273,34 +276,33 @@ export function ArtifactPanel({
                             : `Overflows to ${check.documentWidth}px`}
                         </strong>
                         {check.errors.length ? (
-                          <details>
-                            <summary>
-                              {check.errors.length} browser error(s)
-                            </summary>
+                          <Disclosure
+                            title={<>{check.errors.length} browser error(s)</>}
+                          >
                             {check.errors.map((error, index) => (
                               <p key={index}>{error}</p>
                             ))}
-                          </details>
+                          </Disclosure>
                         ) : null}
                         {check.overflow.length ? (
-                          <details>
-                            <summary>
-                              Wide elements · may be inside a scroll area
-                            </summary>
+                          <Disclosure
+                            title={
+                              <>Wide elements · may be inside a scroll area</>
+                            }
+                          >
                             {check.overflow.map((item, index) => (
                               <p key={index}>
                                 {item.tag}
                                 {item.id ? ` #${item.id}` : ""}: {item.text}
                               </p>
                             ))}
-                          </details>
+                          </Disclosure>
                         ) : null}
                       </li>
                     ))}
                   </ul>
                   {detail.may_review && !blocked ? (
-                    <button
-                      className="d-button"
+                    <Button
                       disabled={busy}
                       onClick={() =>
                         action(mission.lifecycle.revision, detail, {
@@ -337,7 +339,7 @@ export function ArtifactPanel({
                       }
                     >
                       Share layout findings
-                    </button>
+                    </Button>
                   ) : null}
                 </section>
               ) : null}
@@ -355,24 +357,17 @@ export function ArtifactPanel({
                     reconciles them.
                   </p>
                   {detail.artifact.heads.map((id) => (
-                    <button
-                      className="d-button"
-                      key={id}
-                      onClick={() => choose(id)}
-                    >
+                    <Button key={id} onClick={() => choose(id)}>
                       {id.slice(0, 10)}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : !detail.artifact.heads.includes(detail.revision) ? (
                 <p className="d-field-help">
                   You are viewing an older revision.{" "}
-                  <button
-                    className="d-button"
-                    onClick={() => choose(detail.artifact.revision)}
-                  >
+                  <Button onClick={() => choose(detail.artifact.revision)}>
                     View latest
-                  </button>
+                  </Button>
                 </p>
               ) : null}
               <section>
@@ -405,8 +400,8 @@ export function ArtifactPanel({
                         </span>
                         <ArrowUpRight size={16} />
                       </button>
-                      <button
-                        className="d-button icon"
+                      <Button
+                        className="icon"
                         aria-label={`Save ${f.path}`}
                         disabled={busy}
                         onClick={() =>
@@ -420,7 +415,7 @@ export function ArtifactPanel({
                         }
                       >
                         <Download size={16} />
-                      </button>
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -435,13 +430,9 @@ export function ArtifactPanel({
                 <section>
                   <h3>Input revisions</h3>
                   {detail.document.inputs.map((id) => (
-                    <button
-                      className="d-button"
-                      key={id}
-                      onClick={() => choose(id)}
-                    >
+                    <Button key={id} onClick={() => choose(id)}>
                       {id.slice(0, 12)} <ArrowUpRight size={14} />
-                    </button>
+                    </Button>
                   ))}
                 </section>
               ) : null}
@@ -449,8 +440,7 @@ export function ArtifactPanel({
                 <div className="n-artifact-section-title">
                   <h3>Reviews</h3>
                   {detail.may_review && !blocked ? (
-                    <button
-                      className="d-button"
+                    <Button
                       onClick={() =>
                         setReviewing({
                           detail,
@@ -459,7 +449,7 @@ export function ArtifactPanel({
                       }
                     >
                       Add review
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
                 {!detail.reviews.length ? (
@@ -498,8 +488,7 @@ export function ArtifactPanel({
                         establish that tests or a browser were run.
                       </p>
                     )}
-                    <details>
-                      <summary>Checks and conditions</summary>
+                    <Disclosure title={<>Checks and conditions</>}>
                       <Text value={r.conditions} links="text" />
                       {r.evidence.length ? (
                         <p className="d-field-help">
@@ -507,7 +496,7 @@ export function ArtifactPanel({
                           {r.evidence.map((id) => id.slice(0, 10)).join(", ")}
                         </p>
                       ) : null}
-                    </details>
+                    </Disclosure>
                   </article>
                 ))}
                 {reviewing ? (
@@ -534,7 +523,7 @@ export function ArtifactPanel({
                       {reviewing.detail.revision.slice(0, 10)}. A review records
                       your checks; it does not accept the mission.
                     </p>
-                    <label className="d-field">
+                    <Field>
                       Verdict
                       <select name="verdict" defaultValue="inconclusive">
                         <option value="verified">
@@ -545,8 +534,8 @@ export function ArtifactPanel({
                         </option>
                         <option value="inconclusive">Inconclusive</option>
                       </select>
-                    </label>
-                    <label className="d-field">
+                    </Field>
+                    <Field>
                       Review
                       <textarea
                         name="summary"
@@ -554,9 +543,9 @@ export function ArtifactPanel({
                         rows={3}
                         maxLength={4096}
                       />
-                    </label>
+                    </Field>
                     <ReviewChecks />
-                    <label className="d-field">
+                    <Field>
                       Overall conditions and limitations
                       <textarea
                         name="conditions"
@@ -565,26 +554,22 @@ export function ArtifactPanel({
                         maxLength={4096}
                         placeholder="Checks, environment and any limitations."
                       />
-                    </label>
-                    <label className="d-field">
+                    </Field>
+                    <Field>
                       Evidence references · optional
                       <textarea
                         name="evidence"
                         rows={2}
                         placeholder="Exact message or artifact revision references."
                       />
-                    </label>
+                    </Field>
                     <div className="n-action-row">
-                      <button className="d-button primary" disabled={busy}>
+                      <Button variant="primary" type="submit" disabled={busy}>
                         Save review
-                      </button>
-                      <button
-                        className="d-button"
-                        type="button"
-                        onClick={() => setReviewing(null)}
-                      >
+                      </Button>
+                      <Button type="button" onClick={() => setReviewing(null)}>
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 ) : null}
@@ -608,8 +593,7 @@ export function ArtifactPanel({
                   </p>
                 )}
                 {detail.may_accept && !blocked && !accepting ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() =>
                       setAccepting({
@@ -621,7 +605,7 @@ export function ArtifactPanel({
                     {detail.acceptance?.accepted
                       ? "Change acceptance"
                       : "Record acceptance"}
-                  </button>
+                  </Button>
                 ) : null}
                 {accepting ? (
                   <form
@@ -637,14 +621,14 @@ export function ArtifactPanel({
                       });
                     }}
                   >
-                    <label className="d-field">
+                    <Field>
                       Decision
                       <select name="accepted">
                         <option value="yes">Accept this exact revision</option>
                         <option value="no">Withdraw acceptance</option>
                       </select>
-                    </label>
-                    <label className="d-field">
+                    </Field>
+                    <Field>
                       Reason
                       <textarea
                         name="reason"
@@ -652,24 +636,25 @@ export function ArtifactPanel({
                         rows={2}
                         maxLength={2048}
                       />
-                    </label>
+                    </Field>
                     <div className="n-action-row">
-                      <button className="d-button" disabled={busy}>
+                      <Button type="submit" disabled={busy}>
                         Save decision
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="d-button"
+
                         onClick={() => setAccepting(null)}
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 ) : null}
               </section>
-              <details>
-                <summary>Revision history · {detail.history.length}</summary>
+              <Disclosure
+                title={<>Revision history · {detail.history.length}</>}
+              >
                 <div className="n-artifact-history">
                   {detail.history.map((r) => (
                     <button
@@ -686,19 +671,15 @@ export function ArtifactPanel({
                     </button>
                   ))}
                 </div>
-              </details>
+              </Disclosure>
               <div className="n-action-row">
                 {detail.may_publish && !blocked ? (
-                  <button
-                    className="d-button"
-                    onClick={() => setEditing({ detail })}
-                  >
+                  <Button onClick={() => setEditing({ detail })}>
                     Publish revision
-                  </button>
+                  </Button>
                 ) : null}
                 {detail.may_highlight && !blocked ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() =>
                       action(mission.lifecycle.revision, detail, {
@@ -710,10 +691,9 @@ export function ArtifactPanel({
                   >
                     <Star size={14} />
                     {detail.highlighted ? "Remove highlight" : "Highlight"}
-                  </button>
+                  </Button>
                 ) : null}
-                <button
-                  className="d-button"
+                <Button
                   onClick={() => {
                     void node
                       .copyArtifactReference(mission.id, detail.revision)
@@ -724,7 +704,7 @@ export function ArtifactPanel({
                   }}
                 >
                   {copied ? "Copied" : "Copy revision reference"}
-                </button>
+                </Button>
               </div>
             </>
           ) : loading ? (
@@ -741,15 +721,14 @@ export function ArtifactPanel({
                 reviews and revision history
               </p>
             </div>
-            <button
-              className="d-button"
+            <Button
               disabled={busy || blocked}
               onClick={() => setEditing({ detail: null })}
             >
               <Plus size={16} /> Publish
-            </button>
+            </Button>
           </div>
-          <label className="d-field">
+          <Field>
             <span className="sr-only">Search artifacts</span>
             <input
               type="search"
@@ -760,8 +739,8 @@ export function ArtifactPanel({
               }}
               placeholder="Search all accessible artifacts"
             />
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Conversation
             <select
               value={channel}
@@ -781,7 +760,7 @@ export function ArtifactPanel({
                 <option value={conversation}>This private conversation</option>
               ) : null}
             </select>
-          </label>
+          </Field>
           {loading ? <p role="status">Loading artifacts…</p> : null}
           <div className="n-artifact-list">
             {items.map((a) => (
@@ -828,12 +807,7 @@ export function ArtifactPanel({
                     {status(a.review_status)}
                     {a.accepted ? " · Accepted" : ""}
                   </span>
-                  <button
-                    className="d-button"
-                    onClick={() => choose(a.revision)}
-                  >
-                    Details
-                  </button>
+                  <Button onClick={() => choose(a.revision)}>Details</Button>
                 </div>
               </article>
             ))}
@@ -846,12 +820,7 @@ export function ArtifactPanel({
             </p>
           ) : null}
           {more ? (
-            <button
-              className="d-button"
-              onClick={() => setLimit((n) => n + 32)}
-            >
-              Load more
-            </button>
+            <Button onClick={() => setLimit((n) => n + 32)}>Load more</Button>
           ) : null}
         </>
       )}

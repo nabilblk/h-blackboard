@@ -1,10 +1,12 @@
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
 import { useState } from "react";
 import type {
   MissionView,
   GovernanceView,
   AgentView,
   GovernanceAction,
-} from "./node-contract";
+} from "../application/contracts/node";
 import { short } from "./useGovernance";
 export function ResourceForm({
   mode,
@@ -112,7 +114,7 @@ export function ResourceForm({
         </p>
       ) : null}
       {mode === "allocate" ? (
-        <label className="d-field">
+        <Field>
           <span>Contributor</span>
           <select value={who} onChange={(e) => setWho(e.target.value)}>
             {nodes
@@ -123,10 +125,10 @@ export function ResourceForm({
                 </option>
               ))}
           </select>
-        </label>
+        </Field>
       ) : (
         <>
-          <label className="d-field">
+          <Field>
             <span>Allowance</span>
             <select
               value={allocation}
@@ -145,8 +147,8 @@ export function ResourceForm({
                   </option>
                 ))}
             </select>
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             <span>
               {planning
                 ? "Appointed Coordinator"
@@ -166,11 +168,11 @@ export function ResourceForm({
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
         </>
       )}
       {mode === "allocate" ? (
-        <label className="d-field">
+        <Field>
           Turn allowance
           <select
             value={unlimited ? "unlimited" : "limited"}
@@ -179,10 +181,10 @@ export function ResourceForm({
             <option value="limited">Set a turn limit</option>
             <option value="unlimited">Unlimited turns</option>
           </select>
-        </label>
+        </Field>
       ) : null}
       {!unlimited ? (
-        <label className="d-field">
+        <Field>
           <span>Turns</span>
           <input
             name="turns"
@@ -193,10 +195,10 @@ export function ResourceForm({
             value={turns}
             onChange={(e) => setTurns(e.target.value)}
           />
-        </label>
+        </Field>
       ) : null}
       {mode === "allocate" ? (
-        <label className="d-field">
+        <Field>
           <span>Concurrent turns</span>
           <input
             type="number"
@@ -206,9 +208,9 @@ export function ResourceForm({
             value={slots}
             onChange={(e) => setSlots(Number(e.target.value))}
           />
-        </label>
+        </Field>
       ) : (
-        <label className="d-field">
+        <Field>
           <span>Execution window in minutes</span>
           <input
             type="number"
@@ -223,18 +225,19 @@ export function ResourceForm({
             Pause or revoke takes effect when received; this deadline is
             enforced locally even offline.
           </small>
-        </label>
+        </Field>
       )}
       <div className="n-action-row">
-        <button type="button" className="d-button" onClick={close}>
+        <Button type="button" onClick={close}>
           Cancel
-        </button>
-        <button
-          className="d-button primary"
+        </Button>
+        <Button
+          variant="primary"
+          type="submit"
           disabled={busy || staleDirection || (mode === "grant" && !selected)}
         >
           Save {mode === "allocate" ? "allocation" : "permission"}
-        </button>
+        </Button>
       </div>
       {staleDirection ? (
         <p role="alert">

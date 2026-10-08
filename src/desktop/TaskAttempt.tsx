@@ -1,5 +1,9 @@
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { Disclosure } from "../ui/Disclosure";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
-import { node } from "./bridge";
+
 import { Text } from "../Markdown";
 import type { Perform } from "./ui";
 import type {
@@ -9,7 +13,7 @@ import type {
   MissionView,
   TaskView,
   WorkEvidence,
-} from "./node-contract";
+} from "../application/contracts/node";
 import { statuses, statusLabel } from "./work-ui";
 export function Attempt({
   attempt: a,
@@ -32,6 +36,7 @@ export function Attempt({
   perform: Perform;
   changed: () => Promise<void>;
 }) {
+  const { missions: node } = useApplication();
   const [snapshot, setSnapshot] = useState<{
     attempt: AttemptView;
     revision: string;
@@ -63,12 +68,11 @@ export function Attempt({
           </p>
           <Text value={r.summary} links="text" />
           {r.evidence.length ? (
-            <details>
-              <summary>Evidence · {r.evidence.length}</summary>
+            <Disclosure title={<>Evidence · {r.evidence.length}</>}>
               {r.evidence.map((id) => (
                 <Evidence key={id} mission={mission.id} id={id} />
               ))}
-            </details>
+            </Disclosure>
           ) : null}
         </div>
       ))}
@@ -82,8 +86,7 @@ export function Attempt({
         </p>
       ) : null}
       {editable && task.heads.length === 1 && !snapshot ? (
-        <button
-          className="d-button"
+        <Button
           onClick={() =>
             setSnapshot({
               attempt: a,
@@ -93,7 +96,7 @@ export function Attempt({
           }
         >
           Override report
-        </button>
+        </Button>
       ) : null}
       {snapshot ? (
         <form
@@ -120,7 +123,7 @@ export function Attempt({
             });
           }}
         >
-          <label className="d-field">
+          <Field>
             Status
             <select
               name="status"
@@ -134,26 +137,26 @@ export function Attempt({
                   </option>
                 ))}
             </select>
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Reason and evidence summary
             <textarea name="summary" required rows={3} maxLength={4096} />
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Evidence record IDs · optional
             <textarea name="evidence" rows={2} maxLength={1040} />
-          </label>
+          </Field>
           <div className="n-action-row">
-            <button className="d-button" disabled={busy}>
+            <Button type="submit" disabled={busy}>
               Record human override
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="d-button"
+
               onClick={() => setSnapshot(null)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}
@@ -162,6 +165,7 @@ export function Attempt({
 }
 
 function Evidence({ mission, id }: { mission: string; id: string }) {
+  const { missions: node } = useApplication();
   const [evidence, setEvidence] = useState<WorkEvidence | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -188,15 +192,13 @@ function Evidence({ mission, id }: { mission: string; id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [mission, id, open]);
+  }, [mission, id, open, node]);
   return (
-    <details
+    <Disclosure
       className="n-task-evidence"
       onToggle={(e) => setOpen(e.currentTarget.open)}
+      title={<>{evidence?.title ?? `Inspect evidence · ${id.slice(0, 8)}`}</>}
     >
-      <summary>
-        {evidence?.title ?? `Inspect evidence · ${id.slice(0, 8)}`}
-      </summary>
       {error ? (
         <p role="alert">{error}</p>
       ) : evidence ? (
@@ -212,8 +214,7 @@ function Evidence({ mission, id }: { mission: string; id: string }) {
               <ul>
                 {evidence.files.map((f) => (
                   <li key={f.path}>
-                    <button
-                      className="d-button"
+                    <Button
                       disabled={opening}
                       onClick={() => {
                         setOpening(true);
@@ -230,7 +231,7 @@ function Evidence({ mission, id }: { mission: string; id: string }) {
                       }}
                     >
                       {f.path}
-                    </button>{" "}
+                    </Button>{" "}
                     · {f.size.toLocaleString()} bytes
                   </li>
                 ))}
@@ -241,6 +242,6 @@ function Evidence({ mission, id }: { mission: string; id: string }) {
       ) : (
         <p role="status">Reading saved evidence…</p>
       )}
-    </details>
+    </Disclosure>
   );
 }

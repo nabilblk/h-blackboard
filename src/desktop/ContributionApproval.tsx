@@ -1,12 +1,16 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
-import type { Contribution } from "./bridge";
-import type { AgentView, MissionView } from "./node-contract";
+import type { Contribution } from "../application/contracts/workspace";
+import type { AgentView, MissionView } from "../application/contracts/node";
 import type {
   ContributionAgreement,
   ContributionApproval as Approval,
   ReviewedStart,
   StartJob,
-} from "./onboarding-types";
+} from "../application/contracts/setup";
 import { useSetupDraft } from "./useSetupDraft";
 
 type GroupDraft = { requests: Approval[]; saved: string[] };
@@ -51,6 +55,7 @@ export function GroupContributionConsent({
   isOwner: boolean;
   done: () => Promise<void>;
 }) {
+  const { setup } = useApplication();
   const [draft, save, clear, storageError] = useSetupDraft<GroupDraft>(
     `${mission.id}:group-approval`,
     { requests: [], saved: [] },
@@ -74,9 +79,9 @@ export function GroupContributionConsent({
       <h3>Contribute together</h3>
       {notice ? <p role="status">{notice}</p> : null}
       {!review && !draft.requests.length ? (
-        <button className="d-button" onClick={() => setReview(true)}>
+        <Button onClick={() => setReview(true)}>
           Review {eligible.length} agents together
-        </button>
+        </Button>
       ) : (
         <form
           onSubmit={async (e) => {
@@ -103,7 +108,7 @@ export function GroupContributionConsent({
             save(next);
             try {
               for (const r of requests) {
-                await window.blackboardSetup.approveContribution(r);
+                await setup.approveContribution(r);
                 if (!next.saved.includes(r.id)) next.saved.push(r.id);
                 save({ requests, saved: [...next.saved] });
               }
@@ -139,25 +144,24 @@ export function GroupContributionConsent({
             </p>
           ) : null}
           <div className="n-action-row">
-            <button className="d-button primary" disabled={busy}>
+            <Button variant="primary" type="submit" disabled={busy}>
               {draft.requests.length
                 ? "Continue group approval"
                 : `Approve ${eligible.length} contributions`}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="d-button"
+
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
                 setError("");
                 try {
                   for (const r of draft.requests) {
-                    const found = (
-                      await window.blackboardSetup.agreements(mission.id)
-                    ).find((a) => a.id === r.id);
-                    if (found)
-                      await window.blackboardSetup.cancelAgreement(r.id);
+                    const found = (await setup.agreements(mission.id)).find(
+                      (a) => a.id === r.id,
+                    );
+                    if (found) await setup.cancelAgreement(r.id);
                   }
                   clear();
                   setReview(false);
@@ -169,7 +173,7 @@ export function GroupContributionConsent({
               }}
             >
               {draft.requests.length ? "Cancel saved approvals" : "Cancel"}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -197,7 +201,7 @@ export function ApprovalFields({
 }) {
   return (
     <fieldset className="n-fields" disabled={disabled}>
-      <label className="d-field">
+      <Field>
         Contribute for
         <select
           value={minutes}
@@ -211,7 +215,7 @@ export function ApprovalFields({
             </option>
           ))}
         </select>
-      </label>
+      </Field>
       <label className="n-check-label">
         <input
           type="checkbox"
@@ -220,11 +224,10 @@ export function ApprovalFields({
         />
         Follow new directions inside this mission’s current instructions
       </label>
-      <details>
-        <summary>
-          Resource limit · up to {turns} runtime turns per agent
-        </summary>
-        <label className="d-field">
+      <Disclosure
+        title={<>Resource limit · up to {turns} runtime turns per agent</>}
+      >
+        <Field>
           Maximum runtime turns
           <input
             type="number"
@@ -236,13 +239,13 @@ export function ApprovalFields({
               change({ minutes, turns: Number(e.target.value), follow })
             }
           />
-        </label>
+        </Field>
         <p className="d-field-help">
           A turn is one runtime invocation, not a token or a dollar. Your
           subscription’s limits still apply. Short permissions renew only inside
           this time window and allowance.
         </p>
-      </details>
+      </Disclosure>
     </fieldset>
   );
 }
@@ -260,6 +263,7 @@ export function ContributionConsent({
   isOwner: boolean;
   done?: () => Promise<void>;
 }) {
+  const { setup } = useApplication();
   const [settings, setSettings] = useState({
     minutes: 60,
     turns: 20,
@@ -275,7 +279,7 @@ export function ContributionConsent({
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const result = await window.blackboardSetup.agreements(mission.id);
+        const result = await setup.agreements(mission.id);
         if (!closed) setAgreements(result);
       } catch (e) {
         if (!closed) setError((e as Error).message);
@@ -287,7 +291,7 @@ export function ContributionConsent({
       closed = true;
       clearTimeout(timer);
     };
-  }, [mission.id]);
+  }, [mission.id, setup]);
   const agreement = agreements
     .filter((a) => a.request.registration === agent.id)
     .sort((a, b) => b.createdAt - a.createdAt)[0];
@@ -296,7 +300,7 @@ export function ContributionConsent({
     setError("");
     try {
       await fn();
-      setAgreements(await window.blackboardSetup.agreements(mission.id));
+      setAgreements(await setup.agreements(mission.id));
       await done?.();
     } catch (e) {
       setError((e as Error).message);
@@ -333,40 +337,34 @@ export function ContributionConsent({
         </p>
       )}
       {agreement?.status === "active" ? (
-        <button
-          className="d-button"
+        <Button
           disabled={busy}
-          onClick={() =>
-            void act(() => window.blackboardSetup.cancelAgreement(agreement.id))
-          }
+          onClick={() => void act(() => setup.cancelAgreement(agreement.id))}
         >
           Stop contribution
-        </button>
+        </Button>
       ) : !review ? (
         <div className="n-action-row">
           {agreement?.status === "interrupted" &&
           agreement.expiresAt > Date.now() ? (
-            <button
-              className="d-button primary"
+            <Button
+              variant="primary"
               disabled={busy}
               onClick={() =>
-                void act(() =>
-                  window.blackboardSetup.continueAgreement(agreement.id),
-                )
+                void act(() => setup.continueAgreement(agreement.id))
               }
             >
               Continue saved contribution
-            </button>
+            </Button>
           ) : null}
-          <button
-            className="d-button"
+          <Button
             onClick={() => {
               setId(crypto.randomUUID());
               setReview(true);
             }}
           >
             Review contribution
-          </button>
+          </Button>
         </div>
       ) : null}
       {review ? (
@@ -374,7 +372,7 @@ export function ContributionConsent({
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
-              await window.blackboardSetup.approveContribution({
+              await setup.approveContribution({
                 id,
                 mission: mission.id,
                 terms: mission.lifecycle.terms_revision,
@@ -401,16 +399,16 @@ export function ContributionConsent({
             accepted plan or Coordinator require your review.
           </p>
           <div className="n-action-row">
-            <button className="d-button primary" disabled={busy}>
+            <Button variant="primary" type="submit" disabled={busy}>
               Approve contribution
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="d-button"
+
               onClick={() => setReview(false)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}
@@ -438,6 +436,7 @@ export function StartMissionReview({
   done: () => Promise<void>;
   saved?: StartJob | null;
 }) {
+  const { setup } = useApplication();
   const [snapshot] = useState(
     saved?.request.revision ?? mission.lifecycle.revision,
   );
@@ -506,7 +505,7 @@ export function StartMissionReview({
         };
         setRequest(input);
         try {
-          await window.blackboardSetup.reviewedStart(input);
+          await setup.reviewedStart(input);
           await done();
         } catch (e) {
           setError((e as Error).message);
@@ -586,8 +585,9 @@ export function StartMissionReview({
         </p>
       ) : null}
       <div className="n-action-row">
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
+          type="submit"
           disabled={
             busy ||
             stale ||
@@ -601,25 +601,20 @@ export function StartMissionReview({
               : mission.lifecycle.phase === "paused"
                 ? "Resume and run"
                 : "Start and run"}
-        </button>
-        <button
-          className="d-button"
-          type="button"
-          disabled={busy}
-          onClick={cancel}
-        >
+        </Button>
+        <Button type="button" disabled={busy} onClick={cancel}>
           Cancel
-        </button>
+        </Button>
         {saved ? (
-          <button
+          <Button
             type="button"
-            className="d-button"
+
             disabled={busy}
             onClick={async () => {
               setBusy(true);
               setError("");
               try {
-                await window.blackboardSetup.cancelStart(saved.id);
+                await setup.cancelStart(saved.id);
                 await done();
               } catch (e) {
                 setError((e as Error).message);
@@ -629,7 +624,7 @@ export function StartMissionReview({
             }}
           >
             Cancel this review’s contributions
-          </button>
+          </Button>
         ) : null}
       </div>
     </form>

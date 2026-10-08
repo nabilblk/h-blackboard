@@ -1,4 +1,4 @@
-import type { Limits, Runtime } from "./bridge";
+import type { Limits, Runtime } from "./workspace";
 export type ContributionApproval = {
   id: string;
   mission: string;
@@ -106,41 +106,37 @@ export type Preflight = {
     error: string | null;
   };
 };
-declare global {
-  interface Window {
-    blackboardSetup: {
-      completeMission(input: CompletionRequest): Promise<CompletionJob>;
-      completionState(mission: string): Promise<CompletionJob[]>;
-      discardCompletion(id: string): Promise<void>;
-      appPreferences(): Promise<{
-        background: boolean;
-        notifications: boolean;
-        notificationsSupported: boolean;
-      }>;
-      setBackground(enabled: boolean): Promise<{ background: boolean }>;
-      setNotifications(enabled: boolean): Promise<{ notifications: boolean }>;
-      takeNotification(): Promise<{ mission: string } | null>;
-      setCapacity(maximum: number): Promise<{ maximum: number }>;
-      journeyDiagnostics(): Promise<{ enabled: boolean; events: number }>;
-      setJourneyDiagnostics(enabled: boolean): Promise<{ enabled: boolean }>;
-      clearJourneyDiagnostics(): Promise<void>;
-      agreements(mission: string): Promise<ContributionAgreement[]>;
-      approveContribution(
-        input: ContributionApproval,
-      ): Promise<ContributionAgreement>;
-      cancelAgreement(id: string): Promise<void>;
-      continueAgreement(id: string): Promise<void>;
-      reviewedStart(input: ReviewedStart): Promise<unknown>;
-      startState(mission: string): Promise<StartJob[]>;
-      cancelStart(id: string): Promise<StartJob>;
-      state(mission: string): Promise<SetupJob[]>;
-      setup(request: SetupRequest): Promise<SetupJob>;
-      permission(request: PermissionRequest): Promise<SetupJob>;
-      cancel(id: string): Promise<void>;
-      preflight(): Promise<Preflight>;
-      installProvider(): Promise<void>;
-      cancelInstall(): Promise<void>;
-      takeInvitation(): Promise<string | null>;
-    };
-  }
-}
+export type SetupAPI = {
+  completeMission(input: CompletionRequest): Promise<CompletionJob>;
+  completionState(mission: string): Promise<CompletionJob[]>;
+  discardCompletion(id: string): Promise<void>;
+  appPreferences(): Promise<{
+    background: boolean;
+    notifications: boolean;
+    notificationsSupported: boolean;
+  }>;
+  setBackground(enabled: boolean): Promise<{ background: boolean }>;
+  setNotifications(enabled: boolean): Promise<{ notifications: boolean }>;
+  takeNotification(): Promise<{ mission: string } | null>;
+  setCapacity(maximum: number): Promise<{ maximum: number }>;
+  journeyDiagnostics(): Promise<{ enabled: boolean; events: number }>;
+  setJourneyDiagnostics(enabled: boolean): Promise<{ enabled: boolean }>;
+  clearJourneyDiagnostics(): Promise<void>;
+  agreements(mission: string): Promise<ContributionAgreement[]>;
+  approveContribution(
+    input: ContributionApproval,
+  ): Promise<ContributionAgreement>;
+  cancelAgreement(id: string): Promise<void>;
+  continueAgreement(id: string): Promise<void>;
+  reviewedStart(input: ReviewedStart): Promise<unknown>;
+  startState(mission: string): Promise<StartJob[]>;
+  cancelStart(id: string): Promise<StartJob>;
+  state(mission: string): Promise<SetupJob[]>;
+  setup(request: SetupRequest): Promise<SetupJob>;
+  permission(request: PermissionRequest): Promise<SetupJob>;
+  cancel(id: string): Promise<void>;
+  preflight(): Promise<Preflight>;
+  installProvider(): Promise<void>;
+  cancelInstall(): Promise<void>;
+  takeInvitation(): Promise<string | null>;
+};

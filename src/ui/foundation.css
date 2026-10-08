@@ -1,0 +1,96 @@
+/* Shared baseline. Typography and color come from the designer tokens. */
+:root {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body-lg);
+  color: var(--color-text-primary);
+  background: var(--color-surface-canvas);
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  color: inherit;
+}
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+button svg {
+  flex-shrink: 0;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: var(--font-tracking-heading);
+}
+h1 {
+  font-size: var(--font-size-h1);
+  line-height: 1.25;
+}
+h2 {
+  font-size: var(--font-size-h3);
+  line-height: 1.4;
+}
+h3 {
+  font-size: var(--font-size-h3);
+}
+p {
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+.d-mono,
+code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+}
+.d-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-mono-id);
+  letter-spacing: var(--font-tracking-label);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.d-secondary {
+  color: var(--color-text-secondary);
+}
+
+button,
+summary {
+  touch-action: manipulation;
+}
+svg {
+  vertical-align: middle;
+}

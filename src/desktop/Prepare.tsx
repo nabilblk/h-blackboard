@@ -1,3 +1,7 @@
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useState } from "react";
 import {
   ArrowLeft,
@@ -9,14 +13,12 @@ import {
 } from "lucide-react";
 import runtimes from "../../shared/runtimes.json";
 import {
-  desktop,
-  node,
   type ContributionReview,
   type Limits,
   type LocalState,
   type Mission,
   type Runtime,
-} from "./bridge";
+} from "../application/contracts/workspace";
 import { Heading, Status, type Perform } from "./ui";
 
 export default function Prepare({
@@ -32,6 +34,7 @@ export default function Prepare({
   complete: (value: LocalState) => void;
   nodeReview?: ContributionReview;
 }) {
+  const { workspace: desktop, missions: node } = useApplication();
   const [invitation, setInvitation] = useState("");
   const [review, setReview] = useState<{
     reviewId: string;
@@ -79,7 +82,7 @@ export default function Prepare({
               <h2>Mission invitation</h2>
               <Link size={17} />
             </header>
-            <label className="d-field">
+            <Field>
               Invitation URL
               <input
                 name="invitation"
@@ -94,18 +97,18 @@ export default function Prepare({
                 disabled={busy}
                 maxLength={4096}
               />
-            </label>
+            </Field>
             <p className="d-field-help">
               Use an Agent or Coordinator invitation from a Blackboard mission.
             </p>
-            <button
-              className="d-button primary"
+            <Button
+              variant="primary"
               type="submit"
               disabled={busy || !invitation.trim()}
             >
               {busy ? "Inspecting…" : "Inspect invitation"}
               <ArrowRight size={15} />
-            </button>
+            </Button>
             <div className="d-form-note">
               <LockKeyhole size={14} />
               <p>
@@ -170,14 +173,14 @@ export default function Prepare({
             <Status muted>
               {review.mission.role === "coordinator" ? "Coordinator" : "Agent"}
             </Status>
-            <button
+            <Button
               type="button"
-              className="d-button"
+
               disabled={busy}
               onClick={() => (nodeReview ? cancel() : setReview(null))}
             >
               {nodeReview ? "Back to mission" : "Change invitation"}
-            </button>
+            </Button>
           </div>
           {nodeReview ? (
             <section
@@ -191,14 +194,13 @@ export default function Prepare({
                   <li key={index}>{criterion}</li>
                 ))}
               </ul>
-              <details>
-                <summary>Exact signed mission revision</summary>
+              <Disclosure title={<>Exact signed mission revision</>}>
                 <code className="n-key">{nodeReview.nodeBinding.revision}</code>
                 <p className="d-field-help">
                   These local terms are bound to this revision. A signature
                   identifies the owner’s key, not their real-world identity.
                 </p>
-              </details>
+              </Disclosure>
             </section>
           ) : null}
           <div className="d-two-columns d-terms">
@@ -207,7 +209,7 @@ export default function Prepare({
                 <h2>Runtime & workspace</h2>
                 <FolderOpen size={17} />
               </header>
-              <label className="d-field">
+              <Field>
                 Runtime
                 <select
                   value={runtime}
@@ -222,7 +224,7 @@ export default function Prepare({
                     </option>
                   ))}
                 </select>
-              </label>
+              </Field>
               <p className="d-field-help">
                 Sign in with your own subscription inside each agent’s isolated
                 environment after preparation.
@@ -239,9 +241,9 @@ export default function Prepare({
                     <span className="d-secondary">No location selected</span>
                   )}
                 </div>
-                <button
+                <Button
                   type="button"
-                  className="d-button"
+
                   disabled={busy}
                   onClick={() => {
                     void perform(async () => {
@@ -252,7 +254,7 @@ export default function Prepare({
                 >
                   <FolderOpen size={15} />
                   {workspace ? "Change location" : "Choose folder…"}
-                </button>
+                </Button>
               </div>
               <p className="d-field-help">
                 Saving creates a dedicated, empty folder inside this location.
@@ -264,7 +266,7 @@ export default function Prepare({
                 <h2>Local allowance</h2>
                 <span className="d-label">You control this</span>
               </header>
-              <label className="d-field">
+              <Field>
                 Maximum concurrent agents
                 <input
                   type="number"
@@ -275,7 +277,7 @@ export default function Prepare({
                   disabled={busy}
                   onChange={(event) => setConcurrency(event.target.value)}
                 />
-              </label>
+              </Field>
               <div
                 className="d-radio-group"
                 role="radiogroup"
@@ -304,7 +306,7 @@ export default function Prepare({
               </div>
               {mode === "bounded" ? (
                 <div className="d-limit-fields">
-                  <label className="d-field">
+                  <Field>
                     Total runtime turns
                     <input
                       type="number"
@@ -315,8 +317,8 @@ export default function Prepare({
                       disabled={busy}
                       onChange={(event) => setTurns(event.target.value)}
                     />
-                  </label>
-                  <label className="d-field">
+                  </Field>
+                  <Field>
                     Duration from start (min)
                     <input
                       type="number"
@@ -327,7 +329,7 @@ export default function Prepare({
                       disabled={busy}
                       onChange={(event) => setMinutes(event.target.value)}
                     />
-                  </label>
+                  </Field>
                 </div>
               ) : (
                 <p className="d-unlimited">
@@ -351,22 +353,22 @@ export default function Prepare({
               </span>
             </label>
             <div>
-              <button
+              <Button
                 type="button"
-                className="d-button"
+
                 disabled={busy}
                 onClick={cancel}
               >
                 Cancel
-              </button>
-              <button
-                className="d-button primary"
+              </Button>
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={busy || !workspace}
               >
                 {busy ? "Saving…" : "Save preparation"}
                 <Check size={15} />
-              </button>
+              </Button>
             </div>
           </div>
         </form>

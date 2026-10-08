@@ -1,6 +1,15 @@
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
-import type { ArtifactSummary, MissionView } from "./node-contract";
-import type { CompletionRequest, CompletionJob } from "./onboarding-types";
+import type {
+  ArtifactSummary,
+  MissionView,
+} from "../application/contracts/node";
+import type {
+  CompletionRequest,
+  CompletionJob,
+} from "../application/contracts/setup";
 import { useSetupDraft } from "./useSetupDraft";
 type ReviewDraft = { review: boolean; selected: string[]; reason: string };
 const validDraft = (v: unknown): v is ReviewDraft => {
@@ -26,6 +35,7 @@ export function CompleteMission({
   open: (id: string) => void;
   updated: () => Promise<void>;
 }) {
+  const { setup } = useApplication();
   const [draft, save, clear, draftError] = useSetupDraft<ReviewDraft>(
     `${mission.id}:completion-review`,
     { review: false, selected: [], reason: "" },
@@ -38,7 +48,7 @@ export function CompleteMission({
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
-    void window.blackboardSetup
+    void setup
       .completionState(mission.id)
       .then((jobs) => {
         const pending = jobs.find(
@@ -60,7 +70,7 @@ export function CompleteMission({
     return () => {
       cancelled = true;
     };
-  }, [mission.id]);
+  }, [mission.id, setup]);
   const options = artifacts.filter(
     (a) =>
       a.conversation === "main" &&
@@ -84,12 +94,12 @@ export function CompleteMission({
         the mission; outstanding processes still need confirmed stops.
       </p>
       {!review ? (
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
           onClick={() => save({ ...draft, review: true })}
         >
           Review deliverables and finish
-        </button>
+        </Button>
       ) : (
         <form
           onSubmit={async (e) => {
@@ -105,16 +115,16 @@ export function CompleteMission({
             };
             setRequest(r);
             try {
-              setSaved(await window.blackboardSetup.completeMission(r));
+              setSaved(await setup.completeMission(r));
               clear();
               await updated();
             } catch (e) {
               setError((e as Error).message);
               try {
                 setSaved(
-                  (
-                    await window.blackboardSetup.completionState(mission.id)
-                  ).find((j) => j.id === r.id) ?? null,
+                  (await setup.completionState(mission.id)).find(
+                    (j) => j.id === r.id,
+                  ) ?? null,
                 );
               } catch {
                 /* Original failure remains visible; retry reconciles saved decisions. */
@@ -143,16 +153,16 @@ export function CompleteMission({
                   />
                   {a.title}
                 </label>
-                <button
+                <Button
                   type="button"
-                  className="d-button"
+
                   onClick={() => open(a.revision)}
                 >
                   Inspect
-                </button>
+                </Button>
               </div>
             ))}
-            <label className="d-field">
+            <Field>
               Your acceptance note
               <textarea
                 required
@@ -160,7 +170,7 @@ export function CompleteMission({
                 value={reason}
                 onChange={(e) => save({ ...draft, reason: e.target.value })}
               />
-            </label>
+            </Field>
           </fieldset>
           {saved ? (
             <p role="status">
@@ -168,8 +178,9 @@ export function CompleteMission({
               saved. {saved.message}
             </p>
           ) : null}
-          <button
-            className="d-button primary"
+          <Button
+            variant="primary"
+            type="submit"
             disabled={busy || !selected.length || !reason.trim()}
           >
             {busy
@@ -177,17 +188,17 @@ export function CompleteMission({
               : request
                 ? "Continue saved completion"
                 : "Accept selected and close mission"}
-          </button>
+          </Button>
           {request ? (
-            <button
+            <Button
               type="button"
-              className="d-button"
+
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
                 setError("");
                 try {
-                  await window.blackboardSetup.discardCompletion(request.id);
+                  await setup.discardCompletion(request.id);
                   setRequest(null);
                   setSaved(null);
                   clear();
@@ -199,7 +210,7 @@ export function CompleteMission({
               }}
             >
               Review current results instead
-            </button>
+            </Button>
           ) : null}
         </form>
       )}

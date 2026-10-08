@@ -1,0 +1,145 @@
+@import "../tokens.css";
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "./foundation.css";
+@import "./controls.css";
+
+/* The designer's rows, tabs and control treatments adapted to disclosures.
+ * No native triangle, layout-specific font override or one-off button skin. */
+.hb-disclosure {
+  min-width: 0;
+  border-bottom: 1px solid var(--color-border-default);
+}
+.hb-disclosure-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--size-row);
+  padding: var(--space-4);
+  border-radius: var(--radius-control);
+  list-style: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font: var(--font-weight-medium) var(--font-size-body)/1.5
+    var(--font-family-sans);
+  text-align: left;
+}
+.hb-disclosure-trigger::-webkit-details-marker {
+  display: none;
+}
+.hb-disclosure-trigger::marker {
+  content: "";
+}
+.hb-disclosure-trigger:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+.hb-disclosure[open] > .hb-disclosure-trigger {
+  color: var(--color-text-primary);
+}
+.hb-disclosure-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.hb-disclosure-chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-tertiary);
+  transition: transform var(--motion-duration-instant) ease;
+}
+.hb-disclosure[open] > .hb-disclosure-trigger > .hb-disclosure-chevron {
+  transform: rotate(90deg);
+}
+.hb-disclosure-content {
+  padding: var(--space-6) var(--space-4) var(--space-7);
+  min-width: 0;
+}
+.hb-disclosure--inline {
+  border: 0;
+}
+.hb-disclosure--inline > .hb-disclosure-trigger {
+  min-height: var(--size-control);
+}
+.hb-disclosure--sidebar {
+  border: 0;
+  margin-top: var(--space-6);
+}
+.hb-disclosure--sidebar > .hb-disclosure-trigger {
+  min-height: var(--size-control-lg);
+}
+.hb-disclosure--sidebar > .hb-disclosure-content {
+  padding: var(--space-2) 0 0;
+}
+.hb-count {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font: var(--font-weight-regular) var(--font-size-mono-id)/1.4
+    var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+}
+.hb-view-tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border-default);
+  margin-bottom: var(--space-9);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.hb-view-tabs > button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--border-width-edge) solid transparent;
+  padding: var(--space-4) var(--space-6);
+  min-height: var(--size-control-lg);
+  font: var(--font-weight-medium) var(--font-size-body)/1.5
+    var(--font-family-sans);
+  color: var(--color-text-secondary);
+}
+.hb-view-tabs > button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+.hb-view-tabs > button[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-accent-default);
+}
+.hb-view-tabs > button:focus-visible {
+  outline-offset: -2px;
+}
+.hb-action-popover {
+  position: relative;
+}
+.hb-action-popover-content {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: grid;
+  width: max-content;
+  max-width: min(300px, calc(100vw - var(--space-9)));
+  min-width: 200px;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-card);
+}
+.hb-action-popover-content[hidden] {
+  display: none;
+}
+.hb-action-popover-content > .d-button {
+  border-color: transparent;
+  justify-content: flex-start;
+  text-align: left;
+  font-weight: var(--font-weight-regular);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hb-disclosure-chevron {
+    transition: none;
+  }
+}

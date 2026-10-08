@@ -1,3 +1,4 @@
+import { IconButton } from "../ui/Button";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -77,14 +78,9 @@ export function ContextPanel({
     >
       <header>
         <h2 id={heading}>{title}</h2>
-        <button
-          className="d-icon"
-          onClick={close}
-          aria-label={`Close ${title}`}
-          autoFocus
-        >
+        <IconButton onClick={close} aria-label={`Close ${title}`} autoFocus>
           <X size={20} />
-        </button>
+        </IconButton>
       </header>
       <div className="n-context-body">
         {error ? (

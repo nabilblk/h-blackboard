@@ -1,7 +1,17 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Copy, Link, Network, ShieldCheck } from "lucide-react";
-import { node, type NodeState, type PeerState } from "./bridge";
-import type { InvitationReview, NetworkMode } from "./node-contract";
+import {
+  type NodeState,
+  type PeerState,
+} from "../application/contracts/workspace";
+import type {
+  InvitationReview,
+  NetworkMode,
+} from "../application/contracts/node";
 import { Heading, Status, date, type Perform } from "./ui";
 
 export function NetworkSettings({
@@ -15,6 +25,7 @@ export function NetworkSettings({
   perform: Perform;
   updated: () => Promise<void>;
 }) {
+  const { missions: node } = useApplication();
   const config = state?.connection?.config;
   const [mode, setMode] = useState<NetworkMode>(config?.mode ?? "offline");
   const [lan, setLan] = useState(config?.allow_lan ?? false);
@@ -58,7 +69,7 @@ export function NetworkSettings({
         }}
       >
         <fieldset className="n-fields" disabled={busy}>
-          <label className="d-field">
+          <Field>
             Connection mode
             <select
               value={mode}
@@ -71,7 +82,7 @@ export function NetworkSettings({
               <option value="direct">Direct connections only</option>
               <option value="custom">Direct + my own relays</option>
             </select>
-          </label>
+          </Field>
           {mode === "public_relays" ? (
             <p className="d-field-help">
               This contacts Iroh’s public relay servers. They can observe
@@ -80,7 +91,7 @@ export function NetworkSettings({
             </p>
           ) : null}
           {mode === "custom" ? (
-            <label className="d-field">
+            <Field>
               Relay URLs
               <textarea
                 rows={3}
@@ -93,7 +104,7 @@ export function NetworkSettings({
                 One HTTPS URL per line, up to four. Use relays you trust;
                 invitations cannot add a relay to this list.
               </span>
-            </label>
+            </Field>
           ) : null}
           {mode !== "offline" ? (
             <label className="n-check">
@@ -110,9 +121,9 @@ export function NetworkSettings({
             your saved history stays available.
           </p>
           <div className="n-action-row">
-            <button className="d-button primary" type="submit">
+            <Button variant="primary" type="submit">
               {busy ? "Applying…" : "Save network settings"}
-            </button>
+            </Button>
           </div>
         </fieldset>
       </form>
@@ -145,6 +156,7 @@ export function JoinMission({
   initialTicket?: string;
   initialReview?: InvitationReview | null;
 }) {
+  const { missions: node } = useApplication();
   const [ticket, setTicket] = useState(initialTicket);
   const [review, setReview] = useState<InvitationReview | null>(initialReview);
   const [submitted, setSubmitted] = useState(false);
@@ -190,8 +202,8 @@ export function JoinMission({
             an agent.
           </p>
           {!ticket.trim() ? (
-            <button
-              className="d-button primary"
+            <Button
+              variant="primary"
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -206,15 +218,14 @@ export function JoinMission({
               }
             >
               Enable peer connections
-            </button>
+            </Button>
           ) : null}
-          <button
-            className="d-button"
+          <Button
             onClick={() => setAdvancedNetwork((v) => !v)}
             aria-expanded={advancedNetwork}
           >
             Connection options
-          </button>
+          </Button>
           {advancedNetwork ? (
             <NetworkSettings
               state={state}
@@ -237,7 +248,7 @@ export function JoinMission({
               void perform(inspect);
             }}
           >
-            <label className="d-field">
+            <Field>
               Invitation link
               <input
                 type="text"
@@ -254,13 +265,13 @@ export function JoinMission({
                 disabled={busy}
                 required
               />
-            </label>
+            </Field>
             <p className="d-field-help">
               Ask the mission’s creator for the link from Members → People &amp;
               invitations → Create invitation in their desktop app.
             </p>
-            <button
-              className="d-button primary"
+            <Button
+              variant="primary"
               disabled={busy || !ticket.trim()}
               type="submit"
             >
@@ -269,7 +280,7 @@ export function JoinMission({
                 : state?.connection?.running
                   ? "Inspect invitation"
                   : "Connect and review"}
-            </button>
+            </Button>
           </form>
           <div className="d-explainer">
             <ShieldCheck size={17} />
@@ -284,7 +295,7 @@ export function JoinMission({
         <section className="d-panel n-review" aria-label="Reviewed mission">
           <header>
             <h2>{review.definition.name}</h2>
-            <Status>Signature verified</Status>
+            <Status tone="success">Signature verified</Status>
           </header>
           <h3>{review.definition.objective}</h3>
           <p className="n-preserve">{review.definition.scope}</p>
@@ -298,8 +309,7 @@ export function JoinMission({
               ))}
             </ul>
           ) : null}
-          <details>
-            <summary>Owner and mission verification</summary>
+          <Disclosure title={<>Owner and mission verification</>}>
             <dl className="d-facts">
               <div>
                 <dt>Owner public key</dt>
@@ -322,7 +332,7 @@ export function JoinMission({
                 </dd>
               </div>
             </dl>
-          </details>
+          </Disclosure>
           <p className="d-field-help">
             A verified signature identifies a key, not a person. Compare the
             owner key through a channel you trust. Requesting to join shares
@@ -336,8 +346,7 @@ export function JoinMission({
                   The mission changed. Review the current instructions before
                   requesting again.
                 </p>
-                <button
-                  className="d-button"
+                <Button
                   disabled={busy}
                   onClick={() =>
                     void perform(async () => {
@@ -348,7 +357,7 @@ export function JoinMission({
                   }
                 >
                   Review updated mission
-                </button>
+                </Button>
               </>
             ) : submitted ? (
               <Status muted>
@@ -359,8 +368,8 @@ export function JoinMission({
                     : "Request saved · waiting for owner approval"}
               </Status>
             ) : (
-              <button
-                className="d-button primary"
+              <Button
+                variant="primary"
                 disabled={busy}
                 onClick={() =>
                   void perform(async () => {
@@ -376,12 +385,11 @@ export function JoinMission({
                 }
               >
                 Request to join
-              </button>
+              </Button>
             )}
           </div>
           {!submitted && status !== "admitted" ? (
-            <button
-              className="d-button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -391,27 +399,24 @@ export function JoinMission({
               }
             >
               Refresh mission review
-            </button>
+            </Button>
           ) : null}
           {status === "admitted" ? (
             <div className="n-action-row">
-              <button
-                className="d-button primary"
+              <Button
+                variant="primary"
                 onClick={() => open(review.mission, true)}
               >
                 Contribute an agent
-              </button>
-              <button className="d-button" onClick={() => open(review.mission)}>
-                Open mission
-              </button>
+              </Button>
+              <Button onClick={() => open(review.mission)}>Open mission</Button>
               <p className="d-field-help">
                 You can join the conversation without contributing an agent.
               </p>
             </div>
           ) : null}
           {status === "pending" ? (
-            <button
-              className="d-button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -421,7 +426,7 @@ export function JoinMission({
               }
             >
               Withdraw join request
-            </button>
+            </Button>
           ) : null}
           <p className="d-field-help">
             Joining synchronizes authorized mission history. Open the mission
@@ -453,6 +458,7 @@ export function People({
   network: () => void;
   privateMessage: (author: string) => void;
 }) {
+  const { missions: node } = useApplication();
   const [peers, setPeers] = useState<PeerState | null>(null);
   const [ticket, setTicket] = useState("");
   const [copied, setCopied] = useState(false);
@@ -484,7 +490,7 @@ export function People({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mission]);
+  }, [mission, node]);
   const own = owner === localKey;
   const pending = peers?.requests.filter((r) => r.status === "pending") ?? [];
   return (
@@ -507,8 +513,8 @@ export function People({
             publish your mission.
           </p>
           <div className="n-action-row">
-            <button
-              className="d-button primary"
+            <Button
+              variant="primary"
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -522,16 +528,14 @@ export function People({
               }
             >
               Enable peer connections
-            </button>
-            <button className="d-button" onClick={network}>
-              Advanced connection options
-            </button>
+            </Button>
+            <Button onClick={network}>Advanced connection options</Button>
           </div>
         </div>
       ) : own ? (
         <div className="n-action-row">
-          <button
-            className="d-button primary"
+          <Button
+            variant="primary"
             disabled={busy}
             onClick={() =>
               void perform(async () => {
@@ -542,9 +546,8 @@ export function People({
           >
             <Link size={16} />
             Create invitation
-          </button>
-          <button
-            className="d-button"
+          </Button>
+          <Button
             disabled={busy}
             onClick={() =>
               void perform(async () => {
@@ -554,12 +557,12 @@ export function People({
             }
           >
             Expire all invitation links
-          </button>
+          </Button>
         </div>
       ) : null}
       {ticket ? (
         <div className="n-invite-copy">
-          <label className="d-field">
+          <Field>
             Share this invitation
             <textarea
               value={ticket}
@@ -568,9 +571,8 @@ export function People({
               spellCheck={false}
               onFocus={(e) => e.target.select()}
             />
-          </label>
-          <button
-            className="d-button"
+          </Field>
+          <Button
             onClick={() =>
               void perform(async () => {
                 await node.copyInvitation(mission);
@@ -580,7 +582,7 @@ export function People({
           >
             <Copy size={15} />
             {copied ? "Copied" : "Copy invitation"}
-          </button>
+          </Button>
           <p className="d-field-help">
             Valid for seven days. Anyone with this link can inspect the brief
             and request admission; you decide who joins.
@@ -601,8 +603,7 @@ export function People({
                 </span>
               </div>
               <div className="n-action-row">
-                <button
-                  className="d-button"
+                <Button
                   disabled={busy}
                   onClick={() =>
                     void perform(async () => {
@@ -612,9 +613,9 @@ export function People({
                   }
                 >
                   Decline
-                </button>
-                <button
-                  className="d-button primary"
+                </Button>
+                <Button
+                  variant="primary"
                   disabled={busy}
                   onClick={() =>
                     void perform(async () => {
@@ -624,7 +625,7 @@ export function People({
                   }
                 >
                   Approve
-                </button>
+                </Button>
               </div>
             </article>
           ))}
@@ -648,13 +649,15 @@ export function People({
                   {self ? "You" : `Participant ${member.author.slice(0, 8)}`}
                   {member.author === owner ? " · Mission owner" : ""}
                 </strong>
-                <details className="n-peer-identity">
-                  <summary>Connection details</summary>
+                <Disclosure
+                  className="n-peer-identity"
+                  title={<>Connection details</>}
+                >
                   <span className="d-field-help">Participant signing key</span>
                   <code className="n-key">{member.author}</code>
                   <span className="d-field-help">Device endpoint</span>
                   <code className="n-key">{member.endpoint}</code>
-                </details>
+                </Disclosure>
                 <span className="d-field-help">
                   {member.withdrawn
                     ? "Participation withdrawn"
@@ -680,22 +683,20 @@ export function People({
                           : "Not reached recently"}
                 </Status>
                 {!self && !member.revoked ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() => privateMessage(member.author)}
                   >
                     Message privately
-                  </button>
+                  </Button>
                 ) : null}
                 {own && !self && !member.revoked ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() => setConfirmRevoke(member.author)}
                   >
                     Revoke access…
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </article>
@@ -709,11 +710,9 @@ export function People({
             on its computer. Other peers enforce revocation after receiving it.
           </p>
           <div className="n-action-row">
-            <button className="d-button" onClick={() => setConfirmRevoke(null)}>
-              Cancel
-            </button>
-            <button
-              className="d-button primary"
+            <Button onClick={() => setConfirmRevoke(null)}>Cancel</Button>
+            <Button
+              variant="primary"
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -724,7 +723,7 @@ export function People({
               }
             >
               Revoke access
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

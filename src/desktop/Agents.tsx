@@ -1,8 +1,16 @@
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { ContributionConsent } from "./ContributionApproval";
 import { useEffect, useState } from "react";
 import { Users, Plus, FolderOpen } from "lucide-react";
-import { desktop, node, type Contribution } from "./bridge";
-import type { AgentView, AgentStatus, MissionView } from "./node-contract";
+import { type Contribution } from "../application/contracts/workspace";
+import type {
+  AgentView,
+  AgentStatus,
+  MissionView,
+} from "../application/contracts/node";
 import { type Perform } from "./ui";
 import { AgentState } from "./ExecutionStatus";
 import { ExecutionPanel } from "./ExecutionPanel";
@@ -46,6 +54,7 @@ export function AgentRoster({
   message: (agent: AgentView, privateChat: boolean) => void;
   permissions: (agent: AgentView) => void;
 }) {
+  const { missions: node, workspace: desktop } = useApplication();
   const [agents, setAgents] = useState<AgentView[]>([]);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -128,19 +137,19 @@ export function AgentRoster({
           <Users size={17} /> Agents{" "}
           <span className="d-count">{agents.length}</span>
         </h3>
-        <button className="d-button" onClick={prepare} disabled={busy}>
+        <Button onClick={prepare} disabled={busy}>
           <Plus size={15} /> Add agents
-        </button>
+        </Button>
       </header>
       {selected ? (
-        <button className="d-button" onClick={() => setSelected(null)}>
-          ← All agents
-        </button>
+        <Button onClick={() => setSelected(null)}>← All agents</Button>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {available.length && !selected ? (
-        <details className="n-secondary-section">
-          <summary>Share a prepared agent · {available.length}</summary>
+        <Disclosure
+          className="n-secondary-section"
+          title={<>Share a prepared agent · {available.length}</>}
+        >
           <form
             className="n-share-agent"
             onSubmit={(event) => {
@@ -156,7 +165,7 @@ export function AgentRoster({
             }}
           >
             <h4>Share a prepared agent</h4>
-            <label className="d-field">
+            <Field>
               Local contribution
               <select
                 aria-label="Prepared agent"
@@ -172,8 +181,8 @@ export function AgentRoster({
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="d-field">
+            </Field>
+            <Field>
               Agent name
               <input
                 name="label"
@@ -182,19 +191,19 @@ export function AgentRoster({
                 placeholder="For example, accessibility-researcher"
                 disabled={busy}
               />
-            </label>
+            </Field>
             <p className="d-field-help">
               Shares this name, your display name, runtime and role with the
               mission. Your workspace and local allowance stay on this device.
             </p>
-            <button className="d-button primary" disabled={busy || !choice}>
+            <Button variant="primary" type="submit" disabled={busy || !choice}>
               Share agent
-            </button>
+            </Button>
           </form>
-        </details>
+        </Disclosure>
       ) : null}
       {agents.length && !selected ? (
-        <label className="d-field n-agent-filter">
+        <Field className="n-agent-filter">
           <span className="sr-only">Find an agent</span>
           <input
             type="search"
@@ -202,7 +211,7 @@ export function AgentRoster({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </label>
+        </Field>
       ) : null}
       {!loaded && !error ? <p role="status">Loading agents…</p> : null}
       {loaded && !agents.length ? (
@@ -303,8 +312,7 @@ export function AgentRoster({
                       />
                     ) : null}
                     <div className="n-action-row">
-                      <button
-                        className="d-button"
+                      <Button
                         disabled={
                           busy ||
                           [
@@ -317,9 +325,8 @@ export function AgentRoster({
                         onClick={() => message(a, false)}
                       >
                         Address in Main
-                      </button>
-                      <button
-                        className="d-button"
+                      </Button>
+                      <Button
                         disabled={
                           busy ||
                           [
@@ -332,7 +339,7 @@ export function AgentRoster({
                         onClick={() => message(a, true)}
                       >
                         Message privately
-                      </button>
+                      </Button>
                     </div>
                     {a.assignment ? (
                       <p className="d-field-help">
@@ -360,8 +367,7 @@ export function AgentRoster({
                       </p>
                     ) : null}
                     {canDirect ? (
-                      <button
-                        className="d-button"
+                      <Button
                         disabled={busy}
                         onClick={() =>
                           setDirection({
@@ -375,7 +381,7 @@ export function AgentRoster({
                         }
                       >
                         Give direction
-                      </button>
+                      </Button>
                     ) : null}
                     {direction?.id === a.id ? (
                       <form
@@ -394,7 +400,7 @@ export function AgentRoster({
                           });
                         }}
                       >
-                        <label className="d-field">
+                        <Field>
                           Direction in Main
                           <textarea
                             required
@@ -408,7 +414,7 @@ export function AgentRoster({
                               })
                             }
                           />
-                        </label>
+                        </Field>
                         <p className="d-field-help">
                           Visible to the mission. Your instruction takes
                           precedence over Coordinator direction.
@@ -420,15 +426,16 @@ export function AgentRoster({
                           </p>
                         ) : null}
                         <div className="n-action-row">
-                          <button
+                          <Button
                             type="button"
-                            className="d-button"
+
                             onClick={() => setDirection(null)}
                           >
                             Cancel
-                          </button>
-                          <button
-                            className="d-button primary"
+                          </Button>
+                          <Button
+                            variant="primary"
+                            type="submit"
                             disabled={
                               busy ||
                               !direction.text.trim() ||
@@ -436,16 +443,17 @@ export function AgentRoster({
                             }
                           >
                             Assign direction
-                          </button>
+                          </Button>
                         </div>
                       </form>
                     ) : null}
                     {c ? (
-                      <details className="n-agent-device">
-                        <summary>On your computer</summary>
+                      <Disclosure
+                        className="n-agent-device"
+                        title={<>On your computer</>}
+                      >
                         <p className="d-mono n-key">{c.workspace}</p>
-                        <button
-                          className="d-button"
+                        <Button
                           disabled={busy}
                           onClick={() =>
                             void perform(async () => {
@@ -454,22 +462,21 @@ export function AgentRoster({
                           }
                         >
                           <FolderOpen size={15} /> Open exported files
-                        </button>
+                        </Button>
                         <p className="d-field-help">
                           Local consent:{" "}
                           {c.status === "prepared" ? "prepared" : "revoked"}.
                           Runtime controls apply only on this device.
                         </p>
                         {c.status === "prepared" ? (
-                          <button
-                            className="d-button"
+                          <Button
                             disabled={busy}
                             onClick={() => setWithdraw(c.id)}
                           >
                             Withdraw agent…
-                          </button>
+                          </Button>
                         ) : null}
-                      </details>
+                      </Disclosure>
                     ) : null}
                     {withdraw === c?.id && c ? (
                       <div className="n-withdraw-confirm">
@@ -479,14 +486,10 @@ export function AgentRoster({
                           preserved.
                         </p>
                         <div className="n-action-row">
-                          <button
-                            className="d-button"
-                            onClick={() => setWithdraw(null)}
-                          >
+                          <Button onClick={() => setWithdraw(null)}>
                             Cancel
-                          </button>
-                          <button
-                            className="d-button"
+                          </Button>
+                          <Button
                             disabled={busy}
                             onClick={() =>
                               void perform(async () => {
@@ -497,18 +500,20 @@ export function AgentRoster({
                             }
                           >
                             Withdraw agent
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ) : null}
-                    <details className="n-agent-device">
-                      <summary>Identity details</summary>
+                    <Disclosure
+                      className="n-agent-device"
+                      title={<>Identity details</>}
+                    >
                       <p className="d-field-help">
                         Display names are chosen by contributors. This signing
                         identity distinguishes agents with the same name.
                       </p>
                       <code className="n-key">{a.identity.author}</code>
-                    </details>
+                    </Disclosure>
                   </div>
                 ) : null}
               </article>

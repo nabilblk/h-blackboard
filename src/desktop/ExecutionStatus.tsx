@@ -1,3 +1,4 @@
+import { useApplication } from "./ApplicationProvider";
 import {
   createContext,
   useContext,
@@ -6,11 +7,11 @@ import {
   type ReactNode,
 } from "react";
 import { agentPresentation } from "../../shared/mission-presentation.mjs";
-import type { ExecutionState } from "./execution-types";
-import type { RemoteObservation } from "./execution-types";
-import { node } from "./bridge";
-import type { Contribution } from "./bridge";
-import type { AgentView, MissionView } from "./node-contract";
+import type { ExecutionState } from "../application/contracts/execution";
+import type { RemoteObservation } from "../application/contracts/execution";
+
+import type { Contribution } from "../application/contracts/workspace";
+import type { AgentView, MissionView } from "../application/contracts/node";
 
 const Context = createContext<{
   states: Record<string, ExecutionState>;
@@ -24,6 +25,7 @@ export function ExecutionStatusProvider({
   mission: string;
   children: ReactNode;
 }) {
+  const { execution, missions: node } = useApplication();
   const [states, setStates] = useState<Record<string, ExecutionState>>({});
   const [clock, setClock] = useState(Date.now);
   const [observations, setObservations] = useState<
@@ -40,7 +42,7 @@ export function ExecutionStatusProvider({
     const poll = async () => {
       try {
         const [next, reports] = await Promise.all([
-          window.blackboardExecution.overview(mission),
+          execution.overview(mission),
           node.observations(mission),
         ]);
         if (!cancelled) setStates(next);
@@ -81,7 +83,7 @@ export function ExecutionStatusProvider({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mission]);
+  }, [mission, execution, node]);
   return (
     <Context.Provider value={{ states, observations, clock }}>
       {children}

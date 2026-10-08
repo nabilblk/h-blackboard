@@ -1,6 +1,15 @@
+import { ViewTabs } from "../ui/ViewTabs";
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useState } from "react";
-import { node, type Contribution } from "./bridge";
-import type { AgentView, GovernanceAction, MissionView } from "./node-contract";
+import { type Contribution } from "../application/contracts/workspace";
+import type {
+  AgentView,
+  GovernanceAction,
+  MissionView,
+} from "../application/contracts/node";
 import type { Perform } from "./ui";
 import { Status } from "./ui";
 import { useLedger, short } from "./useGovernance";
@@ -22,6 +31,7 @@ export function BudgetPanel({
   perform: Perform;
   initialAgent?: string | null;
 }) {
+  const { missions: node } = useApplication();
   const { data, error, refresh } = useLedger(mission.id);
   const [form, setForm] = useState<"allocate" | "grant" | "auto" | null>(
     initialAgent ? "auto" : null,
@@ -99,20 +109,15 @@ export function BudgetPanel({
   };
   return (
     <div className="n-governance">
-      <nav className="n-member-tabs" aria-label="Budget inspector views">
-        <button
-          aria-pressed={tab === "overview"}
-          onClick={() => setTab("overview")}
-        >
-          Overview
-        </button>
-        <button
-          aria-pressed={tab === "technical"}
-          onClick={() => setTab("technical")}
-        >
-          Technical
-        </button>
-      </nav>
+      <ViewTabs
+        label="Budget inspector views"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: "overview", label: "Overview" },
+          { value: "technical", label: "Technical" },
+        ]}
+      />
       <div hidden={tab !== "overview"}>
         <header>
           {focused ? (
@@ -172,9 +177,9 @@ export function BudgetPanel({
               Some usage or stops are unconfirmed. Their allowance remains
               reserved.
             </p>
-            <button className="d-button" onClick={() => setTab("technical")}>
+            <Button onClick={() => setTab("technical")}>
               Review unresolved execution
-            </button>
+            </Button>
           </div>
         ) : null}
         {data.allocations.length ? (
@@ -196,8 +201,11 @@ export function BudgetPanel({
             Allowances appear here when contributions are authorized.
           </p>
         )}
-        <details className="n-secondary-section" open={!!focused || !!mode}>
-          <summary>Manage allowances and permissions</summary>
+        <Disclosure
+          className="n-secondary-section"
+          open={!!focused || !!mode}
+          title={<>Manage allowances and permissions</>}
+        >
           <p className="d-field-help">
             Contributors normally approve their agents in Members. These
             controls let the mission owner allocate resources manually. Local
@@ -206,8 +214,7 @@ export function BudgetPanel({
           <div className="n-action-row">
             {own ? (
               <>
-                <button
-                  className="d-button"
+                <Button
                   disabled={
                     busy ||
                     ["closed", "archived"].includes(mission.lifecycle.phase)
@@ -215,9 +222,8 @@ export function BudgetPanel({
                   onClick={() => setForm("allocate")}
                 >
                   Allocate allowance
-                </button>
-                <button
-                  className="d-button"
+                </Button>
+                <Button
                   disabled={
                     busy ||
                     !["active", "preparing"].includes(
@@ -234,7 +240,7 @@ export function BudgetPanel({
                   {mission.lifecycle.phase === "preparing"
                     ? "Allow Coordinator planning"
                     : "Issue permission"}
-                </button>
+                </Button>
               </>
             ) : null}
           </div>
@@ -253,7 +259,7 @@ export function BudgetPanel({
               close={() => setForm(null)}
             />
           ) : null}
-        </details>
+        </Disclosure>
       </div>
       {error ? (
         <p role="alert" className="d-alert">
@@ -286,8 +292,7 @@ export function BudgetPanel({
               <small className="d-muted">{short(a.id)}</small>
               <div className="n-action-row">
                 {a.node === owner && !a.reclaimed ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={
                       busy ||
                       !!a.sealed ||
@@ -307,16 +312,15 @@ export function BudgetPanel({
                     }
                   >
                     Seal allowance
-                  </button>
+                  </Button>
                 ) : null}
                 {own && a.sealed && !a.reclaimed ? (
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() => apply({ type: "reclaim", seal: a.sealed! })}
                   >
                     Reclaim unused allowance
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </section>
@@ -370,8 +374,7 @@ export function BudgetPanel({
                 </p>
                 <div className="n-action-row">
                   {local && !g.consent && !g.sealed && !g.revoked ? (
-                    <button
-                      className="d-button"
+                    <Button
                       disabled={
                         busy ||
                         directionChanged ||
@@ -386,11 +389,10 @@ export function BudgetPanel({
                       }
                     >
                       Consent with my local terms
-                    </button>
+                    </Button>
                   ) : null}
                   {own && !g.sealed ? (
-                    <button
-                      className="d-button"
+                    <Button
                       disabled={busy || g.reserved > 0}
                       onClick={() => {
                         setResolution(`grant:${g.id}`);
@@ -398,11 +400,10 @@ export function BudgetPanel({
                       }}
                     >
                       Retire unreachable permission
-                    </button>
+                    </Button>
                   ) : null}
                   {g.node === owner && !g.sealed ? (
-                    <button
-                      className="d-button"
+                    <Button
                       disabled={busy || g.reserved > 0}
                       onClick={() =>
                         apply({
@@ -415,7 +416,7 @@ export function BudgetPanel({
                       }
                     >
                       Seal permission
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </section>
@@ -441,15 +442,14 @@ export function BudgetPanel({
                   {r.summary ?? "Awaiting an attributed receipt."}
                 </p>
                 {own && !r.resolution && !(r.stopped && r.used !== null) ? (
-                  <button
-                    className="d-button"
+                  <Button
                     onClick={() => {
                       setResolution(r.id);
                       setReason("");
                     }}
                   >
                     Review uncertainty
-                  </button>
+                  </Button>
                 ) : null}
               </section>
             ))}
@@ -474,7 +474,7 @@ export function BudgetPanel({
               it. This does not prove the old execution stopped. Review possible
               duplicate external effects before replacement work.
             </p>
-            <label className="d-field">
+            <Field>
               <span>Reason for accepting this risk</span>
               <textarea
                 required
@@ -482,18 +482,14 @@ export function BudgetPanel({
                 onChange={(e) => setReason(e.target.value)}
                 maxLength={2048}
               />
-            </label>
+            </Field>
             <div className="n-action-row">
-              <button
-                className="d-button"
-                type="button"
-                onClick={() => setResolution(null)}
-              >
+              <Button type="button" onClick={() => setResolution(null)}>
                 Cancel
-              </button>
-              <button className="d-button" disabled={busy || !reason.trim()}>
+              </Button>
+              <Button type="submit" disabled={busy || !reason.trim()}>
                 Record risk decision
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}

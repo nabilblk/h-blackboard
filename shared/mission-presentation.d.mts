@@ -3,12 +3,12 @@ import type {
   MissionView,
   ArtifactSummary,
   JoinView,
-} from "../src/desktop/node-contract";
-import type { Contribution } from "../src/desktop/bridge";
+} from "../src/application/contracts/node";
+import type { Contribution } from "../src/application/contracts/workspace";
 import type {
   ExecutionState,
   RemoteObservation,
-} from "../src/desktop/execution-types";
+} from "../src/application/contracts/execution";
 export type PresentationAction = {
   label: string;
   destination:
@@ -60,7 +60,7 @@ export type MissionPresentationInput = {
   states?: Record<string, ExecutionState>;
   observations?: Record<string, RemoteObservation>;
   requests?: JoinView[];
-  startJobs?: import("../src/desktop/onboarding-types").StartJob[];
+  startJobs?: import("../src/application/contracts/setup").StartJob[];
   criteria?: { met: boolean; stale: boolean }[];
   acceptedResult?: ArtifactSummary | null;
   loaded?: boolean;

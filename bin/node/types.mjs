@@ -3,7 +3,10 @@ import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { format } from "prettier";
 const exec = promisify(execFile);
-const file = new URL("../../src/desktop/node-contract.ts", import.meta.url);
+const file = new URL(
+  "../../src/application/contracts/node.ts",
+  import.meta.url,
+);
 const { stdout } = await exec(
   "cargo",
   ["run", "--quiet", "--locked", "--bin", "harakiri-node", "--", "--types"],

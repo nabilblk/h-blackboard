@@ -1,8 +1,15 @@
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useState } from "react";
 import { Hash } from "lucide-react";
-import { node } from "./bridge";
+
 import { Text } from "../Markdown";
-import type { AgentView, WorkAction, WorkstreamView } from "./node-contract";
+import type {
+  AgentView,
+  WorkAction,
+  WorkstreamView,
+} from "../application/contracts/node";
 import { active, type Props } from "./work-ui";
 export function WorkstreamPanel({
   mission,
@@ -19,6 +26,7 @@ export function WorkstreamPanel({
   agents: AgentView[];
   open: (id: string) => void;
 }) {
+  const { missions: node } = useApplication();
   const [editing, setEditing] = useState(!stream);
   const [snapshot, setSnapshot] = useState(stream);
   const [revision, setRevision] = useState(mission.lifecycle.revision);
@@ -69,8 +77,7 @@ export function WorkstreamPanel({
             </div>
           ) : null}
           {editable && !editing ? (
-            <button
-              className="d-button"
+            <Button
               onClick={() => {
                 setSnapshot(stream);
                 setRevision(mission.lifecycle.revision);
@@ -78,7 +85,7 @@ export function WorkstreamPanel({
               }}
             >
               Edit goal{stream.heads.length > 1 ? " / resolve conflict" : ""}
-            </button>
+            </Button>
           ) : null}
         </>
       ) : (
@@ -112,7 +119,7 @@ export function WorkstreamPanel({
             );
           }}
         >
-          <label className="d-field">
+          <Field>
             Name
             <input
               name="name"
@@ -121,8 +128,8 @@ export function WorkstreamPanel({
               maxLength={80}
               placeholder="e.g. accessibility"
             />
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Shared goal
             <textarea
               name="goal"
@@ -132,19 +139,19 @@ export function WorkstreamPanel({
               rows={4}
               placeholder="What should this group explore or deliver?"
             />
-          </label>
+          </Field>
           <div className="n-action-row">
-            <button className="d-button primary" disabled={busy}>
+            <Button variant="primary" type="submit" disabled={busy}>
               {snapshot ? "Save goal" : "Create workstream"}
-            </button>
+            </Button>
             {stream ? (
-              <button
+              <Button
                 type="button"
-                className="d-button"
+
                 onClick={() => setEditing(false)}
               >
                 Cancel
-              </button>
+              </Button>
             ) : null}
           </div>
         </form>
@@ -202,9 +209,9 @@ export function WorkstreamPanel({
                     The goal or mission instructions changed while this panel
                     was open. Review them before assigning this direction.
                   </p>
-                  <button
+                  <Button
                     type="button"
-                    className="d-button"
+
                     onClick={() =>
                       setAssignmentRevision({
                         control: mission.lifecycle.revision,
@@ -213,10 +220,10 @@ export function WorkstreamPanel({
                     }
                   >
                     Use reviewed goal
-                  </button>
+                  </Button>
                 </div>
               ) : null}
-              <label className="d-field">
+              <Field>
                 Assign an existing agent
                 <select name="agent" required defaultValue="">
                   <option value="" disabled>
@@ -228,8 +235,8 @@ export function WorkstreamPanel({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="d-field">
+              </Field>
+              <Field>
                 Direction
                 <textarea
                   name="direction"
@@ -238,13 +245,13 @@ export function WorkstreamPanel({
                   rows={2}
                   placeholder="Describe the approach or contribution you need."
                 />
-              </label>
-              <button
-                className="d-button"
+              </Field>
+              <Button
+                type="submit"
                 disabled={busy || assignmentChanged || !agents.some(active)}
               >
                 Assign direction
-              </button>
+              </Button>
               <p className="d-field-help">
                 This is a human direction. Receipt and execution remain
                 separate.

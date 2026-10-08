@@ -1,8 +1,10 @@
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { node } from "./bridge";
+
 import { ContextPanel } from "./ContextPanel";
 import { Composer } from "./ConversationMessage";
-import type { MessageView, MessageQuery } from "./node-contract";
+import type { MessageView, MessageQuery } from "../application/contracts/node";
 import type { Perform } from "./ui";
 
 export function Thread({
@@ -26,6 +28,7 @@ export function Thread({
   draft: string;
   change: (s: string) => void;
 }) {
+  const { missions: node } = useApplication();
   const [root, setRoot] = useState<MessageView | null>(null);
   const history = useRef<HTMLDivElement>(null);
   const [items, setItems] = useState<MessageView[]>([]);
@@ -93,7 +96,7 @@ export function Thread({
       active.current = false;
       clearTimeout(timer);
     };
-  }, [mission, target.id, target.audience]);
+  }, [mission, target.id, target.audience, node]);
   return (
     <ContextPanel title="Thread" close={close} error={error}>
       <div className="n-thread">
@@ -107,8 +110,7 @@ export function Thread({
         <div className="n-thread-messages" ref={history}>
           {root ? <div className="n-thread-root">{render(root)}</div> : null}
           {older ? (
-            <button
-              className="d-button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -136,7 +138,7 @@ export function Thread({
               }
             >
               Earlier replies
-            </button>
+            </Button>
           ) : null}
           {items.map(render)}
         </div>

@@ -1,6 +1,10 @@
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
-import { node } from "./bridge";
-import type { MessageView } from "./node-contract";
+
+import type { MessageView } from "../application/contracts/node";
 import type { Perform } from "./ui";
 export function PrivateRecovery({
   mission,
@@ -15,6 +19,7 @@ export function PrivateRecovery({
   perform: Perform;
   busy: boolean;
 }) {
+  const { missions: node } = useApplication();
   const [items, setItems] = useState<{ member: string; revocation: string }[]>(
     [],
   );
@@ -43,7 +48,7 @@ export function PrivateRecovery({
       active = false;
       clearTimeout(timer);
     };
-  }, [mission, audience]);
+  }, [mission, audience, node]);
   if (!items.length)
     return error ? (
       <p className="d-field-help" role="status">
@@ -52,13 +57,15 @@ export function PrivateRecovery({
     ) : null;
   const item = items[0];
   return (
-    <details className="n-review-needed">
-      <summary>Review provisional private history</summary>
+    <Disclosure
+      className="n-review-needed"
+      title={<>Review provisional private history</>}
+    >
       <p>
         A participant left or was revoked. Only this conversation’s creator can
         accept its private history. Other members cannot see this decision.
       </p>
-      <label className="d-field">
+      <Field>
         <span>Accepted history</span>
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>
           <option value="">Choose after reviewing the messages…</option>
@@ -73,14 +80,13 @@ export function PrivateRecovery({
               </option>
             ))}
         </select>
-      </label>
+      </Field>
       <p className="d-field-help">
         Only loaded messages are listed. Load older messages to review a
         different point in the history. This decision is permanent; later
         records remain provisional.
       </p>
-      <button
-        className="d-button"
+      <Button
         disabled={busy || !selected}
         onClick={() =>
           void perform(async () => {
@@ -97,7 +103,7 @@ export function PrivateRecovery({
         }
       >
         Record accepted private history
-      </button>
-    </details>
+      </Button>
+    </Disclosure>
   );
 }

@@ -1,13 +1,15 @@
+import { useApplication } from "./ApplicationProvider";
 import { useCallback, useEffect, useState } from "react";
-import { node } from "./bridge";
-import type { GovernanceView } from "./node-contract";
+
+import type { GovernanceView } from "../application/contracts/node";
 export function useLedger(mission: string) {
+  const { missions: node } = useApplication();
   const [data, setData] = useState<GovernanceView | null>(null);
   const [error, setError] = useState("");
   const refresh = useCallback(async () => {
     setData(await node.governance(mission));
     setError("");
-  }, [mission]);
+  }, [mission, node]);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -31,7 +33,7 @@ export function useLedger(mission: string) {
       active = false;
       clearTimeout(timer);
     };
-  }, [mission]);
+  }, [mission, node]);
   return { data, error, refresh };
 }
 export const short = (s: string) => s.slice(0, 10);

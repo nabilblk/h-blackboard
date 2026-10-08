@@ -1,8 +1,10 @@
+import { IconButton } from "../ui/Button";
+import { Button } from "../ui/Button";
 import type { RefObject } from "react";
 import { ArrowUp, MessageSquare, X } from "lucide-react";
 import { Text } from "../Markdown";
 import { date } from "./ui";
-import type { MessageView } from "./node-contract";
+import type { MessageView } from "../application/contracts/node";
 
 export function Message({
   message: m,
@@ -62,33 +64,34 @@ export function Message({
         </div>
         <div className="n-message-actions">
           {context ? (
-            <button className="d-button" onClick={context}>
+            <Button size="compact" onClick={context}>
               Open conversation
-            </button>
+            </Button>
           ) : null}
           {reply ? (
-            <button className="d-button" onClick={reply}>
+            <Button size="compact" onClick={reply}>
               <MessageSquare size={14} />
               {m.replies
                 ? `${m.replies} ${m.replies === 1 ? "reply" : "replies"}`
                 : "Reply in thread"}
-            </button>
+            </Button>
           ) : null}
           {m.work ? (
-            <button
-              className="d-button"
+            <Button
+              size="compact"
               onClick={() => openWork(m.work!.kind, m.work!.id)}
             >
               View {m.work.kind}
-            </button>
+            </Button>
           ) : null}
           {m.agent_registration || m.author_agent ? (
-            <button
-              className="d-button n-message-agent"
+            <Button
+              size="compact"
+              className="n-message-agent"
               onClick={() => profile((m.agent_registration ?? m.author_agent)!)}
             >
               View agent
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -152,14 +155,13 @@ export function Composer({
               ))}
             </select>
             {recipient.value ? (
-              <button
-                className="d-icon"
+              <IconButton
                 type="button"
                 aria-label="Remove recipient"
                 onClick={() => recipient.change("")}
               >
                 <X size={14} />
-              </button>
+              </IconButton>
             ) : null}
           </label>
         ) : null}
@@ -186,14 +188,14 @@ export function Composer({
       />
       <footer>
         <span>{hint}</span>
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
           type="submit"
           disabled={busy || blocked || !draft.trim()}
         >
           <ArrowUp size={16} />
           Send
-        </button>
+        </Button>
       </footer>
     </form>
   );

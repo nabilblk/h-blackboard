@@ -9,20 +9,7 @@ export const date = (input: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-export function Status({
-  children,
-  muted = false,
-}: {
-  children: ReactNode;
-  muted?: boolean;
-}) {
-  return (
-    <span className={`d-status${muted ? " muted" : ""}`}>
-      <i />
-      {children}
-    </span>
-  );
-}
+export { Status } from "../ui/Status";
 export function Heading({
   section,
   title,

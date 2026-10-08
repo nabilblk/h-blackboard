@@ -1,3 +1,8 @@
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { Disclosure } from "../ui/Disclosure";
+import { IconButton } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { BackgroundSetting } from "./BackgroundSetting";
 import { readDrafts, writeDrafts } from "../../shared/desktop-drafts.mjs";
 import { useEffect, useRef, useState } from "react";
@@ -17,7 +22,10 @@ import {
   X,
 } from "lucide-react";
 import runtimes from "../../shared/runtimes.json";
-import { desktop, node, type LocalState, type NodeState } from "./bridge";
+import {
+  type LocalState,
+  type NodeState,
+} from "../application/contracts/workspace";
 import { Brand, Heading, Status, date, type Perform } from "./ui";
 import Prepare from "./Prepare";
 import ContributionDetail from "./ContributionDetail";
@@ -29,8 +37,8 @@ import {
 } from "./Missions";
 import { NetworkSettings, JoinMission } from "./Peers";
 import { Discover, DeviceDiscovery } from "./Discovery";
-import type { ContributionReview } from "./bridge";
-import type { InvitationReview } from "./node-contract";
+import type { ContributionReview } from "../application/contracts/workspace";
+import type { InvitationReview } from "../application/contracts/node";
 
 type View =
   | "discover"
@@ -46,6 +54,7 @@ type View =
   | { missionId: string; startSetup?: boolean };
 
 export default function Desktop() {
+  const { workspace: desktop, setup, missions: node } = useApplication();
   const [state, setState] = useState<LocalState | null>(null);
   const [view, setView] = useState<View>(() => {
     try {
@@ -119,7 +128,7 @@ export default function Desktop() {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const invitation = await window.blackboardSetup.takeInvitation();
+        const invitation = await setup.takeInvitation();
         if (invitation && !cancelled) {
           setIncomingInvitation(invitation);
           setView("join");
@@ -127,7 +136,7 @@ export default function Desktop() {
         }
         const value = await node.state();
         const local = await desktop.state();
-        const target = await window.blackboardSetup.takeNotification();
+        const target = await setup.takeNotification();
         if (!cancelled) {
           setNodeState(value);
           setState(local);
@@ -168,7 +177,7 @@ export default function Desktop() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, []);
+  }, [desktop, setup, node]);
   const perform: Perform = async (operation) => {
     setBusy(true);
     setError("");
@@ -276,14 +285,13 @@ export default function Desktop() {
         </nav>
         <div className="d-sidebar-title d-mission-heading">
           <span className="d-label">Mission channels</span>
-          <button
-            className="d-icon"
+          <IconButton
             aria-label="Create mission"
             disabled={busy || !nodeState}
             onClick={() => navigate("new-mission")}
           >
             <Plus size={16} />
-          </button>
+          </IconButton>
         </div>
         <div className="d-mission-nav">
           {nodeState?.missions
@@ -304,13 +312,19 @@ export default function Desktop() {
               </div>
             ))}
           {nodeState?.missions.some((m) => m.lifecycle.phase === "archived") ? (
-            <details
+            <Disclosure
               className="n-archived"
+              variant="sidebar"
+              count={
+                nodeState.missions.filter(
+                  (m) => m.lifecycle.phase === "archived",
+                ).length
+              }
               open={
                 selectedMission?.lifecycle.phase === "archived" || undefined
               }
+              title={<>Archived channels</>}
             >
-              <summary>Archived channels</summary>
               {nodeState.missions
                 .filter((m) => m.lifecycle.phase === "archived")
                 .map((m) => (
@@ -327,7 +341,7 @@ export default function Desktop() {
                     ) : null}
                   </div>
                 ))}
-            </details>
+            </Disclosure>
           ) : null}
           {!nodeState?.missions.length ? <p>No local missions yet.</p> : null}
         </div>
@@ -385,13 +399,9 @@ export default function Desktop() {
         {error ? (
           <div className="d-alert" role="alert">
             <span>{error}</span>
-            <button
-              className="d-icon"
-              aria-label="Dismiss error"
-              onClick={() => setError("")}
-            >
+            <IconButton aria-label="Dismiss error" onClick={() => setError("")}>
               <X size={16} />
-            </button>
+            </IconButton>
           </div>
         ) : null}
         {notice ? (
@@ -559,14 +569,14 @@ export default function Desktop() {
                 section="Renting the Rent / Your contributions"
                 title="Your contributions"
                 action={
-                  <button
-                    className="d-button primary"
+                  <Button
+                    variant="primary"
                     disabled={busy}
                     onClick={() => navigate("prepare")}
                   >
                     <Plus size={16} />
                     Prepare contribution
-                  </button>
+                  </Button>
                 }
               >
                 Bring your agent to a shared mission. Keep control of your
@@ -624,14 +634,11 @@ export default function Desktop() {
                       Start with a mission invitation. Inspect the board, choose
                       your local terms, and save a contribution.
                     </p>
-                    <button
-                      className="d-button"
-                      onClick={() => navigate("prepare")}
-                    >
+                    <Button onClick={() => navigate("prepare")}>
                       <Link size={15} />
                       Inspect an invitation
                       <ArrowRight size={15} />
-                    </button>
+                    </Button>
                   </div>
                 )}
               </section>
@@ -703,7 +710,7 @@ export default function Desktop() {
                       });
                     }}
                   >
-                    <label className="d-field">
+                    <Field>
                       Display name
                       <input
                         name="name"
@@ -714,7 +721,7 @@ export default function Desktop() {
                         maxLength={100}
                         autoComplete="off"
                       />
-                    </label>
+                    </Field>
                     <dl className="d-facts">
                       <div>
                         <dt>Contributor ID</dt>
@@ -729,9 +736,9 @@ export default function Desktop() {
                         <dd className="d-mono">{state.device.id}</dd>
                       </div>
                     </dl>
-                    <button className="d-button" disabled={busy} type="submit">
+                    <Button disabled={busy} type="submit">
                       Save name
-                    </button>
+                    </Button>
                   </form>
                 </section>
                 <section className="d-panel">
@@ -865,15 +872,14 @@ export default function Desktop() {
                       </div>
                       <time dateTime={entry.at}>{date(entry.at)}</time>
                       {entry.contributionId ? (
-                        <button
-                          className="d-icon"
+                        <IconButton
                           aria-label={`Open ${entry.label}`}
                           onClick={() =>
                             navigate({ id: entry.contributionId! })
                           }
                         >
                           <ChevronRight size={17} />
-                        </button>
+                        </IconButton>
                       ) : null}
                     </article>
                   ))

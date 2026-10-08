@@ -1,11 +1,16 @@
+import { ViewTabs } from "../ui/ViewTabs";
+import { Disclosure } from "../ui/Disclosure";
+import { Field } from "../ui/Field";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { ContributionConsent } from "./ContributionApproval";
 import { useEffect, useState } from "react";
 import { Play, Square, Download, Upload, ShieldCheck } from "lucide-react";
-import { node, type Contribution } from "./bridge";
-import type { GrantView } from "./node-contract";
+import { type Contribution } from "../application/contracts/workspace";
+import type { GrantView } from "../application/contracts/node";
 
-import type { ExecutionState } from "./execution-types";
-import type { MissionView } from "./node-contract";
+import type { ExecutionState } from "../application/contracts/execution";
+import type { MissionView } from "../application/contracts/node";
 import { RunApproval, ProviderSetup } from "./ExecutionSetup";
 import { agentPresentation } from "../../shared/mission-presentation.mjs";
 
@@ -37,6 +42,7 @@ export function ExecutionPanel({
   item: Contribution;
   mission?: MissionView;
 }) {
+  const { execution: api, missions: node } = useApplication();
   const [mission, setMission] = useState(suppliedMission);
   const [owner, setOwner] = useState("");
   const [authInput, setAuthInput] = useState("");
@@ -53,7 +59,6 @@ export function ExecutionPanel({
     "activity",
   );
   const [historySearch, setHistorySearch] = useState("");
-  const api = window.blackboardExecution;
   useEffect(() => {
     if (!api) return;
     let cancelled = false;
@@ -93,7 +98,13 @@ export function ExecutionPanel({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [api, item.id, item.mission.missionId, item.sharedAgent?.registration]);
+  }, [
+    api,
+    item.id,
+    item.mission.missionId,
+    item.sharedAgent?.registration,
+    node,
+  ]);
   const act = async (operation: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -154,20 +165,16 @@ export function ExecutionPanel({
             ? `Prepare an isolated environment for this contribution, then sign in to ${runtimeLabel} inside it.`
             : "Prepare a contribution to a peer mission to use isolated execution on Apple Silicon with Lima.")}
       </p>
-      <nav
-        className="n-member-tabs n-execution-tabs"
-        aria-label="Agent inspector views"
-      >
-        {(["activity", "access", "technical"] as const).map((v) => (
-          <button key={v} aria-pressed={tab === v} onClick={() => setTab(v)}>
-            {v === "activity"
-              ? "Activity"
-              : v === "access"
-                ? "Access & limits"
-                : "Technical"}
-          </button>
-        ))}
-      </nav>
+      <ViewTabs
+        label="Agent inspector views"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: "activity", label: "Activity" },
+          { value: "access", label: "Access & limits" },
+          { value: "technical", label: "Technical" },
+        ]}
+      />
       {tab === "activity" &&
       status === "stopped" &&
       state?.record?.interruption ? (
@@ -192,8 +199,7 @@ export function ExecutionPanel({
       ) : null}
       <section hidden={tab !== "technical"} aria-label="Environment and source">
         <h4>Environment and source</h4>
-        <button
-          className="d-button"
+        <Button
           disabled={busy}
           onClick={() =>
             void act(async () => {
@@ -206,7 +212,7 @@ export function ExecutionPanel({
           }
         >
           Export diagnostics
-        </button>
+        </Button>
         <p className="d-field-help">
           Exports states and times. Provider output, prompts, credentials and
           paths stay on this Mac.
@@ -300,38 +306,37 @@ export function ExecutionPanel({
           <div hidden={tab !== "activity"}>
             <div className="n-action-row">
               {!state?.record || status === "failed" ? (
-                <button
-                  className="d-button primary"
+                <Button
+                  variant="primary"
                   disabled={busy}
                   onClick={() => void act(() => api.prepare(item.id))}
                 >
                   Prepare isolated environment
-                </button>
+                </Button>
               ) : null}
               {!working &&
               state?.record &&
               !state.busy &&
               !signInOpen &&
               status === "login_required" ? (
-                <button
-                  className="d-button primary"
+                <Button
+                  variant="primary"
                   disabled={busy}
                   onClick={() => void act(() => api.signIn(item.id))}
                 >
                   Sign in to {runtimeLabel}…
-                </button>
+                </Button>
               ) : null}
             </div>
             {!state?.record || status === "failed" ? <ProviderSetup /> : null}
             {status === "preparing" ? (
               <>
                 <progress aria-label="Preparing isolated environment" />
-                <button
-                  className="d-button"
+                <Button
                   onClick={() => void act(() => api.cancelSetup(item.id))}
                 >
                   Cancel environment setup
-                </button>
+                </Button>
               </>
             ) : null}
             {state?.authentication &&
@@ -342,8 +347,8 @@ export function ExecutionPanel({
                 {state.authentication.status === "failed" ||
                 (state.authentication.expiresAt &&
                   state.authentication.expiresAt <= Date.now()) ? (
-                  <button
-                    className="d-button primary"
+                  <Button
+                    variant="primary"
                     disabled={busy}
                     onClick={() =>
                       void act(async () => {
@@ -353,7 +358,7 @@ export function ExecutionPanel({
                     }
                   >
                     Get a fresh sign-in
-                  </button>
+                  </Button>
                 ) : null}
                 <p role="status">
                   {signInExpired
@@ -371,14 +376,14 @@ export function ExecutionPanel({
                 {state.authentication.code &&
                 !signInExpired &&
                 state.authentication.status === "waiting" ? (
-                  <label className="d-field">
+                  <Field>
                     Provider code
                     <input
                       readOnly
                       value={state.authentication.code}
                       onFocus={(e) => e.currentTarget.select()}
                     />
-                  </label>
+                  </Field>
                 ) : null}
                 {state.authentication.expiresAt && !signInExpired ? (
                   <p className="d-field-help">
@@ -395,26 +400,25 @@ export function ExecutionPanel({
                     code, cancel and retry to get a fresh one.
                   </p>
                 ) : null}
-                <details>
-                  <summary>Provider details</summary>
+                <Disclosure title={<>Provider details</>}>
                   <pre className="n-auth-output">
                     {state.authentication.text}
                   </pre>
-                </details>
+                </Disclosure>
                 {(state.authentication.status === "waiting" &&
                 (!state.authentication.expiresAt ||
                   state.authentication.expiresAt > Date.now())
                   ? state.authentication.urls
                   : []
                 ).map((url) => (
-                  <button
+                  <Button
                     key={url}
-                    className="d-button primary"
+                    variant="primary"
                     disabled={busy}
                     onClick={() => void act(() => api.openLogin(item.id, url))}
                   >
                     Open provider sign-in
-                  </button>
+                  </Button>
                 ))}
                 {["starting", "waiting"].includes(
                   state.authentication.status,
@@ -429,7 +433,7 @@ export function ExecutionPanel({
                           void act(() => api.loginInput(item.id, code));
                         }}
                       >
-                        <label className="d-field">
+                        <Field>
                           Code returned by the provider
                           <input
                             type="password"
@@ -439,21 +443,17 @@ export function ExecutionPanel({
                             required
                             maxLength={4096}
                           />
-                        </label>
-                        <button
-                          className="d-button"
-                          disabled={busy || !authInput}
-                        >
+                        </Field>
+                        <Button type="submit" disabled={busy || !authInput}>
                           Submit sign-in code
-                        </button>
+                        </Button>
                       </form>
                     ) : null}
-                    <button
-                      className="d-button"
+                    <Button
                       onClick={() => void act(() => api.cancelLogin(item.id))}
                     >
                       Cancel sign-in
-                    </button>
+                    </Button>
                   </>
                 ) : null}
               </section>
@@ -465,8 +465,7 @@ export function ExecutionPanel({
           status !== "failed" ? (
             <section aria-label="Sign-in diagnostics">
               <h4>Sign-in diagnostics</h4>
-              <button
-                className="d-button"
+              <Button
                 disabled={busy || state.busy}
                 onClick={() => {
                   setTab("activity");
@@ -474,9 +473,8 @@ export function ExecutionPanel({
                 }}
               >
                 Sign in again
-              </button>
-              <button
-                className="d-button"
+              </Button>
+              <Button
                 disabled={busy || state.busy}
                 onClick={() =>
                   void act(async () =>
@@ -485,7 +483,7 @@ export function ExecutionPanel({
                 }
               >
                 Show Terminal fallback
-              </button>
+              </Button>
             </section>
           ) : null}
           {command && tab === "technical" ? (
@@ -536,14 +534,14 @@ export function ExecutionPanel({
           ["ready", "stopped", "waiting", "running"].includes(status ?? "") &&
           (mission.lifecycle.phase !== "preparing" ||
             item.mission.role !== "coordinator") ? (
-            <button
-              className={`d-button ${effective?.action ? "primary" : ""}`}
+            <Button
+              variant={effective?.action ? "primary" : "secondary"}
               onClick={() => setTab("access")}
             >
               {state?.agreement?.status === "active"
                 ? "View contribution approval"
                 : "Review contribution"}
-            </button>
+            </Button>
           ) : null}
           {tab === "access" &&
           !working &&
@@ -578,14 +576,14 @@ export function ExecutionPanel({
                   item.sharedAgent?.author) &&
               !permission ? (
                 <>
-                  <button
-                    className={reviewRun ? "d-button" : "d-button primary"}
+                  <Button
+                    variant={reviewRun ? "secondary" : "primary"}
                     onClick={() => setReviewRun((v) => !v)}
                   >
                     {mission.lifecycle.phase === "preparing"
                       ? "Review planning session"
                       : "Review next run"}
-                  </button>
+                  </Button>
                   {reviewRun && state ? (
                     <RunApproval
                       item={item}
@@ -600,7 +598,7 @@ export function ExecutionPanel({
                 </>
               ) : null}
               {permission ? (
-                <label className="d-field">
+                <Field>
                   <span>Current run permission</span>
                   <select
                     value={permission?.id ?? ""}
@@ -619,7 +617,7 @@ export function ExecutionPanel({
                       </option>
                     ))}
                   </select>
-                </label>
+                </Field>
               ) : null}
               {permission ? (
                 <p className="d-field-help">
@@ -640,8 +638,8 @@ export function ExecutionPanel({
                 </p>
               ) : null}
               {permission ? (
-                <button
-                  className="d-button primary"
+                <Button
+                  variant="primary"
                   disabled={busy || !permission}
                   onClick={() =>
                     void act(async () => {
@@ -662,7 +660,7 @@ export function ExecutionPanel({
                     : state?.record?.session
                       ? "Approve and resume"
                       : "Approve and run"}
-                </button>
+                </Button>
               ) : null}
             </>
           ) : null}
@@ -672,8 +670,7 @@ export function ExecutionPanel({
       status !== "preparing" &&
       (working || status === "recovery_required" || tab === "technical") ? (
         <div className="n-action-row">
-          <button
-            className="d-button"
+          <Button
             disabled={busy || status === "stopping"}
             onClick={() => void act(() => api.stop(item.id))}
           >
@@ -681,11 +678,10 @@ export function ExecutionPanel({
             {status === "recovery_required"
               ? "Recover and confirm stop"
               : "Stop environment"}
-          </button>
+          </Button>
           {tab === "technical" ? (
             <>
-              <button
-                className="d-button"
+              <Button
                 disabled={busy || working || status === "recovery_required"}
                 onClick={() =>
                   void act(async () => {
@@ -697,9 +693,8 @@ export function ExecutionPanel({
                 }
               >
                 <Download size={14} /> Export workspace
-              </button>
-              <button
-                className="d-button"
+              </Button>
+              <Button
                 disabled={
                   busy ||
                   working ||
@@ -717,20 +712,20 @@ export function ExecutionPanel({
                 }
               >
                 <Upload size={14} /> Import files…
-              </button>
+              </Button>
             </>
           ) : null}
         </div>
       ) : null}
       {tab === "technical" ? (
-        <label className="d-field n-history-search">
+        <Field className="n-history-search">
           Search operation history
           <input
             type="search"
             value={historySearch}
             onChange={(e) => setHistorySearch(e.target.value)}
           />
-        </label>
+        </Field>
       ) : null}
       {tab === "technical" && state?.record?.transitions?.length ? (
         <section aria-label="State history">

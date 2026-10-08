@@ -1,6 +1,6 @@
-import type { AgentView, MissionView } from "../src/desktop/node-contract";
-import type { Contribution } from "../src/desktop/bridge";
-import type { ExecutionState } from "../src/desktop/execution-types";
+import type { AgentView, MissionView } from "../src/application/contracts/node";
+import type { Contribution } from "../src/application/contracts/workspace";
+import type { ExecutionState } from "../src/application/contracts/execution";
 export type AgentLifecycle = {
   state: string;
   label: string;
@@ -19,7 +19,7 @@ export function agentLifecycle(input: {
   agent?: AgentView;
   contribution?: Contribution;
   execution?: ExecutionState;
-  observation?: import("../src/desktop/execution-types").RemoteObservation;
+  observation?: import("../src/application/contracts/execution").RemoteObservation;
   mission: MissionView;
   now?: number;
 }): AgentLifecycle;

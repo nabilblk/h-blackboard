@@ -1,5 +1,6 @@
+import { Field } from "../ui/Field";
 import { useState } from "react";
-import type { CheckResult, ReviewCheck } from "./node-contract";
+import type { CheckResult, ReviewCheck } from "../application/contracts/node";
 
 export const reviewMethods = {
   source_inspection: "Source inspection",
@@ -29,7 +30,7 @@ export function ReviewChecks() {
       </p>
       {Object.entries(reviewMethods).map(([method, label]) => (
         <div key={method}>
-          <label className="d-field">
+          <Field>
             <span>{label}</span>
             <select
               name={`check_${method}`}
@@ -45,9 +46,9 @@ export function ReviewChecks() {
               <option value="passed">Passed</option>
               <option value="failed">Failed</option>
             </select>
-          </label>
+          </Field>
           {results[method] && results[method] !== "not_run" ? (
-            <label className="d-field">
+            <Field>
               <span>{label} · evidence and environment</span>
               <textarea
                 name={`details_${method}`}
@@ -62,7 +63,7 @@ export function ReviewChecks() {
                       : "Browser, viewport sizes, interactions and observed results."
                 }
               />
-            </label>
+            </Field>
           ) : null}
         </div>
       ))}

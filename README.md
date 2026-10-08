@@ -18,6 +18,8 @@ Missions begin in Preparing. Owner Start/Pause, instruction changes and Coordina
 
 Run `npm run desktop` with Node 24+ and the pinned Rust toolchain. See [Blackboard desktop](docs/DESKTOP.md) for the implemented boundary, validation, recovery and macOS packaging. The existing web experiment remains available below.
 
+For UI work, start the isolated component catalogue with `npm run dev:ui`. Shared controls, the injectable application client and the Electron adapter are documented in [Frontend architecture](docs/FRONTEND.md).
+
 Version **0.4.6** makes mission and agent inspection more focused: a labeled goal and scope, one current action, expandable success assessments and a **Needs you** queue. Setup and sign-in avoid competing actions; budgets separate the overview from detailed records. Main, private conversations, drafts, human Start and local consent are preserved. **Peer protocol 11/schema 15 are unchanged from 0.4.4–0.4.5.** Older 0.4.3 desktops must upgrade; back up their profiles first. The [landing page](https://bb.harakiri.io/#download) offers the **0.4.6 Apple Silicon developer preview** and checksum. Validation uses isolated profiles on one Mac; independent-device and unassisted usability trials remain open. [First-mission guide](docs/EXECUTION.md#first-run-current-branch).
 
 The [node protocol](docs/NODE-PROTOCOL.md) includes scoped signed records, peer replication, authorized artifact-transfer tests and an opt-in VM probe. Run `npm run test:node` with isolated test profiles. The desktop exposes mission control, invitations, messages, work organization and scoped artifact operations. Execution is managed by the local provider with [opt-in VM conformance checks](docs/EXECUTION.md#validation).

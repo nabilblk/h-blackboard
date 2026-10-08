@@ -2,6 +2,13 @@
 
 The desktop on `pivot/renting-the-rent` creates local missions and connects people through **signed invitations or public discovery, followed by explicit owner approval**. Main and private conversations replicate between admitted nodes and remain available offline. Networking and discovery are opt-in; no web board, domain or Harakiri account is required. Contributors can prepare local runtime/workspace/allowance terms and withdraw. Missions begin in Preparing. Owner Start/Pause and instruction changes now replicate, with a separate Coordinator plan/readiness contract. The coordination controls are implemented. Grok Build, Claude Code and Codex can execute in dedicated Lima VMs on Apple Silicon with guest-native login, explicit consent, scoped tools and confirmed stop/recovery. See [isolated execution](EXECUTION.md) for setup and the enforcement boundary.
 
+## UI development
+
+The desktop uses shared designer components and an injected application client.
+`npm run dev:ui` opens the component catalogue without Electron, a database or
+agents. See [frontend architecture and checks](FRONTEND.md) for replacing the
+presentation layer, adding components and maintaining the host boundary.
+
 ## Run on macOS
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.

@@ -1,6 +1,10 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { IconButton } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import type { ReactNode } from "react";
 import { AgentState } from "./ExecutionStatus";
-import type { Contribution } from "./bridge";
+import type { Contribution } from "../application/contracts/workspace";
 import { PrivateRecovery } from "./PrivateRecovery";
 import {
   useCallback,
@@ -19,7 +23,7 @@ import {
   ListChecks,
   Files,
 } from "lucide-react";
-import { node } from "./bridge";
+
 import type { Perform } from "./ui";
 import { Message, Composer } from "./ConversationMessage";
 import { Thread } from "./Thread";
@@ -32,7 +36,7 @@ import type {
   MessageView,
   MissionView,
   WorkstreamView,
-} from "./node-contract";
+} from "../application/contracts/node";
 
 export type MissionSession = {
   audience: string;
@@ -89,6 +93,7 @@ export function Conversation({
   detailsOpen,
   closeDetails,
 }: Props) {
+  const { missions: node } = useApplication();
   const [navTarget, setNavTarget] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     // Archive/restore moves the selected mission between sidebar groups and
@@ -192,7 +197,7 @@ export function Conversation({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mission.id]);
+  }, [mission.id, node]);
   const markRead = async (items: MessageView[]) => {
     if (!document.hasFocus()) return;
     const ids = items
@@ -281,7 +286,7 @@ export function Conversation({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mission.id, key]);
+  }, [mission.id, key, node]);
   const openMessage = (m: MessageView) => {
     setSearch("");
     setAppliedSearch("");
@@ -423,8 +428,7 @@ export function Conversation({
               </button>
               <div className="n-dm-heading">
                 <span className="d-label">Direct messages</span>
-                <button
-                  className="d-icon"
+                <IconButton
                   aria-label="Find an agent to message"
                   onClick={() => {
                     setThread(null);
@@ -432,7 +436,7 @@ export function Conversation({
                   }}
                 >
                   <Plus size={16} />
-                </button>
+                </IconButton>
               </div>
               {scopes.slice(0, scopeLimit).map((s) => (
                 <button
@@ -546,24 +550,21 @@ export function Conversation({
                     )}
                     mission={mission}
                   />
-                  <button className="d-button" onClick={() => profile(a.id)}>
-                    Agent details
-                  </button>
+                  <Button onClick={() => profile(a.id)}>Agent details</Button>
                 </div>
               ))
           : null}
         {currentStream && feed === "conversation" ? (
           <div className="n-workstream-goal">
             <p>{currentStream.goal}</p>
-            <button
-              className="d-button"
+            <Button
               onClick={() => {
                 setThread(null);
                 editStream(currentStream.id);
               }}
             >
               Goal &amp; agents
-            </button>
+            </Button>
             {currentStream.heads.length > 1 || currentStream.stale ? (
               <span className="d-field-help">Goal needs review</span>
             ) : null}
@@ -580,9 +581,7 @@ export function Conversation({
         {anchor ? (
           <div className="n-context-banner">
             <span>Viewing earlier conversation</span>
-            <button className="d-button" onClick={() => setAnchor(null)}>
-              Back to latest
-            </button>
+            <Button onClick={() => setAnchor(null)}>Back to latest</Button>
           </div>
         ) : null}
         <div
@@ -605,8 +604,8 @@ export function Conversation({
           }}
         >
           {newMessages ? (
-            <button
-              className="d-button n-new-messages"
+            <Button
+              className="n-new-messages"
               onClick={() => {
                 setNewMessages(0);
                 requestAnimationFrame(() => {
@@ -615,7 +614,7 @@ export function Conversation({
               }}
             >
               {newMessages} new messages ↓
-            </button>
+            </Button>
           ) : null}
           {error ? (
             <p role="alert">{error}</p>
@@ -623,8 +622,7 @@ export function Conversation({
             <p role="status">Loading conversation…</p>
           ) : null}
           {older ? (
-            <button
-              className="d-button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -652,7 +650,7 @@ export function Conversation({
               }
             >
               Load earlier messages
-            </button>
+            </Button>
           ) : null}
           {!loading && !messages.length && !error ? (
             <div className="n-conversation-start">
@@ -685,16 +683,19 @@ export function Conversation({
               const items = routine;
               routine = [];
               grouped.push(
-                <details
+                <Disclosure
                   className="n-routine-activity"
                   key={`routine-${items[0].id}`}
+                  title={
+                    <>
+                      {items.length} resource{" "}
+                      {items.length === 1 ? "update" : "updates"} · signed
+                      history
+                    </>
+                  }
                 >
-                  <summary>
-                    {items.length} resource{" "}
-                    {items.length === 1 ? "update" : "updates"} · signed history
-                  </summary>
                   {items.map((m) => render(m))}
-                </details>,
+                </Disclosure>,
               );
             };
             for (const m of messages) {

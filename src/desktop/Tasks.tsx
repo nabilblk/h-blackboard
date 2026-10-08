@@ -1,13 +1,17 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Hash, Plus } from "lucide-react";
-import { node } from "./bridge";
+
 import { Text } from "../Markdown";
 import type {
   AgentView,
   TaskDefinition,
   TaskView,
   WorkstreamView,
-} from "./node-contract";
+} from "../application/contracts/node";
 import { active, statuses, statusLabel, type Props } from "./work-ui";
 import { Attempt } from "./TaskAttempt";
 export function TaskPanel({
@@ -27,6 +31,7 @@ export function TaskPanel({
   agents: AgentView[];
   open: (audience: string) => void;
 }) {
+  const { missions: node } = useApplication();
   const [items, setItems] = useState<TaskView[]>([]);
   const [limit, setLimit] = useState(32);
   const [total, setTotal] = useState(0);
@@ -104,6 +109,8 @@ export function TaskPanel({
     selected,
     generation,
     limit,
+    ,
+    node,
   ]);
   const editable = localKey === mission.owner && !blocked;
   const label = (id: string) =>
@@ -137,7 +144,7 @@ export function TaskPanel({
             when a concrete outcome needs tracking.
           </p>
           <div className="n-task-filters">
-            <label className="d-field">
+            <Field>
               Search tasks
               <input
                 type="search"
@@ -145,8 +152,8 @@ export function TaskPanel({
                 onChange={(e) => setSearch(e.target.value)}
                 maxLength={512}
               />
-            </label>
-            <label className="d-field">
+            </Field>
+            <Field>
               Owner
               <input
                 type="search"
@@ -155,8 +162,8 @@ export function TaskPanel({
                 maxLength={120}
                 placeholder="Agent or contributor"
               />
-            </label>
-            <label className="d-field">
+            </Field>
+            <Field>
               Status
               <select
                 value={status}
@@ -169,8 +176,8 @@ export function TaskPanel({
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="d-field">
+            </Field>
+            <Field>
               Workstream
               <select
                 value={workstream}
@@ -184,7 +191,7 @@ export function TaskPanel({
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
           </div>
           <p className="d-label">
             {total} {total === 1 ? "task" : "tasks"}
@@ -240,13 +247,9 @@ export function TaskPanel({
             </p>
           ) : null}
           {after ? (
-            <button
-              className="d-button"
-              disabled={busy}
-              onClick={() => setLimit((n) => n + 32)}
-            >
+            <Button disabled={busy} onClick={() => setLimit((n) => n + 32)}>
               Load more tasks
-            </button>
+            </Button>
           ) : null}
         </>
       ) : detail ? (
@@ -256,8 +259,7 @@ export function TaskPanel({
           </p>
           <h2>{detail.definition.title}</h2>
           <Text value={detail.definition.description} links="text" />
-          <button
-            className="d-button"
+          <Button
             onClick={() =>
               open(
                 detail.definition.workstream
@@ -269,7 +271,7 @@ export function TaskPanel({
             <Hash size={15} />
             {streams.find((s) => s.id === detail.definition.workstream)?.name ??
               "Main"}
-          </button>
+          </Button>
           <h3>Completion criteria</h3>
           <ul>
             {detail.definition.criteria.map((c, i) => (
@@ -322,16 +324,15 @@ export function TaskPanel({
         </>
       ) : null}
       {editable ? (
-        <details className="n-work-overrides">
-          <summary>
-            {detail ? "Manage this task" : "Create a task yourself"}
-          </summary>
+        <Disclosure
+          className="n-work-overrides"
+          title={<>{detail ? "Manage this task" : "Create a task yourself"}</>}
+        >
           <p className="d-field-help">
             Normally, the Coordinator and agents maintain tasks. Your changes
             are attributed to you.
           </p>
-          <button
-            className="d-button"
+          <Button
             disabled={busy}
             onClick={() =>
               setEditing({ task: detail, revision: mission.lifecycle.revision })
@@ -339,7 +340,7 @@ export function TaskPanel({
           >
             <Plus size={15} />
             {detail ? "Edit definition / resolve" : "Create a task"}
-          </button>
+          </Button>
           {detail ? (
             <form
               className="n-fields"
@@ -357,7 +358,7 @@ export function TaskPanel({
                 });
               }}
             >
-              <label className="d-field">
+              <Field>
                 Agent
                 <select name="agent" required defaultValue="">
                   <option value="" disabled>
@@ -369,17 +370,17 @@ export function TaskPanel({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="d-field">
+              </Field>
+              <Field>
                 Approach
                 <textarea name="approach" required maxLength={2048} rows={2} />
-              </label>
-              <button className="d-button" disabled={busy}>
+              </Field>
+              <Button type="submit" disabled={busy}>
                 Add an attempt
-              </button>
+              </Button>
             </form>
           ) : null}
-        </details>
+        </Disclosure>
       ) : null}
       {editing ? (
         <TaskEditor
@@ -443,7 +444,7 @@ function TaskEditor({
         });
       }}
     >
-      <label className="d-field">
+      <Field>
         Task title
         <input
           name="title"
@@ -451,8 +452,8 @@ function TaskEditor({
           required
           maxLength={240}
         />
-      </label>
-      <label className="d-field">
+      </Field>
+      <Field>
         Expected outcome
         <textarea
           name="description"
@@ -461,8 +462,8 @@ function TaskEditor({
           rows={3}
           maxLength={4096}
         />
-      </label>
-      <label className="d-field">
+      </Field>
+      <Field>
         Completion criteria · one per line
         <textarea
           name="criteria"
@@ -470,8 +471,8 @@ function TaskEditor({
           rows={3}
           maxLength={16384}
         />
-      </label>
-      <label className="d-field">
+      </Field>
+      <Field>
         Workstream
         <select
           name="workstream"
@@ -484,14 +485,14 @@ function TaskEditor({
             </option>
           ))}
         </select>
-      </label>
+      </Field>
       <div className="n-action-row">
-        <button className="d-button primary" disabled={busy}>
+        <Button variant="primary" type="submit" disabled={busy}>
           Save task
-        </button>
-        <button className="d-button" type="button" onClick={cancel}>
+        </Button>
+        <Button type="button" onClick={cancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

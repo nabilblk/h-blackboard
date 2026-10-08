@@ -1,7 +1,10 @@
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import { useState } from "react";
 import { ArrowLeft, FolderOpen, LockKeyhole } from "lucide-react";
 import runtimes from "../../shared/runtimes.json";
-import { desktop, type Contribution } from "./bridge";
+import { type Contribution } from "../application/contracts/workspace";
 import { Heading, date, type Perform } from "./ui";
 import { ExecutionPanel } from "./ExecutionPanel";
 
@@ -20,6 +23,7 @@ export default function ContributionDetail({
   revoke: () => Promise<void>;
   openMission?: () => void;
 }) {
+  const { workspace: desktop } = useApplication();
   const [confirm, setConfirm] = useState(false);
   return (
     <>
@@ -32,23 +36,21 @@ export default function ContributionDetail({
         title={item.mission.name}
         action={
           openMission ? (
-            <button
-              className="d-button"
-              onClick={openMission}
-              disabled={!openMission}
-            >
+            <Button onClick={openMission} disabled={!openMission}>
               Open mission
-            </button>
+            </Button>
           ) : undefined
         }
       >
         {item.mission.origin}
       </Heading>
       <ExecutionPanel item={item} />
-      <details className="n-secondary-section">
-        <summary>
-          Local terms · {item.status === "revoked" ? "Revoked" : "Saved"}
-        </summary>
+      <Disclosure
+        className="n-secondary-section"
+        title={
+          <>Local terms · {item.status === "revoked" ? "Revoked" : "Saved"}</>
+        }
+      >
         <section>
           <header>
             <h2>Your contribution</h2>
@@ -93,7 +95,7 @@ export default function ContributionDetail({
             </div>
           </dl>
         </section>
-      </details>
+      </Disclosure>
       <section className="d-panel d-workspace-panel">
         <header>
           <div>
@@ -103,8 +105,7 @@ export default function ContributionDetail({
               execution stays inside its VM.
             </p>
           </div>
-          <button
-            className="d-button"
+          <Button
             disabled={busy}
             onClick={() => {
               void perform(async () => {
@@ -114,7 +115,7 @@ export default function ContributionDetail({
           >
             <FolderOpen size={15} />
             Open folder
-          </button>
+          </Button>
         </header>
         <code>{item.workspace}</code>
       </section>
@@ -135,31 +136,23 @@ export default function ContributionDetail({
           <div>
             {confirm ? (
               <>
-                <button
-                  className="d-button"
-                  disabled={busy}
-                  onClick={() => setConfirm(false)}
-                >
+                <Button disabled={busy} onClick={() => setConfirm(false)}>
                   Keep preparation
-                </button>
-                <button
-                  className="d-button danger"
+                </Button>
+                <Button
+                  variant="danger"
                   disabled={busy}
                   onClick={() => {
                     void perform(revoke);
                   }}
                 >
                   Confirm revocation
-                </button>
+                </Button>
               </>
             ) : (
-              <button
-                className="d-button"
-                disabled={busy}
-                onClick={() => setConfirm(true)}
-              >
+              <Button disabled={busy} onClick={() => setConfirm(true)}>
                 Revoke consent
-              </button>
+              </Button>
             )}
           </div>
         </section>

@@ -1,3 +1,10 @@
+import { ActionPopover } from "../ui/ActionPopover";
+import { ViewTabs } from "../ui/ViewTabs";
+import { IconButton } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { Button } from "../ui/Button";
+import { useApplication } from "./ApplicationProvider";
 import {
   MissionJourney,
   MissionDecisions,
@@ -16,7 +23,7 @@ import {
   type PresentationAction,
 } from "../../shared/mission-presentation.mjs";
 import { BudgetPanel } from "./BudgetPanel";
-import type { StartJob } from "./onboarding-types";
+import type { StartJob } from "../application/contracts/setup";
 import { MissionProgress } from "./MissionProgress";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -29,7 +36,10 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { node, type NodeState, type Contribution } from "./bridge";
+import {
+  type NodeState,
+  type Contribution,
+} from "../application/contracts/workspace";
 import { MissionControl, phaseLabel } from "./Lifecycle";
 import { People } from "./Peers";
 import { ContextPanel } from "./ContextPanel";
@@ -51,7 +61,7 @@ import type {
   JoinView,
   CriterionView,
   ArtifactSummary,
-} from "./node-contract";
+} from "../application/contracts/node";
 import { Heading, Status, type Perform } from "./ui";
 
 export function MyMissions({
@@ -76,17 +86,17 @@ export function MyMissions({
         title="Your missions, on your computer."
         action={
           <div className="n-action-row">
-            <button className="d-button" disabled={busy} onClick={join}>
+            <Button disabled={busy} onClick={join}>
               Join a mission
-            </button>
-            <button
-              className="d-button primary"
+            </Button>
+            <Button
+              variant="primary"
               disabled={busy || !state}
               onClick={create}
             >
               <Plus size={16} />
               Create mission
-            </button>
+            </Button>
           </div>
         }
       >
@@ -121,15 +131,21 @@ export function MyMissions({
             Give it an objective, a scope and a clear idea of success. Main is
             your shared starting point.
           </p>
-          <button className="d-button" disabled={busy} onClick={create}>
+          <Button disabled={busy} onClick={create}>
             <Plus size={16} />
             Define the first mission
-          </button>
+          </Button>
         </section>
       )}
       {state?.missions.some((m) => m.lifecycle.phase === "archived") ? (
-        <details className="n-archived">
-          <summary>Archived channels</summary>
+        <Disclosure
+          className="n-archived"
+          count={
+            state.missions.filter((m) => m.lifecycle.phase === "archived")
+              .length
+          }
+          title={<>Archived channels</>}
+        >
           <section className="n-mission-list">
             {state.missions
               .filter((m) => m.lifecycle.phase === "archived")
@@ -147,7 +163,7 @@ export function MyMissions({
                 </button>
               ))}
           </section>
-        </details>
+        </Disclosure>
       ) : null}
       {state?.joins.some((j) => j.status !== "admitted") ? (
         <section className="d-panel n-pending-joins">
@@ -169,13 +185,9 @@ export function MyMissions({
                 {j.status === "pending" ||
                 j.status === "expired" ||
                 j.status === "review_required" ? (
-                  <button
-                    className="d-button"
-                    disabled={busy}
-                    onClick={() => withdraw(j.mission)}
-                  >
+                  <Button disabled={busy} onClick={() => withdraw(j.mission)}>
                     Withdraw request
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             ))}
@@ -207,6 +219,7 @@ export function CreateMission({
   cancel: () => void;
   complete: (id: string) => Promise<void>;
 }) {
+  const { missions: node } = useApplication();
   const [saved, saveDraft, clearDraft, draftError] = useSetupDraft<{
     fields: Record<string, string>;
     criteria: string[];
@@ -334,7 +347,7 @@ export function CreateMission({
           </p>
         ) : null}
         <fieldset disabled={busy} className="n-fields">
-          <label className="d-field">
+          <Field>
             Channel name
             <input
               name="name"
@@ -344,8 +357,8 @@ export function CreateMission({
               placeholder="A short, recognizable name"
               autoFocus
             />
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Objective
             <textarea
               name="objective"
@@ -355,8 +368,8 @@ export function CreateMission({
               maxLength={4096}
               placeholder="What should this mission accomplish?"
             />
-          </label>
-          <label className="d-field">
+          </Field>
+          <Field>
             Scope
             <textarea
               name="scope"
@@ -365,7 +378,7 @@ export function CreateMission({
               maxLength={8192}
               placeholder="What is in, what is out, and what the agents may change."
             />
-          </label>
+          </Field>
           <div className="d-field">
             <label htmlFor="criterion">
               Completion criteria · {criteria.length}
@@ -377,9 +390,9 @@ export function CreateMission({
                     {String(index + 1).padStart(2, "0")}
                   </span>
                   <span>{criterion}</span>
-                  <button
+                  <IconButton
                     type="button"
-                    className="d-icon"
+
                     aria-label={`Remove criterion ${index + 1}`}
                     onClick={() =>
                       setCriteria((current) =>
@@ -388,7 +401,7 @@ export function CreateMission({
                     }
                   >
                     <X size={15} />
-                  </button>
+                  </IconButton>
                 </div>
               ))}
             </div>
@@ -407,30 +420,33 @@ export function CreateMission({
                 }}
                 placeholder="Add a criterion and press Enter"
               />
-              <button
+              <Button
                 type="button"
-                className="d-button"
+
                 disabled={!draft.trim() || criteria.length >= 32}
                 onClick={add}
               >
                 Add
-              </button>
+              </Button>
             </div>
           </div>
-          <details>
-            <summary>
-              Mission settings ·{" "}
-              {fields.coordination === "peer"
-                ? "Peer collaboration"
-                : "Coordinator-led"}{" "}
-              ·{" "}
-              {fields.participation === "approval"
-                ? "Approval required"
-                : "Private"}{" "}
-              · {limited ? "Limited budget" : "Unlimited budget"}
-            </summary>
+          <Disclosure
+            title={
+              <>
+                Mission settings ·{" "}
+                {fields.coordination === "peer"
+                  ? "Peer collaboration"
+                  : "Coordinator-led"}{" "}
+                ·{" "}
+                {fields.participation === "approval"
+                  ? "Approval required"
+                  : "Private"}{" "}
+                · {limited ? "Limited budget" : "Unlimited budget"}
+              </>
+            }
+          >
             <div className="d-two-columns">
-              <label className="d-field">
+              <Field>
                 Coordination
                 <select
                   name="coordination"
@@ -442,8 +458,8 @@ export function CreateMission({
                 <span className="d-field-help">
                   In coordinated mode, this node hosts the initial Coordinator.
                 </span>
-              </label>
-              <label className="d-field">
+              </Field>
+              <Field>
                 Participation
                 <select
                   name="participation"
@@ -458,9 +474,9 @@ export function CreateMission({
                   Discoverable missions stay unlisted until you publish a public
                   brief.
                 </span>
-              </label>
+              </Field>
             </div>
-            <label className="d-field">
+            <Field>
               Mission budget
               <select
                 value={limited ? "limited" : "unlimited"}
@@ -471,10 +487,10 @@ export function CreateMission({
                 <option value="unlimited">No budget · Unlimited</option>
                 <option value="limited">Set limits</option>
               </select>
-            </label>
+            </Field>
             {limited ? (
               <div className="n-budget-fields">
-                <label className="d-field">
+                <Field>
                   Turns
                   <input
                     name="turns"
@@ -484,8 +500,8 @@ export function CreateMission({
                     max={4294967295}
                     defaultValue={fields.turns ?? "100"}
                   />
-                </label>
-                <label className="d-field">
+                </Field>
+                <Field>
                   Concurrent turns
                   <input
                     name="concurrency"
@@ -495,15 +511,15 @@ export function CreateMission({
                     max={1024}
                     placeholder="No cap"
                   />
-                </label>
-                <label className="d-field">
+                </Field>
+                <Field>
                   Deadline
                   <input
                     name="deadline"
                     defaultValue={fields.deadline ?? ""}
                     type="datetime-local"
                   />
-                </label>
+                </Field>
               </div>
             ) : (
               <p className="d-field-help">
@@ -511,7 +527,7 @@ export function CreateMission({
                 subscription limits still apply.
               </p>
             )}
-          </details>
+          </Disclosure>
         </fieldset>
         <footer className="n-form-actions">
           <p>
@@ -521,17 +537,17 @@ export function CreateMission({
                 ? "The mission begins in Preparing."
                 : "This also creates your protected node identity on this computer."}
           </p>
-          <button
+          <Button
             type="button"
-            className="d-button"
+
             disabled={busy}
             onClick={cancel}
           >
             Cancel
-          </button>
-          <button className="d-button primary" disabled={busy} type="submit">
+          </Button>
+          <Button variant="primary" disabled={busy} type="submit">
             {busy ? "Creating…" : "Create mission"}
-          </button>
+          </Button>
         </footer>
       </form>
     </>
@@ -582,6 +598,7 @@ function MissionWorkspace({
   prepare: (role: "agent" | "coordinator") => void;
   initialSetup?: boolean;
 }) {
+  const { missions: node, setup, execution } = useApplication();
   const [panel, setPanel] = useState<
     | "controls"
     | "setup"
@@ -637,7 +654,7 @@ function MissionWorkspace({
         node.artifacts(mission.id, {}),
         node.peers(mission.id),
         node.governance(mission.id),
-        window.blackboardSetup.startState(mission.id),
+        setup.startState(mission.id),
       ]);
     const agents: AgentView[] = [];
     let after: string | null = null;
@@ -647,7 +664,7 @@ function MissionWorkspace({
       after = page.after;
     } while (after && agents.length < 512);
     return { streams, tasks, agents, artifacts, peers, governance, starts };
-  }, [mission.id]);
+  }, [mission.id, node, setup]);
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -741,7 +758,7 @@ function MissionWorkspace({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mission.id, owner]);
+  }, [mission.id, owner, node]);
   const privateMessage = (author: string) =>
     void perform(async () => {
       const existing = (await node.audiences(mission.id)).find(
@@ -814,7 +831,7 @@ function MissionWorkspace({
   const stopMine = () =>
     void perform(async () => {
       const results = await Promise.allSettled(
-        localAgents.map((c) => window.blackboardExecution.stop(c.id)),
+        localAgents.map((c) => execution.stop(c.id)),
       );
       const failures = results.filter((r) => r.status === "rejected");
       if (failures.length)
@@ -842,8 +859,7 @@ function MissionWorkspace({
           </h1>
         </div>
         <div className="n-action-row">
-          <button
-            className="d-button"
+          <Button
             aria-expanded={people}
             onClick={() => {
               setMemberTab("agents");
@@ -851,12 +867,11 @@ function MissionWorkspace({
             }}
           >
             Members
-          </button>
+          </Button>
           {mission.owner === owner &&
           mission.lifecycle.phase === "active" &&
           !blocked ? (
-            <button
-              className="d-button"
+            <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
@@ -871,69 +886,56 @@ function MissionWorkspace({
             >
               <Pause size={15} />
               Pause mission
-            </button>
+            </Button>
           ) : null}
           {localAgents.length ? (
-            <button className="d-button" disabled={busy} onClick={stopMine}>
+            <Button disabled={busy} onClick={stopMine}>
               <Square size={14} />
               Stop my agents
-            </button>
+            </Button>
           ) : null}
-          <details className="n-more-actions">
-            <summary className="d-button">More</summary>
-            <div>
-              <button
-                className="d-button"
-                onClick={(e) => {
-                  inspect("overview");
-                  e.currentTarget.closest("details")?.removeAttribute("open");
+          <ActionPopover label="More">
+            <Button
+              onClick={() => {
+                inspect("overview");
+              }}
+            >
+              Mission details
+            </Button>
+            {!blocked &&
+            !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+              <Button
+                onClick={() => {
+                  prepare("agent");
                 }}
               >
-                Mission details
-              </button>
-              {!blocked &&
-              !["closed", "archived"].includes(mission.lifecycle.phase) ? (
-                <button
-                  className="d-button"
-                  onClick={(e) => {
-                    prepare("agent");
-                    e.currentTarget.closest("details")?.removeAttribute("open");
-                  }}
-                >
-                  Add my agents
-                </button>
-              ) : null}
-              <button
-                className="d-button"
-                onClick={(e) => {
-                  setPermissionAgent(null);
-                  setPanel("budget");
-                  e.currentTarget.closest("details")?.removeAttribute("open");
-                }}
-              >
-                Budget &amp; permissions
-              </button>
-              <button
-                className="d-button"
-                onClick={(e) => {
-                  setPanel("contribution");
-                  e.currentTarget.closest("details")?.removeAttribute("open");
-                }}
-              >
-                Your contribution
-              </button>
-              <button
-                className="d-button"
-                onClick={(e) => {
-                  setMemberTab("people");
-                  setPanel("members");
-                  e.currentTarget.closest("details")?.removeAttribute("open");
-                }}
-              >
-                Invite people
-              </button>
-            </div>
-          </details>
+                Add my agents
+              </Button>
+            ) : null}
+            <Button
+              onClick={() => {
+                setPermissionAgent(null);
+                setPanel("budget");
+              }}
+            >
+              Budget &amp; permissions
+            </Button>
+            <Button
+              onClick={() => {
+                setPanel("contribution");
+              }}
+            >
+              Your contribution
+            </Button>
+            <Button
+              onClick={() => {
+                setMemberTab("people");
+                setPanel("members");
+              }}
+            >
+              Invite people
+            </Button>
+          </ActionPopover>
         </div>
       </header>
       {panel === "setup" ? (
@@ -1025,20 +1027,15 @@ function MissionWorkspace({
       ) : null}
       {people ? (
         <ContextPanel title="Members" close={closePanel} error={error}>
-          <nav className="n-member-tabs" aria-label="Member views">
-            <button
-              aria-pressed={memberTab === "agents"}
-              onClick={() => setMemberTab("agents")}
-            >
-              Agents
-            </button>
-            <button
-              aria-pressed={memberTab === "people"}
-              onClick={() => setMemberTab("people")}
-            >
-              People &amp; invitations
-            </button>
-          </nav>
+          <ViewTabs
+            label="Member views"
+            value={memberTab}
+            onChange={setMemberTab}
+            items={[
+              { value: "agents", label: "Agents" },
+              { value: "people", label: "People & invitations" },
+            ]}
+          />
           <div hidden={memberTab !== "agents"}>
             <AgentRoster
               permissions={(agent) => {
@@ -1135,7 +1132,7 @@ function MissionWorkspace({
             </p>
             {!revoked && !withdrawal ? (
               <>
-                <label className="d-field">
+                <Field>
                   Agent role
                   <select
                     value={role}
@@ -1149,7 +1146,7 @@ function MissionWorkspace({
                       <option value="coordinator">Coordinator</option>
                     ) : null}
                   </select>
-                </label>
+                </Field>
                 {role === "coordinator" ? (
                   <p className="d-field-help">
                     Share this contribution in Members so the mission owner can
@@ -1158,8 +1155,8 @@ function MissionWorkspace({
                   </p>
                 ) : null}
                 <div className="n-action-row">
-                  <button
-                    className="d-button primary"
+                  <Button
+                    variant="primary"
                     disabled={busy || mission.conflicted}
                     onClick={() =>
                       prepare(
@@ -1170,15 +1167,14 @@ function MissionWorkspace({
                     }
                   >
                     Prepare contribution
-                  </button>
+                  </Button>
                   {mission.owner !== owner ? (
-                    <button
-                      className="d-button"
+                    <Button
                       disabled={busy}
                       onClick={() => setConfirmWithdraw(true)}
                     >
                       Withdraw from mission…
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </>
@@ -1193,15 +1189,14 @@ function MissionWorkspace({
                   Rejoining with this identity is not supported yet.
                 </p>
                 <div className="n-action-row">
-                  <button
-                    className="d-button"
+                  <Button
                     disabled={busy}
                     onClick={() => setConfirmWithdraw(false)}
                   >
                     Keep participating
-                  </button>
-                  <button
-                    className="d-button primary"
+                  </Button>
+                  <Button
+                    variant="primary"
                     disabled={busy}
                     onClick={() =>
                       void perform(async () => {
@@ -1212,7 +1207,7 @@ function MissionWorkspace({
                     }
                   >
                     Withdraw participation
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : null}
@@ -1251,21 +1246,19 @@ function MissionWorkspace({
           close={closePanel}
           error={error || workError}
         >
-          <nav className="n-member-tabs" aria-label="Mission inspector views">
-            {(["overview", "decisions", "technical"] as const).map((tab) => (
-              <button
-                key={tab}
-                aria-pressed={inspectorTab === tab}
-                onClick={() => setInspectorTab(tab)}
-              >
-                {tab === "overview"
-                  ? "Overview"
-                  : tab === "decisions"
-                    ? `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`
-                    : "Technical"}
-              </button>
-            ))}
-          </nav>
+          <ViewTabs
+            label="Mission inspector views"
+            value={inspectorTab}
+            onChange={setInspectorTab}
+            items={[
+              { value: "overview", label: "Overview" },
+              {
+                value: "decisions",
+                label: `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`,
+              },
+              { value: "technical", label: "Technical" },
+            ]}
+          />
           <div hidden={inspectorTab !== "decisions"}>
             <MissionDecisions value={experience} act={act} />
           </div>

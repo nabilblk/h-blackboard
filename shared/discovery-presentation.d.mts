@@ -1,9 +1,9 @@
-import type { DiscoveryState } from "../src/desktop/bridge";
+import type { DiscoveryState } from "../src/application/contracts/workspace";
 import type {
   DiscoveryOutcome,
   DiscoveryPeerHealth,
   ListingView,
-} from "../src/desktop/node-contract";
+} from "../src/application/contracts/node";
 export const discoveryOutcomes: Record<DiscoveryOutcome, string>;
 export function discoveryPresentation(input: {
   state: DiscoveryState | null;

@@ -1,4 +1,4 @@
-import type { AgentView, MissionView } from "./node-contract";
+import type { AgentView, MissionView } from "../application/contracts/node";
 import type { Perform } from "./ui";
 export const statuses = [
   "planned",

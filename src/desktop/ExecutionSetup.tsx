@@ -1,8 +1,15 @@
+import { Button } from "../ui/Button";
+import { Field } from "../ui/Field";
+import { Disclosure } from "../ui/Disclosure";
+import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
-import type { Contribution } from "./bridge";
-import type { MissionView } from "./node-contract";
-import type { ExecutionState } from "./execution-types";
-import type { Preflight, PermissionRequest } from "./onboarding-types";
+import type { Contribution } from "../application/contracts/workspace";
+import type { MissionView } from "../application/contracts/node";
+import type { ExecutionState } from "../application/contracts/execution";
+import type {
+  Preflight,
+  PermissionRequest,
+} from "../application/contracts/setup";
 export function ProviderSetup({
   ready,
   report,
@@ -12,6 +19,7 @@ export function ProviderSetup({
   report?: (value: Preflight) => void;
   integrated?: boolean;
 }) {
+  const { setup } = useApplication();
   const [state, setState] = useState<Preflight | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -21,7 +29,7 @@ export function ProviderSetup({
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const next = await window.blackboardSetup.preflight();
+        const next = await setup.preflight();
         if (!cancelled) {
           setState(next);
           report?.(next);
@@ -40,7 +48,7 @@ export function ProviderSetup({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [ready, report]);
+  }, [ready, report, setup]);
   if (state && state.freeDiskBytes < state.minimumDiskBytes)
     return (
       <p className="d-error" role="alert">
@@ -51,10 +59,9 @@ export function ProviderSetup({
   if (state?.available)
     return (
       <div>
-        <details>
-          <summary>
-            This Mac · {state.capacity} agent environments at once
-          </summary>
+        <Disclosure
+          title={<>This Mac · {state.capacity} agent environments at once</>}
+        >
           <p className="d-field-help">
             Each running environment uses 2 CPUs and 2 GiB RAM, with an 8 GiB
             sparse disk. {(state.freeDiskBytes / 1024 ** 3).toFixed(1)} GiB disk
@@ -62,7 +69,7 @@ export function ProviderSetup({
             credentials stay separate. The capacity estimate leaves room for
             macOS but does not measure other apps’ current memory use.
           </p>
-          <label className="d-field">
+          <Field>
             Environments running at once
             <select
               disabled={busy}
@@ -71,10 +78,8 @@ export function ProviderSetup({
                 setBusy(true);
                 setError("");
                 try {
-                  await window.blackboardSetup.setCapacity(
-                    Number(e.target.value),
-                  );
-                  setState(await window.blackboardSetup.preflight());
+                  await setup.setCapacity(Number(e.target.value));
+                  setState(await setup.preflight());
                 } catch (e) {
                   setError((e as Error).message);
                 } finally {
@@ -91,7 +96,7 @@ export function ProviderSetup({
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
           <p className="d-field-help">
             Additional agents wait for a slot. Reducing this limit queues future
             starts; it does not kill work already running.
@@ -101,7 +106,7 @@ export function ProviderSetup({
               {error}
             </p>
           ) : null}
-        </details>
+        </Disclosure>
       </div>
     );
   return (
@@ -122,15 +127,15 @@ export function ProviderSetup({
               : "Install Lima 2.1.1 in Harakiri’s private application storage. No administrator access or Homebrew changes are required."}
       </p>
       {state?.supported && !integrated ? (
-        <button
-          className="d-button primary"
+        <Button
+          variant="primary"
           disabled={installing}
           onClick={async () => {
             setBusy(true);
             setError("");
             try {
-              await window.blackboardSetup.installProvider();
-              const next = await window.blackboardSetup.preflight();
+              await setup.installProvider();
+              const next = await setup.preflight();
               setState(next);
               ready?.(
                 next.available && next.freeDiskBytes >= next.minimumDiskBytes,
@@ -145,7 +150,7 @@ export function ProviderSetup({
           {installing
             ? "Installing Lima…"
             : "Install isolated environment provider"}
-        </button>
+        </Button>
       ) : null}
       {installing ? (
         <div role="status">
@@ -159,16 +164,13 @@ export function ProviderSetup({
           ) : (
             <progress aria-label="Installing Lima" />
           )}
-          <button
-            className="d-button"
+          <Button
             onClick={() =>
-              void window.blackboardSetup
-                .cancelInstall()
-                .catch((e) => setError(e.message))
+              void setup.cancelInstall().catch((e) => setError(e.message))
             }
           >
             Cancel download
-          </button>
+          </Button>
         </div>
       ) : null}
     </section>
@@ -186,6 +188,7 @@ export function RunApproval({
   execution: ExecutionState;
   done: () => Promise<void>;
 }) {
+  const { setup } = useApplication();
   const planning = mission.lifecycle.phase === "preparing";
   const [review, setReview] = useState<
     Pick<PermissionRequest, "id" | "control" | "direction">
@@ -209,7 +212,7 @@ export function RunApproval({
     let cancelled = false;
     setRestoring(true);
     setRestoreFailed(false);
-    void window.blackboardSetup
+    void setup
       .state(mission.id)
       .then((jobs) => {
         if (cancelled) return;
@@ -244,7 +247,7 @@ export function RunApproval({
     return () => {
       cancelled = true;
     };
-  }, [item.id, mission.id, retryRestore]);
+  }, [item.id, mission.id, retryRestore, setup]);
   const stale =
     review.control !== mission.lifecycle.revision ||
     review.direction !==
@@ -259,7 +262,7 @@ export function RunApproval({
         setError("");
         setAttempted(true);
         try {
-          await window.blackboardSetup.permission({
+          await setup.permission({
             ...review,
             contributionId: item.id,
             turns,
@@ -268,9 +271,7 @@ export function RunApproval({
           await done();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Approval failed.");
-          const jobs = await window.blackboardSetup
-            .state(mission.id)
-            .catch(() => null);
+          const jobs = await setup.state(mission.id).catch(() => null);
           if (jobs && !jobs.some((j) => j.id === review.id))
             setAttempted(false);
         } finally {
@@ -295,7 +296,7 @@ export function RunApproval({
         it at any time; your local limits still apply.
       </p>
       <div className="d-limit-fields">
-        <label className="d-field">
+        <Field>
           Runtime turns
           <input
             type="number"
@@ -306,8 +307,8 @@ export function RunApproval({
             disabled={busy || restoring || attempted}
             onChange={(e) => setTurns(Number(e.target.value))}
           />
-        </label>
-        <label className="d-field">
+        </Field>
+        <Field>
           Time limit (minutes)
           <input
             type="number"
@@ -318,7 +319,7 @@ export function RunApproval({
             disabled={busy || restoring || attempted}
             onChange={(e) => setMinutes(Number(e.target.value))}
           />
-        </label>
+        </Field>
       </div>
       <p className="d-field-help">
         Time starts when you approve, including time disconnected. This approves
@@ -330,13 +331,13 @@ export function RunApproval({
         <p role="status">{savedNote}</p>
       ) : null}
       {restoreFailed ? (
-        <button
+        <Button
           type="button"
-          className="d-button"
+
           onClick={() => setRetryRestore((v) => v + 1)}
         >
           Retry saved approval check
-        </button>
+        </Button>
       ) : null}
       {error ? (
         <p className="d-error" role="alert">
@@ -349,9 +350,9 @@ export function RunApproval({
             Direction or mission control changed. Review the current
             instructions before continuing.
           </p>
-          <button
+          <Button
             type="button"
-            className="d-button"
+
             onClick={() => {
               setAttempted(false);
               setSavedNote("");
@@ -365,11 +366,12 @@ export function RunApproval({
             }}
           >
             Review current instructions
-          </button>
+          </Button>
         </>
       ) : null}
-      <button
-        className="d-button primary"
+      <Button
+        variant="primary"
+        type="submit"
         disabled={
           busy || restoring || restoreFailed || stale || !review.direction
         }
@@ -381,7 +383,7 @@ export function RunApproval({
             : execution.record?.session
               ? "Approve and resume"
               : "Approve and run"}
-      </button>
+      </Button>
     </form>
   );
 }

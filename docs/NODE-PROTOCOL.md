@@ -310,7 +310,7 @@ Additional caps: 1,024 private audiences per mission, 16 readers per private aud
 
 ## Native IPC and key custody
 
-The executable accepts `--version`, `--stdio` or `--types`. The generated types in `src/desktop/node-contract.ts` are checked in CI with `node bin/node/types.mjs --check`. Every frame is a four-byte big-endian length followed by UTF-8 JSON. There is no HTTP listener, shell command endpoint or arbitrary signing operation.
+The executable accepts `--version`, `--stdio` or `--types`. The generated types in `src/application/contracts/node.ts` are checked in CI with `node bin/node/types.mjs --check`. Every frame is a four-byte big-endian length followed by UTF-8 JSON. There is no HTTP listener, shell command endpoint or arbitrary signing operation.
 
 The trusted parent sends an initial bootstrap with IPC `version: 1`, a private absolute `profile` directory and separate 32-byte hex `owner_seed` / `transport_seed`. **Never pass keys through arguments or environment variables.** The standalone proof driver uses synthetic fixture keys. The integrated desktop uses [Electron’s asynchronous `safeStorage` API](https://www.electronjs.org/docs/latest/api/safe-storage) and refuses unavailable or plaintext fallback storage. Private keys never enter the preload bridge. See [desktop identity and recovery](DESKTOP.md#identity-and-recovery) for same-device backup and current cross-device recovery limitations.
 

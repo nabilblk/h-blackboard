@@ -534,6 +534,63 @@ try {
   );
   assert.equal(restoredMessages.items.length, 1);
   assert.equal(restoredMessages.items[0].author, savedNode.identity.owner);
+  // Exercise the actual sidebar against signed archived state in this isolated
+  // profile. Expanding history must not lose the current conversation draft.
+  browser(
+    "eval",
+    `(async () => {const s=await window.blackboardNode.state();const m=s.missions[0];await window.blackboardNode.missionAction(m.id,m.lifecycle.revision,{type:'archive',reason:'Isolated disclosure check'});})()`,
+  );
+  browser(
+    "wait",
+    "--fn",
+    "!!document.querySelector('.d-mission-nav .hb-disclosure--sidebar[open]')",
+  );
+  const archivedDisclosure = JSON.parse(
+    browser(
+      "eval",
+      `(() => {const d=document.querySelector('.d-mission-nav .hb-disclosure--sidebar');const s=d.querySelector('summary');return {count:s.querySelector('.hb-count').textContent,height:s.getBoundingClientRect().height,list:getComputedStyle(s).listStyleType}})()`,
+    ),
+  );
+  assert.equal(archivedDisclosure.count, "1");
+  assert.ok(archivedDisclosure.height >= 36);
+  assert.equal(archivedDisclosure.list, "none");
+  browser("set", "viewport", "1280", "900");
+  click(".d-mission-nav .hb-disclosure--sidebar > summary");
+  assert.equal(
+    JSON.parse(
+      browser(
+        "eval",
+        "document.querySelector('.d-mission-nav .hb-disclosure--sidebar').open",
+      ),
+    ),
+    false,
+  );
+  browser("press", "Enter");
+  assert.equal(
+    JSON.parse(
+      browser(
+        "eval",
+        "document.querySelector('.d-mission-nav .hb-disclosure--sidebar').open",
+      ),
+    ),
+    true,
+  );
+  browser("screenshot", resolve("var/desktop/native-archived-channels.png"));
+  browser(
+    "eval",
+    `(async () => {const s=await window.blackboardNode.state();const m=s.missions[0];await window.blackboardNode.missionAction(m.id,m.lifecycle.revision,{type:'restore'});})()`,
+  );
+  browser(
+    "wait",
+    "--fn",
+    "!document.querySelector('.d-mission-nav .hb-disclosure--sidebar')",
+  );
+  assert.equal(
+    JSON.parse(
+      browser("eval", "document.querySelector('#main-message').value"),
+    ),
+    "Saved while I inspect the mission",
+  );
   await stopApp();
   await startApp("harakiri://join/aabbcc");
   browser("wait", "--text", "Invitation received. Review it before joining.");

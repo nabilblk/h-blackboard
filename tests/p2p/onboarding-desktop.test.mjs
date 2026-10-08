@@ -18,11 +18,13 @@ import {
 } from "../../desktop/execution/contract.mjs";
 import { secureStorage } from "../helpers/secure-storage.mjs";
 
-async function until(fn) {
-  const deadline = Date.now() + 10000;
+async function until(fn, { timeoutMs = 10000, describe } = {}) {
+  const deadline = Date.now() + timeoutMs;
   while (!(await fn())) {
     if (Date.now() > deadline)
-      throw new Error("Onboarding did not reach expected state");
+      throw new Error(
+        `Onboarding did not reach expected state${describe ? `: ${describe()}` : ""}`,
+      );
     await delay(15);
   }
 }
@@ -543,6 +545,32 @@ test("real signed deliverable acceptance and closure remain distinct and survive
 
 test("finite permission renewal preserves an idle session and never spends beyond the reviewed turn cap", async (t) => {
   const f = await continuationFixture(t);
+  const waitForTurn = (turn, status) =>
+    until(
+      () => {
+        assert.ok(
+          f.provider.launches <= turn,
+          `Unexpected model turn: expected ${turn}, observed ${f.provider.launches}`,
+        );
+        return (
+          f.provider.launches === turn &&
+          f.executions.store.read(f.c.id)?.status === status
+        );
+      },
+      {
+        // Native processes and durable writes are slower on shared CI runners.
+        // This checks accounting and idle behavior, not a ten-second SLA.
+        timeoutMs: 30000,
+        describe: () =>
+          JSON.stringify({
+            expectedTurn: turn,
+            expectedStatus: status,
+            launches: f.provider.launches,
+            status: f.executions.store.read(f.c.id)?.status,
+            reason: f.executions.store.read(f.c.id)?.reason,
+          }),
+      },
+    );
   f.provider.launch = async ({ onSession }) => {
     f.provider.launches++;
     onSession("fixture-saved-session");
@@ -557,12 +585,7 @@ test("finite permission renewal preserves an idle session and never spends beyon
     approvals: [input],
   });
   for (let turn = 1; turn <= 5; turn++) {
-    await until(
-      () =>
-        f.provider.launches === turn &&
-        f.executions.store.read(f.c.id)?.status ===
-          (turn < 5 ? "waiting" : "stopped"),
-    );
+    await waitForTurn(turn, turn < 5 ? "waiting" : "stopped");
     if (turn < 5)
       await f.node.handle("postMessage", {
         mission: f.mission,
@@ -584,11 +607,7 @@ test("finite permission renewal preserves an idle session and never spends beyon
     text: "One more substantive update",
   });
   await f.agreements.tick();
-  await until(
-    () =>
-      f.provider.launches === 6 &&
-      f.executions.store.read(f.c.id)?.status === "stopped",
-  );
+  await waitForTurn(6, "stopped");
   await f.node.handle("postMessage", {
     mission: f.mission,
     text: "This must not exceed the approved allowance",

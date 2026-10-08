@@ -13,7 +13,7 @@ presentation layer, adding components and maintaining the host boundary.
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.6 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.6 extends the mission simplification to contextual controls, agent setup, sign-in, contributions and budgets. **0.4.4 through 0.4.6 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [the 0.4.6 changes](#contextual-inspectors-046) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.7 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.7 applies shared designer controls throughout the desktop and separates screens from the native application adapter. **0.4.4 through 0.4.7 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [the 0.4.7 changes](#shared-components-and-frontend-boundary-047) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
 
 Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
@@ -24,7 +24,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-Versions 0.4.4 through 0.4.6 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
+Versions 0.4.4 through 0.4.7 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 
@@ -54,6 +54,33 @@ Copy the app into **Applications** before launching it. A generic Finder alert d
 ```
 
 A valid ad-hoc signature verifies file integrity; it does **not** establish an identified developer or Gatekeeper acceptance. If macOS specifically blocks an unidentified developer, Apple's [Open Anyway procedure](https://support.apple.com/102445) describes a per-app exception. That exception does not fix an incompatible or damaged bundle. The public release gate remains Developer ID signing, notarization and a first-launch test on a clean Mac.
+
+### Shared components and frontend boundary (0.4.7)
+
+Buttons, fields, disclosures, view selectors, action popovers and status labels
+now share the designer's typography, spacing and interaction states. **Archived
+channels** uses a full-width keyboard-accessible disclosure with a count and
+styled chevron. Mission settings, evidence and technical details use the same
+component; collapsing them preserves form drafts.
+
+The Slack workspace and contextual inspectors remain in place. Screens receive
+an application client through a provider; the Electron adapter is selected only
+at startup. Reusable controls have no application dependencies. A replacement
+frontend can use the typed client contracts without importing native services.
+See [frontend architecture](FRONTEND.md) and the standalone component catalogue.
+
+Validation includes 227 unit/integration checks, component keyboard interactions,
+eight inspector fixtures, native archive/restore and a three-profile
+roster/lifecycle journey on one Mac. No model agents or real workspace records
+were used. Protocol 11 and schema 15 are unchanged. Independent-device and
+unassisted usability trials remain open.
+
+The 0.4.7 Apple Silicon DMG passes image and mounted-signature checks. Its exact
+packaged app passes the isolated Keychain identity, mission creation, signed
+history/restart, archive/restore and native invitation checks. Renderer access
+to arbitrary native calls, local files and remote requests remains blocked.
+This is an ad-hoc signed developer preview; notarization and independent
+security review remain open.
 
 ### Contextual inspectors (0.4.6)
 
@@ -122,16 +149,6 @@ failed exchanges, an empty catalog and a text search with no matches have
 different recovery instructions. It does not automatically connect to a directory
 or publish a mission.
 
-The landing page serves the **0.4.6** installer and checksum. Peer protocol
-11/schema 15 are unchanged from 0.4.4. Native isolated
-journeys and service tests verify behavior; independently operated Macs and
-unassisted first-time usability remain separate validation gates.
-
-The published **0.4.6 Apple Silicon DMG** passes image and mounted-signature checks;
-its packaged UI/native service start and retain form drafts in an isolated
-profile. The full identity/mission/restart test passes in the development app;
-the newly signed package's Keychain identity test has not been repeated.
-
 ### Continuous onboarding (0.4.4)
 
 Main stays primary. The next action opens a contextual panel, preserving the conversation, drafts and reading position. **Invite people** brings another person's node; **Add my agents** prepares this Mac's contributions. An invitation offers **Connect and review**, followed by admission and either agent setup or conversation-only participation.
@@ -152,7 +169,7 @@ Background users can separately opt into macOS decision notifications. These cov
 
 **This device** also offers optional local onboarding timings. They contain bounded sampled state transitions and elapsed durations, without message text, login output or invitation secrets. They are off by default, never uploaded, and can be cleared. These diagnostics do not measure successful first-time usability.
 
-These 0.4.4 capabilities are retained in the current 0.4.6 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
+These 0.4.4 capabilities are retained in the current 0.4.7 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
 
 ## Create an offline mission
 

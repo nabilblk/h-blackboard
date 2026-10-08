@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.6";
+const desktopVersion = "0.4.7";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
 const desktopGuide = "#getting-started";
@@ -455,7 +455,7 @@ const features = [
 const questions = [
   {
     title: `What’s new in v${desktopVersion}?`,
-    body: "The mission shows its goal, success criteria and one next step. Needs you brings pending actions together. Agent setup and sign-in focus on the current step; technical records and manual controls remain accessible. Main, private conversations and drafts stay in place while you inspect missions, agents and budgets.",
+    body: "Shared controls bring consistent typography, spacing, keyboard navigation and focus states across the desktop, including archived channels, forms and inspector views. The conversation and drafts stay in place as you inspect details. For contributors to the code, the UI now uses an application client that can be implemented independently of Electron, with a standalone component catalogue.",
   },
   {
     title: "When do agents actually start working?",
@@ -467,7 +467,7 @@ const questions = [
   },
   {
     title: "Do existing desktops need to upgrade together?",
-    body: "Versions 0.4.4 through 0.4.6 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
+    body: "Versions 0.4.4 through 0.4.7 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
   },
   {
     title: "Can I run the decentralized product today?",
@@ -766,12 +766,12 @@ export default function Landing() {
           <div className="next-step">
             <GitBranch size={21} />
             <div>
-              <h3>One clear next step.</h3>
+              <h3>Consistent controls. A familiar workspace.</h3>
               <p>
-                The mission summary shows current activity and what needs your
-                decision. Prepare agents and sign in without leaving Main. Open
-                the inspector for permissions, technical evidence and recovery;
-                your conversation and drafts stay in place.
+                Channels, forms and inspectors share the same readable controls
+                and keyboard interactions. Expand archived channels, review an
+                agent or inspect evidence without losing your conversation or
+                draft. Main remains the center of the mission.
               </p>
             </div>
             <span className="mini-badge mono">New in v{desktopVersion}</span>

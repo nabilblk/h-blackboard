@@ -6,6 +6,7 @@ import "@fontsource/ibm-plex-sans/latin-500.css";
 import "@fontsource/ibm-plex-sans/latin-600.css";
 import "@fontsource/ibm-plex-mono/latin-400.css";
 import "../../src/desktop/desktop.css";
+import { MissionCompletionScene } from "./mission-completion";
 
 const scene = new URLSearchParams(location.search).get("scene") ?? "sign-in";
 const mission = {
@@ -58,15 +59,17 @@ const item = {
 };
 const now = Date.now();
 const execution = {
+  networkAccess: "restricted",
+  networkRevision: null,
   agent,
   observedAt: now,
   permissions: [],
   events: [],
   record: {
     status:
-      scene === "running"
+      scene === "running" || scene === "network-running"
         ? "running"
-        : scene === "planning"
+        : scene === "planning" || scene === "network-stopped"
           ? "ready"
           : "login_required",
     reason: "Fixture observation",
@@ -94,6 +97,8 @@ const execution = {
 };
 const denied = () =>
   Promise.reject(new Error("Renderer fixture cannot execute native actions"));
+const networkCalls = [];
+window.networkFixture = { calls: networkCalls };
 const client = {
   workspace: {},
   missions: {
@@ -150,8 +155,29 @@ const client = {
     state: async () => ({ ...execution, observedAt: Date.now() }),
     signIn: denied,
     stop: denied,
+    setNetwork: async (id, networkAccess, expectedRevision) => {
+      networkCalls.push({
+        type: "network",
+        id,
+        networkAccess,
+        expectedRevision,
+      });
+      execution.networkAccess = networkAccess;
+      execution.networkRevision = crypto.randomUUID();
+    },
   },
   setup: {
+    state: async () => [],
+    preflight: async () => ({
+      available: true,
+      supported: true,
+      capacity: 2,
+      capacityCeiling: 4,
+      freeDiskBytes: 1024 ** 4,
+      minimumDiskBytes: 4 * 1024 ** 3,
+      installer: { active: false },
+    }),
+    setup: async (request) => networkCalls.push({ type: "setup", request }),
     agreements: async () => [],
     startState: async () => [],
     completionState: async () => [],
@@ -159,12 +185,30 @@ const client = {
 };
 const { ExecutionPanel } = await import("../../src/desktop/ExecutionPanel");
 const { BudgetPanel } = await import("../../src/desktop/BudgetPanel");
+const { AgentSetup } = await import("../../src/desktop/Onboarding");
 createRoot(document.getElementById("root")).render(
   <ApplicationProvider client={client}>
-    <main style={{ width: "min(100%, 500px)", margin: "24px auto" }}>
+    <main
+      style={{
+        width: "min(100%, 500px)",
+        margin: "24px auto",
+        height: "calc(100dvh - 48px)",
+        overflow: "auto",
+      }}
+    >
       <p className="d-label">Isolated UI fixture · {scene}</p>
       <div className="n-context-body">
-        {scene.startsWith("budget") ? (
+        {scene === "network-setup" ? (
+          <AgentSetup
+            mission={mission}
+            localKey="owner"
+            role="agent"
+            contributions={[]}
+            updated={async () => {}}
+          />
+        ) : scene.startsWith("completion-") ? (
+          <MissionCompletionScene scene={scene} />
+        ) : scene.startsWith("budget") ? (
           <BudgetPanel
             mission={mission}
             owner="owner"

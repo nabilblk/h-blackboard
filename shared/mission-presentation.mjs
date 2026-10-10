@@ -141,7 +141,7 @@ export function agentPresentation(input) {
   } else if (ended) {
     cause = "mission_ended";
     reason = stopped
-      ? "Process stopped. Saved work is available."
+      ? `Mission ${phase}; this agent is stopped. Saved work is available.`
       : "Mission execution is closed; inspect saved work.";
   } else if (phase === "paused") {
     cause = "mission_paused";
@@ -276,6 +276,14 @@ export function agentPresentation(input) {
 
 // Also consumed by desktop notifications. IDs describe the underlying request,
 // not whether a banner or panel has been read.
+export function resultsReadyForReview(mission, criteria = []) {
+  return (
+    ["active", "paused"].includes(mission.lifecycle.phase) &&
+    criteria.length > 0 &&
+    criteria.every((c) => c.met && !c.stale)
+  );
+}
+
 export function missionDecisions({
   mission,
   viewer,
@@ -370,7 +378,7 @@ export function missionDecisions({
         review: true,
       },
     });
-  if (criteria.length && criteria.every((c) => c.met && !c.stale))
+  if (resultsReadyForReview(mission, criteria))
     decisions.push({
       id: `results:${mission.lifecycle.revision}`,
       kind: "results",

@@ -1,4 +1,5 @@
 export type Runtime = "claude" | "codex" | "grok";
+export type NetworkAccess = "restricted" | "internet";
 export type ArtifactInspection = {
   revision: string;
   path: string;
@@ -30,6 +31,8 @@ export type Contribution = {
   mission: Mission;
   nodeBinding?: { owner: string; revision: string };
   runtime: Runtime;
+  networkAccess?: NetworkAccess;
+  networkRevision?: string;
   sharedAgent?: {
     registration: string;
     author: string;
@@ -51,7 +54,11 @@ export type LocalState = {
   activity: {
     id: string;
     at: string;
-    type: "contributor_named" | "contribution_prepared" | "consent_revoked";
+    type:
+      | "contributor_named"
+      | "contribution_prepared"
+      | "consent_revoked"
+      | "network_changed";
     contributionId: string | null;
     label: string;
   }[];
@@ -60,6 +67,7 @@ export type PrepareInput = {
   reviewId: string;
   workspaceChoiceId: string;
   runtime: Runtime;
+  networkAccess?: NetworkAccess;
   limits: Limits;
 };
 export type DesktopAPI = {
@@ -175,6 +183,7 @@ export type NodeAPI = {
     mission: string,
     grant: string,
     contributionId: string,
+    networkRevision?: string | null,
   ): Promise<{ event: string }>;
   governance(mission: string): Promise<import("./node").GovernanceView>;
   govern(

@@ -312,6 +312,7 @@ export class ContributorService {
             mission,
             ...(nodeBinding ? { nodeBinding } : {}),
             runtime: input.runtime,
+            networkAccess: input.networkAccess,
             limits: input.limits,
             workspace,
             workspaceIdentity: identity(workspace),

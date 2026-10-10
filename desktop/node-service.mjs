@@ -11,7 +11,7 @@ import {
   ArtifactAgentOperations,
 } from "./artifact-contract.mjs";
 import { NodeIdentity } from "./node-identity.mjs";
-import { Limits, Runtime, Id } from "./model.mjs";
+import { Limits, Runtime, Id, NetworkAccess } from "./model.mjs";
 import {
   executionBinding,
   DirectionChanged,
@@ -295,6 +295,7 @@ export const NodeRequests = {
       reviewId: Id,
       workspaceChoiceId: Id,
       runtime: Runtime,
+      networkAccess: NetworkAccess.default("restricted"),
       limits: Limits,
     })
     .strict(),
@@ -666,6 +667,10 @@ export class NodeService {
       );
       if (!contribution?.sharedAgent || contribution.sharedAgent.withdrawn)
         throw new Error("Review and share this local contribution first.");
+      if ((contribution.networkRevision ?? null) !== request.networkRevision)
+        throw new Error(
+          "Internet access changed. Review this agent's current access before approving.",
+        );
       const ledger = await bridge.request({
         type: "governance",
         mission: request.mission,

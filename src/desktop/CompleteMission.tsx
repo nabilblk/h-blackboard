@@ -11,6 +11,7 @@ import type {
   CompletionJob,
 } from "../application/contracts/setup";
 import { useSetupDraft } from "./useSetupDraft";
+
 type ReviewDraft = { review: boolean; selected: string[]; reason: string };
 const validDraft = (v: unknown): v is ReviewDraft => {
   if (!v || typeof v !== "object") return false;
@@ -24,14 +25,17 @@ const validDraft = (v: unknown): v is ReviewDraft => {
     d.selected.every((r) => typeof r === "string" && /^[a-f0-9]{64}$/.test(r))
   );
 };
+
 export function CompleteMission({
   mission,
   artifacts,
+  readyForReview,
   open,
   updated,
 }: {
   mission: MissionView;
   artifacts: ArtifactSummary[];
+  readyForReview: boolean;
   open: (id: string) => void;
   updated: () => Promise<void>;
 }) {
@@ -44,6 +48,10 @@ export function CompleteMission({
   const { review, selected, reason } = draft;
   const [saved, setSaved] = useState<CompletionJob | null>(null);
   const [request, setRequest] = useState<CompletionRequest | null>(null);
+  // Confirmation is deliberately never restored from a draft or an old job.
+  const [confirmation, setConfirmation] = useState<CompletionRequest | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -56,7 +64,7 @@ export function CompleteMission({
         );
         if (!cancelled && pending) {
           setSaved(pending);
-          setRequest(pending.request);
+          setRequest({ ...pending.request, closeConfirmed: true });
           save({
             selected: pending.request.revisions,
             reason: pending.request.reason,
@@ -71,6 +79,7 @@ export function CompleteMission({
       cancelled = true;
     };
   }, [mission.id, setup]);
+
   const options = artifacts.filter(
     (a) =>
       a.conversation === "main" &&
@@ -78,60 +87,164 @@ export function CompleteMission({
       a.heads.length === 1 &&
       a.stage === "complete",
   );
-  if (["closed", "archived"].includes(mission.lifecycle.phase))
-    return (
-      <p className="d-field-help">
-        Mission closed. Open Artifacts to revisit accepted deliverables and
-        their exact revisions.
-      </p>
-    );
-  if (!options.length && !saved) return null;
+  const currentSelection =
+    selected.length > 0 &&
+    selected.every((r) => options.some((a) => a.revision === r));
+  const changed =
+    !!(confirmation ?? request) &&
+    (confirmation ?? request)!.control !== mission.lifecycle.revision;
+  const canReview = readyForReview && currentSelection && !changed;
+
+  async function discard() {
+    if (!request) return;
+    setBusy(true);
+    setError("");
+    try {
+      await setup.discardCompletion(request.id);
+      setRequest(null);
+      setSaved(null);
+      setConfirmation(null);
+      clear();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finish() {
+    if (!confirmation || !canReview || busy) return;
+    const r = confirmation;
+    setRequest(r);
+    setBusy(true);
+    setError("");
+    try {
+      setSaved(await setup.completeMission(r));
+      setConfirmation(null);
+      clear();
+      await updated();
+    } catch (e) {
+      setError((e as Error).message);
+      // A lost response may have saved some decisions. Keep their exact request.
+      try {
+        setSaved(
+          (await setup.completionState(mission.id)).find(
+            (j) => j.id === r.id,
+          ) ?? null,
+        );
+      } catch {
+        /* Retrying reconciles the saved decisions. */
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (["closed", "archived"].includes(mission.lifecycle.phase)) return null;
+  if (
+    (!readyForReview || !options.length) &&
+    !saved &&
+    !confirmation &&
+    !request &&
+    !error &&
+    !draftError
+  )
+    return null;
+
   return (
-    <section className="d-panel">
-      <h3>Review the handoff</h3>
-      <p>
-        Acceptance records your decision about exact deliverables. Closing ends
-        the mission; outstanding processes still need confirmed stops.
-      </p>
-      {!review ? (
+    <section className="d-panel" aria-label="Mission completion review">
+      <h3>
+        {confirmation
+          ? "Finish this mission?"
+          : saved
+            ? "Unfinished completion review"
+            : "Review final results"}
+      </h3>
+      {saved ? (
+        <p role="status">
+          {saved.accepted.length}/{saved.request.revisions.length} acceptance
+          decisions saved. {saved.message}
+        </p>
+      ) : null}
+      {!readyForReview ? (
+        <>
+          <p className="d-field-help">
+            Final results are not ready for review. Accept individual artifacts
+            in Artifacts; that keeps the mission open.
+          </p>
+          {confirmation && !request ? (
+            <Button onClick={() => setConfirmation(null)}>
+              Back to review
+            </Button>
+          ) : null}
+        </>
+      ) : confirmation ? (
+        <>
+          <p>
+            This accepts the selected deliverables and closes the mission. Its
+            agents will no longer have permission to work and will be asked to
+            stop. Saved work stays available.
+          </p>
+          <ul>
+            {confirmation.revisions.map((r) => (
+              <li key={r}>
+                {options.find((a) => a.revision === r)?.title ??
+                  "Revision no longer current"}
+              </li>
+            ))}
+          </ul>
+          <p className="d-field-help">
+            To approve a plan and continue working, go back and accept the
+            artifact instead.
+          </p>
+          <div className="n-action-row">
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirmation(null)}
+            >
+              Back to review
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busy || !canReview}
+              onClick={() => void finish()}
+            >
+              {busy
+                ? "Finishing mission…"
+                : "Accept deliverables and finish mission"}
+            </Button>
+          </div>
+          {!currentSelection ? (
+            <p role="alert">
+              A selected deliverable changed. Review the current artifacts.
+            </p>
+          ) : null}
+        </>
+      ) : !review ? (
         <Button
           variant="primary"
           onClick={() => save({ ...draft, review: true })}
         >
-          Review deliverables and finish
+          Review deliverables
         </Button>
       ) : (
         <form
-          onSubmit={async (e) => {
+          onSubmit={(e) => {
             e.preventDefault();
-            setBusy(true);
-            setError("");
-            const r = request ?? {
-              id: crypto.randomUUID(),
-              mission: mission.id,
-              control: mission.lifecycle.revision,
-              revisions: selected,
-              reason,
-            };
-            setRequest(r);
-            try {
-              setSaved(await setup.completeMission(r));
-              clear();
-              await updated();
-            } catch (e) {
-              setError((e as Error).message);
-              try {
-                setSaved(
-                  (await setup.completionState(mission.id)).find(
-                    (j) => j.id === r.id,
-                  ) ?? null,
-                );
-              } catch {
-                /* Original failure remains visible; retry reconciles saved decisions. */
-              }
-            } finally {
-              setBusy(false);
-            }
+            if (!canReview || busy) return;
+            setConfirmation(
+              request ?? {
+                id: crypto.randomUUID(),
+                mission: mission.id,
+                control: mission.lifecycle.revision,
+                revisions: [...selected],
+                reason:
+                  reason.trim() ||
+                  "Accepted the reviewed deliverables and explicitly finished the mission.",
+                closeConfirmed: true,
+              },
+            );
           }}
         >
           <fieldset disabled={busy || !!request}>
@@ -142,6 +255,9 @@ export function CompleteMission({
                   <input
                     type="checkbox"
                     checked={selected.includes(a.revision)}
+                    disabled={
+                      !selected.includes(a.revision) && selected.length >= 32
+                    }
                     onChange={(e) =>
                       save({
                         ...draft,
@@ -153,67 +269,69 @@ export function CompleteMission({
                   />
                   {a.title}
                 </label>
-                <Button
-                  type="button"
-
-                  onClick={() => open(a.revision)}
-                >
+                <Button type="button" onClick={() => open(a.revision)}>
                   Inspect
                 </Button>
               </div>
             ))}
             <Field>
-              Your acceptance note
+              Acceptance note (optional)
               <textarea
-                required
                 maxLength={2048}
                 value={reason}
                 onChange={(e) => save({ ...draft, reason: e.target.value })}
               />
             </Field>
           </fieldset>
-          {saved ? (
-            <p role="status">
-              {saved.accepted.length}/{saved.request.revisions.length} decisions
-              saved. {saved.message}
+          {selected.length > 0 && !currentSelection ? (
+            <p role="alert">
+              A selected deliverable is no longer current.
+              {!request ? (
+                <Button
+                  type="button"
+                  onClick={() => save({ ...draft, selected: [] })}
+                >
+                  Clear selection
+                </Button>
+              ) : null}
             </p>
           ) : null}
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={busy || !selected.length || !reason.trim()}
-          >
-            {busy
-              ? "Saving decisions…"
-              : request
-                ? "Continue saved completion"
-                : "Accept selected and close mission"}
-          </Button>
-          {request ? (
+          <p className="d-field-help">
+            {saved
+              ? "Earlier acceptance decisions stay saved. Finishing still needs your confirmation."
+              : "The next step explains what finishing the mission will do. Nothing is saved yet."}
+          </p>
+          <div className="n-action-row">
+            {!request ? (
+              <Button
+                type="button"
+                onClick={() => save({ ...draft, review: false })}
+              >
+                Cancel
+              </Button>
+            ) : null}
             <Button
-              type="button"
-
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                setError("");
-                try {
-                  await setup.discardCompletion(request.id);
-                  setRequest(null);
-                  setSaved(null);
-                  clear();
-                } catch (e) {
-                  setError((e as Error).message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              variant="primary"
+              type="submit"
+              disabled={busy || !canReview}
             >
-              Review current results instead
+              Review mission completion
             </Button>
-          ) : null}
+          </div>
         </form>
       )}
+      {changed ? (
+        <p role="alert">
+          {request
+            ? "The mission changed. Discard this completion review and inspect the current results."
+            : "The mission changed. Go back and review its current results."}
+        </p>
+      ) : null}
+      {request ? (
+        <Button type="button" disabled={busy} onClick={() => void discard()}>
+          Discard unfinished completion review
+        </Button>
+      ) : null}
       {error || draftError ? (
         <p role="alert" className="d-error">
           {error || draftError}

@@ -190,10 +190,13 @@ export function RunApproval({
 }) {
   const { setup } = useApplication();
   const planning = mission.lifecycle.phase === "preparing";
+  const networkRevision =
+    execution.networkRevision ?? item.networkRevision ?? null;
   const [review, setReview] = useState<
-    Pick<PermissionRequest, "id" | "control" | "direction">
+    Pick<PermissionRequest, "id" | "control" | "direction" | "networkRevision">
   >(() => ({
     id: crypto.randomUUID(),
+    networkRevision,
     control: mission.lifecycle.revision,
     direction: planning
       ? mission.lifecycle.revision
@@ -226,7 +229,12 @@ export function RunApproval({
           .sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (saved?.kind === "permission") {
           const r = saved.request;
-          setReview({ id: r.id, control: r.control, direction: r.direction });
+          setReview({
+            id: r.id,
+            control: r.control,
+            direction: r.direction,
+            networkRevision: r.networkRevision ?? null,
+          });
           setTurns(r.turns);
           setMinutes(r.minutes);
           setAttempted(true);
@@ -249,6 +257,7 @@ export function RunApproval({
     };
   }, [item.id, mission.id, retryRestore, setup]);
   const stale =
+    (review.networkRevision ?? null) !== networkRevision ||
     review.control !== mission.lifecycle.revision ||
     review.direction !==
       (planning ? mission.lifecycle.revision : (execution.direction?.id ?? ""));
@@ -294,6 +303,12 @@ export function RunApproval({
       <p>
         Uses your subscription in this agent’s isolated workspace. You can stop
         it at any time; your local limits still apply.
+      </p>
+      <p className="d-field-help">
+        Workspace internet:{" "}
+        {(execution.networkAccess ?? item.networkAccess) === "internet"
+          ? "Public HTTPS allowed; requests may send mission data externally."
+          : "Blocked. AI provider access remains available."}
       </p>
       <div className="d-limit-fields">
         <Field>
@@ -347,8 +362,8 @@ export function RunApproval({
       {stale ? (
         <>
           <p role="alert">
-            Direction or mission control changed. Review the current
-            instructions before continuing.
+            Instructions or local access changed. Review the current terms
+            before continuing.
           </p>
           <Button
             type="button"
@@ -358,6 +373,7 @@ export function RunApproval({
               setSavedNote("");
               setReview({
                 id: crypto.randomUUID(),
+                networkRevision,
                 control: mission.lifecycle.revision,
                 direction: planning
                   ? mission.lifecycle.revision

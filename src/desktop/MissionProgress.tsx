@@ -4,6 +4,7 @@ import { Field } from "../ui/Field";
 import { useApplication } from "./ApplicationProvider";
 import { useEffect, useState } from "react";
 import { CompleteMission } from "./CompleteMission";
+import { resultsReadyForReview } from "../../shared/mission-presentation.mjs";
 
 import type {
   AgentView,
@@ -41,6 +42,7 @@ export function MissionProgress({
   const [met, setMet] = useState(false);
   const [evidence, setEvidence] = useState<string[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
+  const [artifactError, setArtifactError] = useState("");
   const [target, setTarget] = useState("");
   const [closing, setClosing] = useState<"close" | "archive" | null>(null);
   const [reason, setReason] = useState("");
@@ -56,16 +58,21 @@ export function MissionProgress({
         items.push(...page.items);
         after = page.after;
       } while (after && items.length < 512);
-      if (active) setArtifacts(items);
-    })().catch(() => {});
+      if (active) {
+        setArtifacts(items);
+        setArtifactError("");
+      }
+    })().catch(() => {
+      if (active) setArtifactError("Artifacts could not be loaded. Retrying…");
+    });
     return () => {
       active = false;
     };
-  }, [mission.id, edit, node]);
+  }, [mission.id, mission.lifecycle.revision, data, edit, node]);
   const own = owner === mission.owner;
   const archived = mission.lifecycle.phase === "archived";
   const readyForReview =
-    !!data?.criteria.length && data.criteria.every((c) => c.met && !c.stale);
+    !error && resultsReadyForReview(mission, data?.criteria);
   const act = (action: Parameters<typeof node.missionAction>[2]) =>
     void perform(async () => {
       await node.missionAction(mission.id, mission.lifecycle.revision, action);
@@ -181,16 +188,20 @@ export function MissionProgress({
           ))}
         </section>
       ) : null}
-      <h3>Success criteria</h3>
       {own ? (
         <CompleteMission
+          key={mission.id}
           mission={mission}
           artifacts={artifacts}
+          readyForReview={readyForReview && !artifactError}
           open={openArtifact}
           updated={updated}
         />
       ) : null}
-      {error ? <p role="alert">{error}</p> : null}
+      <h3>Success criteria</h3>
+      {error || artifactError ? (
+        <p role="alert">{error || artifactError}</p>
+      ) : null}
       <div className="n-criteria-list">
         {data?.criteria.map((c) => (
           <Disclosure
@@ -418,7 +429,7 @@ export function MissionProgress({
               <p>
                 {closing === "archive"
                   ? "Keep the channel and its private history read-only. Restore returns it paused or closed."
-                  : "Record your decision to close the mission. Progress reports never close it automatically."}{" "}
+                  : "Closing ends this mission and withdraws permission for its agents to work. Use Pause if you intend to continue later."}{" "}
                 Outstanding executions and reservations remain visible until
                 reconciled.
               </p>

@@ -1,0 +1,377 @@
+/* Uses the supplied designer tokens and shared controls. Layout only. */
+.md-authoring {
+  min-width: 0;
+}
+.md-back {
+  flex-shrink: 0;
+}
+.md-page-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: var(--space-7);
+  flex-shrink: 0;
+}
+.md-page-heading > .d-heading {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+.d-main:has(.md-authoring--assisted) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.d-main:has(.md-authoring--assisted) > .d-stage-note {
+  flex-shrink: 0;
+}
+.d-content:has(> .md-authoring--assisted) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.d-main > .d-content:has(> .md-authoring--assisted) {
+  flex: 1;
+}
+.md-authoring--assisted {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.md-authoring--assisted .md-workspace {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+.md-authoring--assisted .md-brief {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.md-authoring--assisted .md-brief > header,
+.md-authoring--assisted .md-brief > .md-actions {
+  flex-shrink: 0;
+}
+.md-authoring--assisted .md-brief-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.md-authoring--assisted .md-draft-footer {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.md-entry {
+  max-width: 760px;
+  margin: var(--space-9) auto;
+}
+.md-entry textarea {
+  font-size: var(--font-size-h3);
+  line-height: 1.7;
+}
+.md-entry-actions,
+.md-toolbar,
+.md-actions,
+.md-choices,
+.md-draft-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+.md-entry-actions {
+  justify-content: space-between;
+  margin: var(--space-8) 0;
+}
+.md-authoring .md-runtime {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-5);
+  margin: 0;
+}
+.md-runtime select {
+  width: auto;
+  min-width: 135px;
+}
+.md-local-note {
+  border-top: 1px solid var(--color-border-default);
+  padding-top: var(--space-8);
+  margin-top: var(--space-9);
+}
+.md-toolbar {
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+  flex-shrink: 0;
+}
+.md-toolbar > .hb-view-tabs {
+  margin-bottom: 0;
+}
+.md-workspace {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.85fr) minmax(350px, 1.15fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+.md-workspace--manual {
+  display: block;
+  max-width: 820px;
+  margin: 0 auto;
+}
+.md-workspace .d-panel {
+  padding: var(--space-8);
+  min-width: 0;
+  margin: 0;
+}
+.md-conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.md-conversation > header,
+.md-brief > header,
+.md-review > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding-bottom: var(--space-7);
+  margin-bottom: var(--space-7);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.md-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.md-conversation > .hb-disclosure[open] {
+  max-height: 180px;
+  overflow-y: auto;
+}
+.md-conversation > header,
+.md-conversation > form,
+.md-conversation > .hb-disclosure {
+  flex-shrink: 0;
+}
+.md-message {
+  margin-bottom: var(--space-8);
+  padding-left: var(--space-6);
+  border-left: 2px solid var(--color-border-default);
+  overflow-wrap: anywhere;
+}
+.md-message--assistant {
+  border-color: var(--color-accent-default);
+}
+.md-message-author {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-4);
+}
+.md-message .reading {
+  font-size: var(--font-size-body-lg);
+  line-height: 1.65;
+}
+.md-message .reading p {
+  margin: var(--space-4) 0;
+}
+.md-question {
+  border-top: 1px solid var(--color-border-default);
+  padding-top: var(--space-7);
+  margin: var(--space-7) 0;
+}
+.md-question h3 {
+  font-size: var(--font-size-h3);
+  line-height: 1.5;
+  margin: 0 0 var(--space-6);
+}
+.md-choices {
+  align-items: stretch;
+  margin: var(--space-4) 0;
+}
+.md-choices .d-button {
+  white-space: normal;
+  text-align: left;
+  height: auto;
+  min-height: var(--size-control);
+}
+.md-composer {
+  border-top: 1px solid var(--color-border-default);
+  padding-top: var(--space-7);
+}
+.md-actions {
+  justify-content: space-between;
+  margin-top: var(--space-7);
+}
+.md-actions > .d-field-help {
+  flex: 1;
+}
+.md-brief h2,
+.md-review h2 {
+  font-size: var(--font-size-h2);
+  line-height: 1.35;
+  margin: var(--space-3) 0 0;
+}
+.md-brief-fields {
+  gap: var(--space-8);
+}
+.md-brief-fields h3 {
+  font-size: var(--font-size-body-lg);
+  margin: 0 0 var(--space-5);
+  font-weight: var(--font-weight-medium);
+}
+.md-changed {
+  border-left: 2px solid var(--color-accent-default);
+  padding-left: var(--space-6);
+}
+.md-change-label {
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-regular);
+  font-size: var(--font-size-small);
+  display: block;
+}
+.md-list-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.md-list-row > span {
+  color: var(--color-text-tertiary);
+  padding-top: var(--space-5);
+}
+.md-list-row textarea {
+  flex: 1;
+  min-width: 0;
+}
+.md-decisions {
+  border-top: 1px solid var(--color-border-default);
+  padding-top: var(--space-7);
+}
+.md-decisions .md-list + .md-list {
+  margin-top: var(--space-7);
+}
+.md-brief-scroll > .hb-disclosure {
+  margin-top: var(--space-7);
+}
+.md-brief > .md-actions {
+  position: sticky;
+  bottom: 0;
+  padding: var(--space-7) 0;
+  border-top: 1px solid var(--color-border-default);
+  background: var(--color-surface-raised);
+}
+.md-authoring--assisted .md-brief > .md-actions {
+  position: static;
+  padding-bottom: 0;
+}
+.md-history {
+  display: flex;
+  gap: var(--space-6);
+  justify-content: space-between;
+  padding: var(--space-6) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-small);
+}
+.md-conflict,
+.md-recovery,
+.md-error {
+  padding: var(--space-7);
+  margin-bottom: var(--space-7);
+  border-left: 2px solid var(--color-status-warning);
+  background: var(--color-surface-sunken);
+}
+.md-conflict p,
+.md-recovery p,
+.md-error p {
+  margin: var(--space-3) 0 var(--space-6);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.md-preserve {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.md-review {
+  max-width: 820px;
+  margin: 0 auto;
+}
+.md-review section {
+  margin: var(--space-9) 0;
+}
+.md-review section h3 {
+  font-size: var(--font-size-h3);
+  margin-bottom: var(--space-5);
+}
+.md-review section p,
+.md-review li {
+  font-size: var(--font-size-body-lg);
+  line-height: 1.7;
+}
+.md-acknowledgment {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  padding: var(--space-7);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+}
+.md-acknowledgment input {
+  width: auto;
+  flex-shrink: 0;
+  margin-top: var(--space-2);
+}
+.md-draft-footer {
+  justify-content: flex-end;
+  margin: var(--space-8) 0;
+  color: var(--color-text-secondary);
+}
+@media (max-width: 1150px) {
+  .md-workspace {
+    grid-template-columns: minmax(250px, 0.85fr) minmax(310px, 1.15fr);
+    gap: var(--space-6);
+  }
+  .md-workspace .d-panel {
+    padding: var(--space-7);
+  }
+}
+@media (max-width: 820px), (max-height: 700px) {
+  .md-page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .d-main:has(.md-authoring--assisted) {
+    display: block;
+    overflow: auto;
+  }
+  .d-content:has(> .md-authoring--assisted) {
+    height: auto !important;
+    overflow: visible;
+  }
+  .md-authoring--assisted .md-workspace {
+    flex: initial;
+    grid-template-rows: auto;
+  }
+  .md-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .md-conversation {
+    height: 480px;
+  }
+  .md-authoring--assisted .md-brief {
+    display: block;
+    overflow: visible;
+  }
+  .md-authoring--assisted .md-brief-scroll {
+    overflow: visible;
+  }
+}

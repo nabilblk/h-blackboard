@@ -12,6 +12,7 @@ import type { GrantView } from "../application/contracts/node";
 import type { ExecutionState } from "../application/contracts/execution";
 import type { MissionView } from "../application/contracts/node";
 import { RunApproval, ProviderSetup } from "./ExecutionSetup";
+import { NetworkAccessSettings } from "./NetworkAccess";
 import { agentPresentation } from "../../shared/mission-presentation.mjs";
 
 const labels: Record<string, string> = {
@@ -148,6 +149,10 @@ export function ExecutionPanel({
     !["complete", "cancelled"].includes(authentication.status);
   const signInExpired =
     !!authentication?.expiresAt && authentication.expiresAt <= Date.now();
+  const networkAccess =
+    state?.networkAccess ?? item.networkAccess ?? "restricted";
+  const networkRevision =
+    state?.networkRevision ?? item.networkRevision ?? null;
   return (
     <section className="d-panel n-execution" aria-label="Local agent execution">
       <header>
@@ -238,8 +243,11 @@ export function ExecutionPanel({
           <div>
             <dt>Access</dt>
             <dd>
-              Workspace tools have no network or credential access.{" "}
-              {runtimeLabel} connects to its provider.
+              {networkAccess === "internet"
+                ? "Public HTTPS through a filtered proxy. No direct network route or private destinations. "
+                : "Workspace internet blocked. "}
+              {runtimeLabel} connects only to its provider. Worker tools have no
+              provider credentials.
             </dd>
           </div>
           {state?.record?.generation ? (
@@ -272,6 +280,33 @@ export function ExecutionPanel({
       ) : null}
       {notice ? <p role="status">{notice}</p> : null}
       <section hidden={tab !== "access"} aria-label="Execution limits">
+        {supported &&
+        item.status === "prepared" &&
+        !item.sharedAgent?.withdrawn ? (
+          <NetworkAccessSettings
+            value={networkAccess}
+            revision={networkRevision}
+            disabled={
+              busy ||
+              !state ||
+              !!state.error ||
+              state.busy ||
+              active.has(status ?? "") ||
+              status === "preparing" ||
+              status === "recovery_required" ||
+              signInOpen
+            }
+            save={(value, revision) =>
+              void act(async () => {
+                await api.setNetwork(item.id, value, revision);
+                setReviewRun(false);
+                setNotice(
+                  "Internet setting applied. Review execution permission before continuing.",
+                );
+              })
+            }
+          />
+        ) : null}
         <dl className="d-facts">
           <div>
             <dt>Account</dt>
@@ -293,7 +328,7 @@ export function ExecutionPanel({
             <dt>Provider access</dt>
             <dd>
               {runtimeLabel} connects to its provider. Workspace tools have no
-              network or credential access.
+              provider credentials.
             </dd>
           </div>
         </dl>
@@ -524,7 +559,11 @@ export function ExecutionPanel({
             <ContributionConsent
               mission={mission}
               agent={state.agent}
-              contribution={item}
+              contribution={{
+                ...item,
+                networkAccess,
+                networkRevision: networkRevision ?? undefined,
+              }}
               isOwner={owner === mission.owner}
             />
           ) : null}
@@ -649,6 +688,7 @@ export function ExecutionPanel({
                           item.mission.missionId,
                           permission.id,
                           item.id,
+                          networkRevision,
                         );
                       await api.start(item.id, permission.id);
                     })

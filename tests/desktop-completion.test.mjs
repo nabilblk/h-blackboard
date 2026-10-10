@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -64,6 +64,7 @@ function fixture(t) {
       control: mission.lifecycle.revision,
       revisions: [...details.keys()],
       reason: "Reviewed the exact deliverables.",
+      closeConfirmed: true,
     },
   };
 }
@@ -91,4 +92,69 @@ test("changed mission control invalidates a completion review", async (t) => {
   f.mission.lifecycle.revision = h("f");
   await assert.rejects(f.service().complete(f.request), /Mission changed/);
   assert.equal(f.calls.length, 0);
+});
+
+test("a completed planning artifact cannot finish a Preparing mission", async (t) => {
+  const f = fixture(t);
+  f.mission.lifecycle.phase = "preparing";
+  f.details.get(h("d")).document.kind = "plan";
+  await assert.rejects(f.service().complete(f.request), /still preparing/);
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.mission.lifecycle.phase, "preparing");
+});
+
+test("a note and selected artifacts alone cannot authorize closure", (t) => {
+  const f = fixture(t);
+  const { closeConfirmed, ...oldRequest } = f.request;
+  for (const r of [oldRequest, { ...oldRequest, closeConfirmed: false }])
+    assert.throws(() => f.service().complete(r));
+  assert.deepEqual(f.calls, []);
+});
+
+test("legacy pending reviews remain readable but require renewed confirmation to resume", async (t) => {
+  const f = fixture(t);
+  const { closeConfirmed, ...oldRequest } = f.request;
+  writeFileSync(
+    join(f.directory, `${oldRequest.id}.json`),
+    JSON.stringify({
+      id: oldRequest.id,
+      request: oldRequest,
+      status: "interrupted",
+      accepted: [],
+      message: "Response lost",
+    }),
+  );
+  const service = f.service();
+  assert.equal(
+    service.state(oldRequest.mission)[0].request.closeConfirmed,
+    undefined,
+  );
+  assert.throws(() => service.complete(oldRequest));
+  assert.deepEqual(f.calls, []);
+  await service.complete(f.request);
+  assert.equal(
+    service.state(oldRequest.mission)[0].request.closeConfirmed,
+    true,
+  );
+  assert.equal(f.calls.filter((v) => v === "missionAction").length, 1);
+});
+
+test("discarding a legacy completion review preserves earlier acceptance and does not close", async (t) => {
+  const f = fixture(t);
+  const { closeConfirmed, ...oldRequest } = f.request;
+  writeFileSync(
+    join(f.directory, `${oldRequest.id}.json`),
+    JSON.stringify({
+      id: oldRequest.id,
+      request: oldRequest,
+      status: "interrupted",
+      accepted: [h("d")],
+      message: "Partial acceptance",
+    }),
+  );
+  const service = f.service();
+  await service.discard(oldRequest.id);
+  assert.deepEqual(service.state(oldRequest.mission)[0].accepted, [h("d")]);
+  assert.deepEqual(f.calls, []);
+  await assert.rejects(service.complete(f.request), /replaced/);
 });

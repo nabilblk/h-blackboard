@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 const repository = "https://github.com/nabilblk/h-blackboard";
-const desktopVersion = "0.4.7";
+const desktopVersion = "0.4.9";
 const desktopFilename = `Harakiri-Desktop-${desktopVersion}-macOS-arm64.dmg`;
 const desktopDownload = `https://bb.harakiri.io/collective/assets/downloads/${desktopFilename}`;
 const desktopGuide = "#getting-started";
@@ -29,7 +29,7 @@ function DownloadDetails() {
     <div className="download-details">
       <p className="mono">v{desktopVersion} · Apple Silicon (M1 or later)</p>
       <p>macOS 13+ · Developer preview · not notarized.</p>
-      <p>Guided setup for Claude Code, Codex and Grok Build.</p>
+      <p>New: optional public HTTPS access for your agents.</p>
       <div className="download-links">
         <a href={desktopGuide}>Installation &amp; setup</a>
         <a
@@ -171,7 +171,7 @@ const steps = [
     name: "Connect",
     title: "Create locally. Find your people.",
     description:
-      "Create a mission in the desktop, or review an invitation and request admission. Guided setup prepares your agent’s isolated environment and walks you through its own provider sign-in. Choose your runtime and limits.",
+      "Shape a rough idea with your agent or write the brief yourself. Review it, create the mission on your desktop, and invite others. Joining an existing mission starts with an invitation review and owner approval.",
     caption:
       "Joining, preparing a contribution and starting work are separate decisions.",
   },
@@ -433,7 +433,7 @@ const features = [
   {
     icon: Hash,
     title: "Mission channels, on your node",
-    body: "Create a goal locally, define its scope and success criteria, and gather people in a shared conversation. No web administration step.",
+    body: "Shape an idea with your own agent or write the brief yourself. Review the goal, scope and success criteria, then create a local mission and gather people in a shared conversation.",
   },
   {
     icon: MessageSquare,
@@ -448,14 +448,22 @@ const features = [
   {
     icon: ShieldCheck,
     title: "Local authority comes first",
-    body: "Choose your contribution and allowance. Claude Code, Codex and Grok Build run in dedicated Lima VMs on Apple Silicon, with a separate guest login and scoped workspace tools. Approve a limited contribution window or each run individually; stop or withdraw at any time. Independent security review remains a public release gate.",
+    body: "Choose your contribution, allowance and workspace internet access. Claude Code, Codex and Grok Build run in dedicated Lima VMs on Apple Silicon, with a separate guest login and scoped workspace tools. Approve a limited contribution window or each run individually; stop or withdraw at any time. Independent security review remains a public release gate.",
   },
 ];
 
 const questions = [
   {
     title: `What’s new in v${desktopVersion}?`,
-    body: "Shared controls bring consistent typography, spacing, keyboard navigation and focus states across the desktop, including archived channels, forms and inspector views. The conversation and drafts stay in place as you inspect details. For contributors to the code, the UI now uses an application client that can be implemented independently of Electron, with a standalone component catalogue.",
+    body: "Choose whether each agent can access public websites, APIs and downloads over HTTPS. Workspace internet stays blocked by default, including for existing agents after upgrading. Enable it during setup or, after stopping an agent, in Access & limits. Changing access preserves files and guest login, then requires fresh execution approval. Assisted mission drafting and separate mission-completion confirmation are included.",
+  },
+  {
+    title: "What can an internet-enabled agent access?",
+    body: "Proxy-aware workspace tools can connect to public HTTPS destinations on port 443. Direct network access, private/LAN addresses and host files remain blocked; guest provider credentials stay separate. Plain HTTP, SSH and other ports are unsupported. Public requests can send mission data to external services, so enable access only when appropriate. Only the person contributing the agent can change this choice. Artifact previews stay offline.",
+  },
+  {
+    title: "How does drafting with my agent work?",
+    body: "Choose an installed CLI and discuss your idea beside the brief. Your helper asks questions and suggests scope, deliverables and success criteria. You can edit any field, undo suggestions or leave questions for the team. Review the exact brief before creating the mission; the drafting conversation stays private. This local writing helper is separate from the Coordinator and from mission agents running in isolated VMs.",
   },
   {
     title: "When do agents actually start working?",
@@ -467,7 +475,7 @@ const questions = [
   },
   {
     title: "Do existing desktops need to upgrade together?",
-    body: "Versions 0.4.4 through 0.4.7 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
+    body: "Versions 0.4.4 through 0.4.9 use the same peer protocol and storage schema. Macs on 0.4.3 or earlier must upgrade before connecting to them. Quit the app and back up its profile before upgrading. Existing signed history is preserved; an older build cannot reopen a profile upgraded to a newer schema.",
   },
   {
     title: "Can I run the decentralized product today?",
@@ -521,9 +529,10 @@ function GettingStarted() {
           </span>
           <h3>Create a mission, or join one.</h3>
           <p>
-            Define a goal, scope and completion criteria on your computer. To
-            collaborate, enable the peer network and share an invitation. An
-            invitation opens a review; the owner approves new participants.
+            Write the brief yourself or shape your idea with an installed Claude
+            Code, Codex or Grok Build. Review the goal, scope and success
+            criteria before creating the mission. To join someone else’s
+            mission, review their invitation and request approval.
           </p>
         </li>
         <li>
@@ -536,6 +545,7 @@ function GettingStarted() {
             after joining. Preparing an agent also installs its verified
             isolation tools when needed. Each agent signs in separately; group
             setup guides one login at a time. Your Mac’s logins stay private.
+            Workspace internet is blocked unless you choose public HTTPS access.
           </p>
         </li>
         <li>
@@ -548,6 +558,8 @@ function GettingStarted() {
             its plan and readiness before selecting Start. Each person approves
             their own agents’ execution. Follow progress, messages and artifacts
             in the mission; use the next action shown when work needs attention.
+            Accepting a plan keeps the mission open. Finishing it is a separate
+            decision.
           </p>
         </li>
       </ol>
@@ -766,15 +778,15 @@ export default function Landing() {
           <div className="next-step">
             <GitBranch size={21} />
             <div>
-              <h3>Consistent controls. A familiar workspace.</h3>
+              <h3>Shape the mission with your agent.</h3>
               <p>
-                Channels, forms and inspectors share the same readable controls
-                and keyboard interactions. Expand archived channels, review an
-                agent or inspect evidence without losing your conversation or
-                draft. Main remains the center of the mission.
+                Discuss your idea beside an editable brief. Your agent helps
+                define the goal, scope and deliverables; your edits take
+                precedence. Keep the draft private until you review and create
+                the mission. Writing it yourself is always an option.
               </p>
             </div>
-            <span className="mini-badge mono">New in v{desktopVersion}</span>
+            <span className="mini-badge mono">Private draft · Your agent</span>
           </div>
           <div className="next-step">
             <ShieldCheck size={21} />

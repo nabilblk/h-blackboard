@@ -78,6 +78,7 @@ export async function buildDesktop() {
     "files.py",
     "mcp.py",
     "proxy.py",
+    "worker-network.py",
     "setup.sh",
     "runtimes.py",
     "install-runtime.py",

@@ -1,4 +1,4 @@
-import type { Limits, Runtime } from "./workspace";
+import type { Limits, Runtime, NetworkAccess } from "./workspace";
 export type ContributionApproval = {
   id: string;
   mission: string;
@@ -7,6 +7,7 @@ export type ContributionApproval = {
   plan: string | null;
   registration: string;
   contributionId: string | null;
+  networkRevision?: string | null;
   ownerPermission: boolean;
   minutes: number;
   turns: number;
@@ -49,10 +50,13 @@ export type CompletionRequest = {
   control: string;
   revisions: string[];
   reason: string;
+  closeConfirmed: true;
 };
 export type CompletionJob = {
   id: string;
-  request: CompletionRequest;
+  request: Omit<CompletionRequest, "closeConfirmed"> & {
+    closeConfirmed?: true;
+  };
   status: string;
   accepted: string[];
   message: string;
@@ -63,6 +67,7 @@ export type SetupRequest = {
   terms: string;
   role: "agent" | "coordinator";
   runtime: Runtime;
+  networkAccess?: NetworkAccess;
   label: string;
   count: number;
   limits: Limits;
@@ -71,6 +76,7 @@ export type SetupRequest = {
 export type PermissionRequest = {
   id: string;
   contributionId: string;
+  networkRevision?: string | null;
   control: string;
   direction: string;
   turns: number;

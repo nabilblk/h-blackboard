@@ -6,6 +6,7 @@ import { Hash } from "./execution/contract.mjs";
 import {
   executionBinding,
   currentPermissions,
+  retireSupersededConsent,
 } from "./execution/permissions.mjs";
 import { OnboardingStore } from "./onboarding-store.mjs";
 
@@ -20,6 +21,7 @@ export const agreementRequest = z
     plan: Hash.nullable(),
     registration: Hash,
     contributionId: Id.nullable(),
+    networkRevision: Id.nullable().default(null),
     ownerPermission: z.boolean(),
     minutes: z.number().int().min(1).max(1440),
     turns: z.number().int().min(1).max(10000),
@@ -208,6 +210,10 @@ export class ContributionAgreements {
         contribution.mission.missionId !== r.mission
       )
         throw new Error("Contribution does not match the reviewed agent.");
+      if ((contribution.networkRevision ?? null) !== r.networkRevision)
+        throw new Error(
+          "Internet access changed. Review this agent's current access before approving.",
+        );
       binding = executionBinding(contribution);
     }
     for (const other of this.list(r.mission))
@@ -519,6 +525,11 @@ export class ContributionAgreements {
       localRecord &&
       ["ready", "stopped"].includes(localRecord.status)
     ) {
+      ledger = await retireSupersededConsent(
+        this.node,
+        this.executions.contribution(localId),
+        ledger,
+      );
       const unused = ledger.grants.filter(
         (g) =>
           g.registration === agent.id &&
@@ -644,6 +655,7 @@ export class ContributionAgreements {
         mission: mission.id,
         grant: grant.id,
         contributionId: id,
+        networkRevision: a.request.networkRevision,
       });
     await this.check(a, (await this.mission(mission.id)).mission);
     await this.executions.start(id, grant.id);

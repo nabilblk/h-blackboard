@@ -24,8 +24,8 @@ globals. Importing a screen does not require Electron to exist. Multiple isolate
 clients can run without replacing a process-wide singleton. Effects subscribe
 to the supplied port and clean up when it changes or the view unmounts.
 
-The four ports cover workspace preferences/contributions, mission records,
-local execution, and reviewed setup/consent workflows. They expose typed
+The five ports cover workspace preferences/contributions, mission records,
+local execution, reviewed setup/consent workflows, and private mission drafting. They expose typed
 operations, not a generic IPC invocation, filesystem handle or shell endpoint.
 Commands retain their exact mission revisions, readiness references and consent
 inputs. Errors and rejected authority checks pass through to the caller.
@@ -76,6 +76,7 @@ Open <http://127.0.0.1:4518>. Its example records exist only in the page.
 | `ViewTabs` | Contextual view selection | Labeled pressed buttons, normal Tab navigation plus arrows/Home/End. Panels can live elsewhere; it does not claim ARIA tabpanel semantics. |
 | `ActionPopover` | Secondary action groups | Ordinary tab-reachable buttons; closes on action, outside click, focus exit or Escape. Escape restores trigger focus. |
 | `Field` | One labeled input/select/textarea | Native wrapping label, shared field typography and spacing. Form state and validation belong to the screen. |
+| `GrowingTextarea` | Editable brief fields and list entries | Fits the controlled text up to a bounded height, then scrolls; forwards normal native textarea props. |
 | `Status` | Attributed state labels | Text plus a square marker. Neutral by default; explicit semantic tones. Color never replaces the label. |
 
 Use a sidebar disclosure for **Archived channels**. Use section disclosures for
@@ -102,6 +103,16 @@ keyboard disclosure, focus, draft retention, view selection, popover dismissal,
 form submission and narrow layouts. Inspector fixtures inject read-only clients;
 they do not alter the real workspace or execute models. Native tests separately
 exercise the real preload, protected identity, mission history and restart.
+
+The drafting journey uses `MissionDraft`, `DraftConversation`, `BriefEditor` and
+`DraftReview`, plus a serialized autosave hook. Runtime processes and journals
+live under `desktop/drafting/`; the UI cannot invoke a shell or inspect login
+stores. `shared/mission-draft.mjs` defines pure readiness and exact handoff
+formatting. `npm run test:drafting:ui` tests the real screens against a temporary
+draft service and a deterministic provider, including late-reply conflicts,
+undo, mode changes, restart and explicit reviewed creation. It is also included
+in `test:ui`. See [mission drafting](MISSION-DRAFTING.md) for the product and
+runtime boundary.
 
 The default tests reject backend imports/direct native globals in screens and
 application dependencies in reusable controls. They also reject raw disclosures

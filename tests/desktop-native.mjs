@@ -141,6 +141,8 @@ try {
     nodeBridge: Object.keys(window.blackboardNode),
     executionBridge: Object.keys(window.blackboardExecution),
     setupBridge: Object.keys(window.blackboardSetup),
+    draftBridge: Object.keys(window.blackboardDrafting),
+    forgedDraftBlocked: await window.blackboardDrafting.edit({id:"x",changes:{command:"sh"}}).then(() => false, () => true),
     nodeState: await window.blackboardNode.state(),
     state: await window.contributor.state(),
     remoteBlocked: await fetch('https://example.com').then(() => false, () => true),
@@ -148,6 +150,8 @@ try {
     forgedRequestBlocked: await window.contributor.prepare({workspace:'/tmp',permissions:'full-access'}).then(() => false, () => true),
     forgedNodeRequestBlocked: await window.blackboardNode.createMission({profile:'/tmp',command:'launch'}).then(() => false, () => true),
     forgedSetupBlocked: await window.blackboardSetup.setup({command:'sh',workspace:'/Users',role:'owner'}).then(() => false, () => true),
+    forgedNetworkChangeBlocked: await window.blackboardExecution.setNetwork(crypto.randomUUID(),'unrestricted',null).then(() => false, () => true),
+    unconfirmedCompletionBlocked: await window.blackboardSetup.completeMission({id:crypto.randomUUID(),mission:'a'.repeat(64),control:'b'.repeat(64),revisions:['c'.repeat(64)],reason:'Perfect'}).then(() => false, e => e.message === 'Invalid setup request.'),
     insecureInvitationRejected: await window.contributor.inspect('http://127.0.0.1:9/j/desktop_fixture_0123456789').then(() => false, e => e.message.includes('HTTPS')),
     renamed: (await window.contributor.rename('Native smoke test')).contributor.name,
     overflow: document.documentElement.scrollWidth > innerWidth
@@ -182,6 +186,7 @@ try {
       "openLogin",
       "state",
       "prepare",
+      "setNetwork",
       "login",
       "start",
       "stop",
@@ -256,6 +261,8 @@ try {
   assert.equal(evaluated.nodeState.identity, null);
   assert.equal(evaluated.forgedNodeRequestBlocked, true);
   assert.equal(evaluated.forgedSetupBlocked, true);
+  assert.equal(evaluated.forgedNetworkChangeBlocked, true);
+  assert.equal(evaluated.unconfirmedCompletionBlocked, true);
   assert.deepEqual(
     evaluated.setupBridge.sort(),
     [
@@ -287,6 +294,25 @@ try {
       "discardCompletion",
     ].sort(),
   );
+  assert.deepEqual(
+    evaluated.draftBridge.sort(),
+    [
+      "current",
+      "runtimes",
+      "edit",
+      "send",
+      "stop",
+      "undo",
+      "resolve",
+      "review",
+      "create",
+      "discard",
+      "signIn",
+      "openLogin",
+      "cancelLogin",
+    ].sort(),
+  );
+  assert.equal(evaluated.forgedDraftBlocked, true);
   assert.equal(evaluated.remoteBlocked, true);
   assert.equal(evaluated.fileBlocked, true);
   assert.equal(evaluated.forgedRequestBlocked, true);
@@ -298,7 +324,16 @@ try {
   // Use actual form interactions and the OS key store, then restart the app.
   // No renderer mock or direct DB insert can make this path pass.
   click(".n-empty .d-button");
-  browser("wait", "--text", "Define the mission.");
+  browser("wait", "--text", "What would you like to accomplish?");
+  browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Write the brief myself",
+    "--exact",
+  );
   browser("snapshot", "-i");
   browser("fill", "input[name=name]", "Community science day");
   browser(
@@ -313,12 +348,13 @@ try {
   );
   browser(
     "fill",
-    "#criterion",
+    'input[aria-label="Add to completion criteria"]',
     "Every activity has an age range and a materials list.",
   );
-  click(".n-inline button");
-  click(".d-back");
+  browser("press", "Enter");
+  click(".md-back");
   click(".n-empty .d-button");
+  browser("wait", "input[name=name]");
   assert.equal(
     JSON.parse(
       browser("eval", "document.querySelector('input[name=name]').value"),
@@ -328,17 +364,33 @@ try {
   );
   assert.equal(
     JSON.parse(
-      browser("eval", "document.querySelectorAll('.n-criteria > div').length"),
+      browser("eval", "document.querySelectorAll('.md-list-row').length"),
     ),
     1,
   );
-  click("button[type=submit]");
+  click(".md-brief > .md-actions .primary");
+  browser("wait", ".md-review");
+  click(".md-review > .md-actions .primary");
   if (packaged) {
     console.log(
       "Creating the isolated test identity. Approve the Harakiri Desktop macOS Keychain prompt if it appears; waiting up to five minutes.",
     );
   }
   await waitForMission();
+  assert.equal(
+    JSON.parse(
+      browser(
+        "eval",
+        `(async () => {
+    const m = (await window.blackboardNode.state()).missions[0];
+    const blocked = await window.blackboardSetup.completeMission({id:crypto.randomUUID(),mission:m.id,control:m.lifecycle.revision,revisions:[m.id],reason:'Perfect',closeConfirmed:true}).then(() => false, e => e.message.includes('still preparing'));
+    return blocked && (await window.blackboardNode.state()).missions[0].lifecycle.phase === 'preparing';
+  })()`,
+      ),
+    ),
+    true,
+    "Native completion cannot turn plan preparation into mission closure",
+  );
   assert.ok(
     JSON.parse(
       browser(

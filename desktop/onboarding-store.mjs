@@ -17,9 +17,10 @@ import { randomUUID } from "node:crypto";
 import { Id } from "./model.mjs";
 
 export class OnboardingStore {
-  constructor(directory, schema) {
+  constructor(directory, schema, { maxBytes = 262144 } = {}) {
     this.directory = directory;
     this.schema = schema;
+    this.maxBytes = maxBytes;
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     if (
       !lstatSync(directory).isDirectory() ||
@@ -36,7 +37,7 @@ export class OnboardingStore {
         constants.O_RDONLY | constants.O_NOFOLLOW,
       );
       const info = fstatSync(fd);
-      if (!info.isFile() || info.nlink !== 1 || info.size > 262144)
+      if (!info.isFile() || info.nlink !== 1 || info.size > this.maxBytes)
         throw new Error("Invalid setup journal.");
       const value = this.schema.parse(JSON.parse(readFileSync(fd, "utf8")));
       if (value.id !== id) throw new Error("Setup identity mismatch.");
@@ -50,11 +51,14 @@ export class OnboardingStore {
   }
   write(value) {
     const parsed = this.schema.parse(value);
+    const serialized = JSON.stringify(parsed);
+    if (Buffer.byteLength(serialized) > this.maxBytes)
+      throw new Error("Local journal is full. Shorten or clear saved input.");
     const temporary = join(this.directory, `.${randomUUID()}.tmp`);
     let fd;
     try {
       fd = openSync(temporary, "wx", 0o600);
-      writeFileSync(fd, JSON.stringify(parsed));
+      writeFileSync(fd, serialized);
       fsyncSync(fd);
       closeSync(fd);
       fd = undefined;

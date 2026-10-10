@@ -1,6 +1,6 @@
 {
   "name": "harakiri-blackboard",
-  "version": "0.4.7",
+  "version": "0.4.9",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
@@ -28,7 +28,8 @@
     "test:desktop:peers": "npm run desktop:build && node tests/desktop-peers-native.mjs",
     "test:g6": "node tests/experiments/g6-rehearsal.mjs",
     "dev:ui": "vite --config vite.ui.config.mjs",
-    "test:ui": "node tests/ui-components.mjs && node tests/desktop-inspectors.mjs"
+    "test:ui": "node tests/ui-components.mjs && node tests/desktop-inspectors.mjs && node tests/mission-drafting-ui.mjs",
+    "test:drafting:ui": "node tests/mission-drafting-ui.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

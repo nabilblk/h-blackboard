@@ -7,10 +7,11 @@ export const RUNTIME_LABELS = Object.freeze({
 });
 
 // Downloaded only during explicit preparation, never selected by a peer.
-export function runtimeSpec(runtime) {
-  const policy = runtimePolicy(runtime);
+export function runtimeSpec(runtime, networkAccess = "restricted") {
+  const policy = runtimePolicy(runtime, networkAccess);
   return {
     runtime,
+    networkAccess,
     hosts: policy.runtimeHosts,
     sha256: policy.runtimeSha256,
     url: {

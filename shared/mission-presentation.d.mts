@@ -99,3 +99,7 @@ export function missionDecisions(
     "mission" | "viewer" | "requests" | "criteria" | "startJobs"
   >,
 ): Decision[];
+export function resultsReadyForReview(
+  mission: MissionView,
+  criteria?: { met: boolean; stale: boolean }[],
+): boolean;

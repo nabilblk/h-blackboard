@@ -3,6 +3,7 @@ import { z } from "zod";
 export const DESKTOP_ORIGIN = "harakiri://desktop";
 export const REVIEW_TTL_MS = 10 * 60 * 1000;
 export const Runtime = z.enum(["claude", "codex", "grok"]);
+export const NetworkAccess = z.enum(["restricted", "internet"]);
 export const Id = z.string().uuid();
 const Timestamp = z.string().datetime();
 const Label = z
@@ -59,6 +60,10 @@ export const Contribution = z
       .strict()
       .optional(),
     runtime: Runtime,
+    networkAccess: NetworkAccess.default("restricted"),
+    // Changed only by the local execution service. Returning to an earlier
+    // policy must not resurrect an old grant or standing agreement.
+    networkRevision: Id.optional(),
     sharedAgent: z
       .object({
         registration: z.string().regex(/^[a-f0-9]{64}$/),
@@ -90,6 +95,7 @@ export const Activity = z
       "contributor_named",
       "contribution_prepared",
       "consent_revoked",
+      "network_changed",
     ]),
     contributionId: Id.nullable(),
     label: Label,
@@ -115,6 +121,7 @@ export const Requests = {
       reviewId: Id,
       workspaceChoiceId: Id,
       runtime: Runtime,
+      networkAccess: NetworkAccess.default("restricted"),
       limits: Limits,
     })
     .strict(),

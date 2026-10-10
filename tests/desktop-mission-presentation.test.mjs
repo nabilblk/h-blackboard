@@ -191,13 +191,38 @@ test("archiving is not completion; acceptance remains distinct from closure", ()
   f.execution.record.status = "stopped";
   f.mission.lifecycle.phase = "archived";
   assert.equal(project(f).summary, "Archived");
+  assert.match(
+    project(f).rows[0].status.reason,
+    /Mission archived; this agent is stopped/,
+  );
   assert.equal(project(f).next, null);
   f.mission.lifecycle.phase = "closed";
   assert.equal(project(f).summary, "Closed");
+  assert.match(
+    project(f).rows[0].status.reason,
+    /Mission closed; this agent is stopped/,
+  );
   assert.equal(
     project(f, { acceptedResult: { revision: "exact" } }).summary,
     "Closed · result accepted",
   );
+});
+
+test("final review waits for work and current criteria; plan completion alone is not a handoff", () => {
+  const f = fixture();
+  f.mission.lifecycle.plan = { artifact: "completed-plan" };
+  for (const phase of ["preparing", "active", "paused", "closed", "archived"]) {
+    f.mission.lifecycle.phase = phase;
+    const results = (criteria) =>
+      missionDecisions({ ...f, criteria }).some((d) => d.kind === "results");
+    assert.equal(results([]), false);
+    assert.equal(results([{ met: false, stale: false }]), false);
+    assert.equal(results([{ met: true, stale: true }]), false);
+    assert.equal(
+      results([{ met: true, stale: false }]),
+      ["active", "paused"].includes(phase),
+    );
+  }
 });
 
 test("agreement waiting doesn't offer another run approval and changed instructions do", () => {

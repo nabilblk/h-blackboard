@@ -1,5 +1,6 @@
 import type { AgentView, GrantView } from "./node";
 import type { ContributionAgreement } from "./setup";
+import type { NetworkAccess } from "./workspace";
 export type RemoteObservation = {
   contributor: string;
   remaining_ms: number;
@@ -25,6 +26,8 @@ export type AuthenticationState = {
   failure?: "expired" | "denied" | "connection" | null;
 };
 export type ExecutionState = {
+  networkAccess?: NetworkAccess;
+  networkRevision?: string | null;
   observedAt: number;
   error?: string;
   agent?: AgentView | null;
@@ -54,6 +57,11 @@ export type ExecutionAPI = {
   state(id: string): Promise<ExecutionState>;
   overview(mission: string): Promise<Record<string, ExecutionState>>;
   prepare(id: string): Promise<void>;
+  setNetwork(
+    id: string,
+    networkAccess: NetworkAccess,
+    expectedRevision: string | null,
+  ): Promise<void>;
   cancelSetup(id: string): Promise<void>;
   login(id: string): Promise<{ command: string }>;
   signIn(id: string): Promise<void>;

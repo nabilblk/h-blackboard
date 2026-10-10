@@ -6,6 +6,7 @@ export interface ElectronHost {
   blackboardNode: BlackboardClient["missions"];
   blackboardExecution: BlackboardClient["execution"];
   blackboardSetup: BlackboardClient["setup"];
+  blackboardDrafting: BlackboardClient["drafting"];
 }
 
 /** Only the composition root selects a transport. There is no global singleton,
@@ -16,6 +17,7 @@ export function createElectronClient(host: ElectronHost): BlackboardClient {
     missions: host.blackboardNode,
     execution: host.blackboardExecution,
     setup: host.blackboardSetup,
+    drafting: host.blackboardDrafting,
   });
 }
 

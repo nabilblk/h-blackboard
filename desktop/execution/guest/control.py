@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from runtimes import authenticated, private_directory
+from runtimes import authenticated, private_directory, spec
 
 BASE = "/opt/harakiri"
 ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/workspace"}
@@ -29,7 +29,7 @@ def run(argv, **kwargs):
     return subprocess.run(argv, check=True, capture_output=True, env=ENV, **kwargs)
 
 
-def worker(argv, data=b"", timeout=30):
+def worker(argv, data=b"", timeout=30, network=True):
     unit = "hb-work-" + uuid.uuid4().hex
     args = ["systemd-run", "--quiet", "--pipe", "--wait", "--collect",
             "--unit=" + unit, "--slice=hb-agent.slice", "--uid=hb-worker",
@@ -41,6 +41,7 @@ def worker(argv, data=b"", timeout=30):
         "PrivateTmp=yes", "ProtectSystem=strict", "ProtectHome=yes",
         "ReadWritePaths=/workspace /tmp", "NoNewPrivileges=yes",
         "CapabilityBoundingSet=", "RestrictNamespaces=yes",
+        "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
         "ProtectControlGroups=yes", "ProtectKernelTunables=yes",
         "ProtectKernelModules=yes", "ProtectKernelLogs=yes",
         "RestrictSUIDSGID=yes", "LockPersonality=yes", "ProtectClock=yes",
@@ -49,6 +50,14 @@ def worker(argv, data=b"", timeout=30):
         "RuntimeMaxSec=" + str(timeout), "TimeoutStopSec=2",
         "SystemCallFilter=~@mount @reboot @swap @raw-io @debug @module",
     ]
+    mode = spec().get("networkAccess", "restricted")
+    if mode not in ("restricted", "internet"):
+        raise ValueError("Unknown workspace network policy")
+    if network and mode == "internet":
+        properties += [
+            "BindReadOnlyPaths=/run/harakiri-internet /etc/ssl/certs /usr/share/ca-certificates",
+        ]
+        argv = ["python3", "-I", "/usr/local/lib/harakiri-worker-network.py", *argv]
     args += ["--property=" + p for p in properties]
     args += ["--setenv=HOME=/workspace", "--setenv=PATH=/usr/bin:/bin", "--", *argv]
     # communicate is bounded by a regular file output quota for shell calls;
@@ -67,7 +76,7 @@ def worker(argv, data=b"", timeout=30):
 
 
 def files(request):
-    result = worker(["python3", "-I", "/usr/local/lib/harakiri-files.py"], json.dumps(request).encode())
+    result = worker(["python3", "-I", "/usr/local/lib/harakiri-files.py"], json.dumps(request).encode(), network=False)
     if result.returncode:
         raise ValueError("Workspace transfer failed (exit " + str(result.returncode) + "): " + (result.stdout or result.stderr)[:512].decode("utf8", "replace"))
     return json.loads(result.stdout)

@@ -1129,6 +1129,15 @@ async function lifecycleProof(a, b, c) {
 try {
   const a = await app("owner");
   a.click(".n-empty .d-button");
+  a.browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Write the brief myself",
+    "--exact",
+  );
   a.browser("fill", "input[name=name]", "Community science day");
   a.browser(
     "fill",
@@ -1142,13 +1151,16 @@ try {
   );
   a.browser(
     "fill",
-    "#criterion",
+    'input[aria-label="Add to completion criteria"]',
     "Every activity has an age range and a materials list.",
   );
-  a.click(".n-inline button");
-  if (discoveryMode)
+  a.browser("press", "Enter");
+  if (discoveryMode) {
+    a.click(".md-brief-scroll > details summary");
     a.browser("select", "select[name=participation]", "approval");
-  a.click("button[type=submit]");
+  }
+  a.click(".md-brief > .md-actions .primary");
+  a.click(".md-review > .md-actions .primary");
   await a.wait(
     `!!document.querySelector('.n-room')`,
     "Mission not created",

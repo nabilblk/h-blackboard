@@ -37,6 +37,9 @@ import { DecisionNotifications } from "./decision-notifications.mjs";
 import { CompletionService, CompletionRequests } from "./completion.mjs";
 import { LimaInstaller } from "./execution/installer.mjs";
 import { invitationLink } from "./invitation-links.mjs";
+import { DraftingService } from "./drafting/service.mjs";
+import { DraftRuntimeService } from "./drafting/runtime.mjs";
+import { DraftRequests } from "./drafting/contract.mjs";
 import { LimaProvider } from "./execution/lima.mjs";
 import { exportWorkspace, readImportFiles } from "./execution/files.mjs";
 import { executionDiagnostics } from "./execution/diagnostics.mjs";
@@ -76,6 +79,8 @@ else {
   let onboarding;
   let agreements;
   let completion;
+  let drafting;
+  let draftRuntime;
   let observationTimer;
   let tray;
   let background;
@@ -100,6 +105,8 @@ else {
     quitting = true;
     clearInterval(observationTimer);
     Promise.resolve(agreements?.close())
+      .then(() => drafting?.close())
+      .then(() => draftRuntime?.cancelLogin())
       .then(() => completion?.close())
       .then(() => onboarding?.close())
       .catch(() => {})
@@ -130,6 +137,14 @@ else {
           : join(directory, "node/harakiri-node"),
         secureStorage: safeStorage,
         writeClipboard: (value) => clipboard.writeText(value),
+      });
+      draftRuntime = new DraftRuntimeService({
+        directory: join(app.getPath("userData"), "draft-runtime-v1"),
+      });
+      drafting = new DraftingService({
+        directory: join(app.getPath("userData"), "mission-drafts-v1"),
+        runtime: draftRuntime,
+        node: nodeService,
       });
       // Only the trusted workspace retains local drafts. Artifact viewers use
       // separate in-memory sessions and never share this storage or preload.
@@ -266,6 +281,8 @@ else {
         background.capacity() ?? capacityCeiling,
       );
       const stopAll = async (reason) => {
+        await drafting.close();
+        await draftRuntime.cancelLogin();
         const setupStops = Promise.allSettled(
           [...(onboarding?.active ?? [])]
             .filter(([, job]) => job.done)
@@ -551,6 +568,12 @@ else {
               executionOverview: () => executions.overview(request.mission),
               executionState: () => executions.state(id),
               executionPrepare: () => executions.prepare(id),
+              executionNetwork: () =>
+                executions.setNetwork(
+                  id,
+                  request.networkAccess,
+                  request.expectedRevision,
+                ),
               executionLogin: () => executions.login(id),
               executionCancelSetup: () => executions.cancelSetup(id),
               executionSignIn: () => executions.signIn(id),
@@ -595,6 +618,39 @@ else {
                 error.name === "ZodError"
                   ? "Invalid execution request."
                   : error.message,
+            };
+          }
+        });
+      }
+      for (const [method, schema] of Object.entries(DraftRequests)) {
+        ipcMain.handle(`drafting:${method}`, async (event, input) => {
+          if (!isTrustedFrame(event, window))
+            return {
+              ok: false,
+              error: "This page cannot access private mission drafts.",
+            };
+          try {
+            const request = schema.parse(input);
+            const value =
+              method === "signIn"
+                ? await draftRuntime.signIn()
+                : method === "openLogin"
+                  ? await draftRuntime.openLogin((url) =>
+                      shell.openExternal(url),
+                    )
+                  : method === "cancelLogin"
+                    ? await draftRuntime.cancelLogin()
+                    : await drafting.handle(method, request);
+            return { ok: true, value };
+          } catch (error) {
+            return {
+              ok: false,
+              error:
+                error.name === "ZodError"
+                  ? "Invalid draft input. Check the field length and try again."
+                  : error.code
+                    ? "The private draft could not be saved. Check local storage access."
+                    : error.message,
             };
           }
         });

@@ -10,10 +10,46 @@ export function executionBinding(contribution) {
         runtime: contribution.runtime,
         limits: contribution.limits,
         terms: contribution.nodeBinding,
-        policy: policyDigest(contribution.runtime),
+        policy: policyDigest(contribution.runtime, contribution.networkAccess),
+        ...(contribution.networkRevision
+          ? { networkRevision: contribution.networkRevision }
+          : {}),
       }),
     )
     .digest("hex");
+}
+
+// Fresh human approval may follow a policy change before an older, consented
+// grant ever launched. Seal that unusable permission so it cannot strand the
+// allocation. The signed ledger still refuses unsettled reservations.
+export async function retireSupersededConsent(node, contribution, ledger) {
+  const binding = executionBinding(contribution);
+  const stale = ledger.grants.filter(
+    (g) =>
+      g.registration === contribution.sharedAgent?.registration &&
+      !g.sealed &&
+      g.reserved === 0 &&
+      g.consent &&
+      g.consent_binding &&
+      g.consent_binding !== binding,
+  );
+  if (!stale.length) return ledger;
+  const channel = node.openResourceLedger(contribution.id);
+  try {
+    for (const grant of stale) {
+      const current = node.contributors.store
+        .read()
+        .contributions.find((c) => c.id === contribution.id);
+      if (!current || executionBinding(current) !== binding)
+        throw new Error(
+          "Local access changed during approval. Review it again.",
+        );
+      await channel.seal(grant.id);
+    }
+  } finally {
+    channel.close();
+  }
+  return node.handle("governance", { mission: contribution.mission.missionId });
 }
 
 // Selection hints only. executionContext, consent, the signed ledger and the

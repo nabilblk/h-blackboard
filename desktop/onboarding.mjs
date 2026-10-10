@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
-import { Id, Runtime, Limits } from "./model.mjs";
+import { Id, Runtime, Limits, NetworkAccess } from "./model.mjs";
 import { Hash } from "./execution/contract.mjs";
+import { retireSupersededConsent } from "./execution/permissions.mjs";
 import { OnboardingStore } from "./onboarding-store.mjs";
 
 const setup = z
@@ -12,6 +13,7 @@ const setup = z
     terms: Hash,
     role: z.enum(["agent", "coordinator"]),
     runtime: Runtime,
+    networkAccess: NetworkAccess.default("restricted"),
     label: z
       .string()
       .trim()
@@ -30,6 +32,7 @@ const permission = z
   .object({
     id: Id,
     contributionId: Id,
+    networkRevision: Id.nullable().default(null),
     control: Hash,
     direction: Hash,
     turns: z.number().int().min(1).max(10000),
@@ -222,6 +225,7 @@ export class OnboardingService {
             reviewId: review.reviewId,
             workspaceChoiceId,
             runtime: r.runtime,
+            networkAccess: r.networkAccess,
             limits: r.limits,
           },
           { contributionId: id },
@@ -334,6 +338,10 @@ export class OnboardingService {
       throw new Error("Review the changed permission as a new action.");
     if (previousJob?.status === "complete") return previousJob;
     const c = this.executions.contribution(r.contributionId);
+    if ((c.networkRevision ?? null) !== r.networkRevision)
+      throw new Error(
+        "Internet access changed. Review this agent's current access before approving.",
+      );
     const { mission, owner } = await this.mission(
       c.mission.missionId,
       c.nodeBinding?.revision,
@@ -384,6 +392,7 @@ export class OnboardingService {
       let ledger = await this.node.handle("governance", {
         mission: mission.id,
       });
+      ledger = await retireSupersededConsent(this.node, c, ledger);
       if (!job.allocation) {
         let allocation = ledger.allocations.find(
           (a) =>
@@ -459,6 +468,7 @@ export class OnboardingService {
           mission: mission.id,
           grant: job.grant,
           contributionId: c.id,
+          networkRevision: r.networkRevision,
         });
       // Persist launch intent before calling the enforcing manager. A retry
       // never dispatches a second run for this reviewed permission.

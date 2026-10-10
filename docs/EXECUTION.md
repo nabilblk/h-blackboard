@@ -18,7 +18,9 @@ separate experiment and is never an execution fallback.
    the Slack-like channel. macOS may ask you to approve Keychain access for the
    protected node identity.
 2. Select **Set up Coordinator** (or **More → Add my agents** in peer mode). Choose Grok
-   Build, Claude Code or Codex, a name and local limits. Unlimited is explicit.
+   Build, Claude Code or Codex, a name, local limits and **Workspace internet**.
+   Internet is **Blocked (default)**; **Allow public internet · HTTPS** is an
+   explicit local choice for that agent or setup group. Unlimited is explicit.
    The default Mac export folder is **Documents / Harakiri Exports**; each agent
    has a separate subfolder. Changing it uses a native folder picker.
 3. Review the local limits, isolation and preparation consent. If this Mac needs
@@ -119,10 +121,52 @@ stopped execution, reject links/traversal and have explicit file/count/byte
 bounds. Saved output can still be exported after local withdrawal.
 
 The first worker image supplies its system tools, including Python and shell.
-Worker network access is disabled; dependency installation, browsing and
-arbitrary downloads from agent tools are unavailable. Provide reviewed inputs
-through explicit imports or authorized artifacts. HTML artifacts can use
-self-contained assets and open through Blackboard's separate isolated viewer.
+Workspace internet is blocked by default. Provide inputs through explicit
+imports, authorized artifacts, or enable the optional access described below.
+HTML artifacts use self-contained assets and open through Blackboard's separate
+isolated viewer, whose network access remains blocked.
+
+### Optional workspace internet (0.4.9)
+
+The contributor chooses **Workspace internet** during setup, or opens an
+existing local agent → **Access & limits** → **Apply internet setting**.
+Coordinators and remote owners cannot change it. The choice applies separately
+to each contribution; bulk setup uses the reviewed choice for all agents in
+that group. Existing contributions remain restricted on upgrade.
+
+**Allow public internet · HTTPS** permits public websites, APIs and package
+downloads over CONNECT tunnels to TCP port 443. Commands receive `HTTPS_PROXY`
+and companion proxy variables plus read-only system CA certificates. Python
+`urllib` works directly; installed proxy-aware tools such as curl and Git over
+HTTPS can use the same route. This does not install a browser, Node.js or every
+package manager. Plain HTTP, SSH, arbitrary ports, UDP, inbound services and
+clients that ignore the proxy remain unsupported. Downloading files does not
+grant root installation privileges; installs must stay within `/workspace`.
+
+The worker still has a private network namespace with **no external interface**.
+A per-command loopback adapter forwards to a separate filesystem Unix socket;
+only opted-in workers receive that socket mount. The root-configured proxy
+rejects nonpublic, loopback, private, link-local, multicast and metadata address
+ranges, IPv6 translation/tunnel addresses, mixed public/private DNS answers and
+unsupported ports. It connects to a validated numeric IP, preventing a second
+DNS lookup from rebinding the destination. The runtime's separate provider-only
+proxy, guest credential account, filesystem restrictions, deadlines and stop
+handling are unchanged. The public proxy is not exposed on a VM TCP interface.
+
+Public access **can send mission/workspace content to external services**.
+This is network isolation, not data-loss prevention or a content trust filter.
+TLS is not intercepted. Downloaded code remains untrusted and runs inside the
+same worker jail; explicit permission to use an external service is still part
+of the mission scope. No host folders or credentials are mounted or copied.
+
+Changing either way requires stopped execution and no in-progress sign-in.
+The host confirms VM shutdown, saves a new consent revision, then prepares the
+updated policy. Files, guest login and saved runtime session are retained.
+Changing access does not start an agent: approve a fresh permission before
+resuming. Old grants, standing approvals and unfinished approval forms cannot
+authorize the new policy. Switching back does not revive them. If preparation
+is interrupted, the saved choice remains visible and execution stays blocked
+until **Prepare isolated environment** succeeds.
 
 ## Enforcement boundary
 
@@ -131,7 +175,7 @@ self-contained assets and open through Blackboard's separate isolated viewer.
 | Mac filesystem      | No host mounts, host SSH agent forwarding or host credential imports.                                                                                                                                                                                            |
 | Runtime credentials | The selected runtime's guest-native login stays in a private `hb-runtime` account. Commands run as a different `hb-worker` user in a restricted filesystem namespace.                                                                                            |
 | Agent tools         | Pinned adapters disable native execution/file tools and subagents. Scoped MCP supplies board and jailed workspace tools. Vendor metadata tools may remain; see the runtime table.                                                                                |
-| Worker access       | `/workspace` is writable; system tools are read-only. No network, capabilities, privilege escalation, mounts or namespace creation. Process, memory, output and time limits apply.                                                                               |
+| Worker access       | `/workspace` is writable; system tools are read-only. No direct network, capabilities, privilege escalation, mounts or namespace creation. Optional public HTTPS uses a separately confined proxy; process, memory, output and time limits still apply. |
 | Runtime network     | A systemd cgroup denies direct IP traffic except loopback. A CONNECT proxy permits only the selected runtime’s reviewed provider hosts (below); DNS results must be globally routable and connections use the vetted numeric IP.                                 |
 | Board authority     | A host-owned SSH transport and UID-authenticated guest Unix socket bind each request to one actual contribution. No owner/agent signing key, bearer token or host path enters the guest. The host rechecks consent and current mission authority for tool calls. |
 | Stop                | Native cancellation, whole-slice termination, then VM shutdown. **Stopped** requires confirmed VM termination and accounting settlement. Disconnection alone is insufficient.                                                                                    |
@@ -186,6 +230,8 @@ All binaries have auto-update disabled or no automatic updater. Ubuntu uses the
 rechecks installed binary integrity on preparation. The reviewed policy binds
 each runtime's pin and network allowlist. Changing runtime cannot reuse consent
 or a saved native session. Existing Grok consent digests remain unchanged.
+Each runtime also has a separate optional public-HTTPS worker policy digest.
+This is a local execution choice, not a new peer protocol or agent role.
 
 References: [Claude CLI](https://code.claude.com/docs/en/cli-reference),
 [Codex app-server](https://developers.openai.com/codex/app-server/), and
@@ -260,8 +306,18 @@ Stop and withdrawal apply immediately on that device.
 npm run test:desktop
 npm run test:node
 python3 tests/providers/test_proxy.py
+node tests/providers/network-conformance.mjs # disposable VM, public HTTPS fetches, no provider login
 node tests/providers/g5-provider-conformance.mjs
 ```
+
+The 10 October 2026 network conformance run passed in a fresh disposable Lima
+VM: restricted access, public HTTPS metadata/package download with certificate
+verification, private/metadata/direct-route/vsock/credential denial, then a
+return to restricted mode with workspace files preserved. The VM was stopped
+and removed. Proxy tests cover DNS rebinding, mixed answers, malformed targets
+and unsupported ports. Native signed-ledger tests separately cover stale
+consent, standing approval invalidation and fresh approval. This is local
+conformance, not an independent security audit or a new live-provider trial.
 
 The last command provisions a fresh temporary VM and checks direct runtime
 egress, private/metadata destinations, workspace/credential separation, detached

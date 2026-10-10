@@ -99,6 +99,7 @@ export function GroupContributionConsent({
                   plan: mission.lifecycle.plan?.id ?? null,
                   registration: c.sharedAgent!.registration,
                   contributionId: c.id,
+                  networkRevision: c.networkRevision ?? null,
                   ownerPermission: isOwner,
                   minutes: settings.minutes,
                   turns: settings.turns,
@@ -126,7 +127,12 @@ export function GroupContributionConsent({
           }}
         >
           <p>
-            {eligible.map((c) => c.sharedAgent?.label ?? c.runtime).join(" · ")}
+            {eligible
+              .map(
+                (c) =>
+                  `${c.sharedAgent?.label ?? c.runtime} (${c.networkAccess === "internet" ? "public HTTPS" : "internet blocked"})`,
+              )
+              .join(" · ")}
           </p>
           <p>
             Your subscription · separate isolated workspaces · each agent keeps
@@ -380,6 +386,7 @@ export function ContributionConsent({
                 plan: mission.lifecycle.plan?.id ?? null,
                 registration: agent.id,
                 contributionId: contribution?.id ?? null,
+                networkRevision: contribution?.networkRevision ?? null,
                 ownerPermission: isOwner,
                 minutes: settings.minutes,
                 turns: settings.turns,
@@ -390,6 +397,14 @@ export function ContributionConsent({
           }}
         >
           <p>{agent.direction?.text ?? mission.definition.objective}</p>
+          {contribution ? (
+            <p className="d-field-help">
+              Workspace internet:{" "}
+              {contribution.networkAccess === "internet"
+                ? "Public HTTPS allowed; requests may send mission data externally."
+                : "Blocked."}
+            </p>
+          ) : null}
           <ApprovalFields {...settings} change={setSettings} disabled={busy} />
           <p className="d-field-help">
             {contribution
@@ -497,6 +512,9 @@ export function StartMissionReview({
               contributionId:
                 contributions.find((c) => c.sharedAgent?.registration === a.id)
                   ?.id ?? null,
+              networkRevision:
+                contributions.find((c) => c.sharedAgent?.registration === a.id)
+                  ?.networkRevision ?? null,
               ownerPermission: true,
               minutes: settings.minutes,
               turns: settings.turns,
@@ -536,7 +554,7 @@ export function StartMissionReview({
       <fieldset disabled={busy || !!request}>
         <legend>Authorize these contributions</legend>
         {eligible.map((a) => {
-          const local = contributions.some(
+          const local = contributions.find(
             (c) => c.sharedAgent?.registration === a.id,
           );
           return (
@@ -554,7 +572,7 @@ export function StartMissionReview({
               />
               {a.identity.label} ·{" "}
               {local
-                ? "this Mac · approve and run"
+                ? `this Mac · ${local.networkAccess === "internet" ? "public HTTPS" : "internet blocked"} · approve and run`
                 : "another contributor · their approval is required"}
             </label>
           );

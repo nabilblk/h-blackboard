@@ -576,6 +576,10 @@ export function ArtifactPanel({
               </section>
               <section>
                 <h3>Human acceptance</h3>
+                <p className="d-field-help">
+                  Accepting this artifact does not finish the mission or stop
+                  its agents.
+                </p>
                 {detail.acceptance ? (
                   <>
                     <p>
@@ -617,7 +621,11 @@ export function ArtifactPanel({
                         type: "accept",
                         revision: accepting.detail.revision,
                         accepted: String(d.get("accepted")) === "yes",
-                        reason: String(d.get("reason")).trim(),
+                        reason:
+                          String(d.get("reason")).trim() ||
+                          (String(d.get("accepted")) === "yes"
+                            ? "Accepted this artifact revision."
+                            : "Withdrew acceptance of this artifact revision."),
                       });
                     }}
                   >
@@ -629,13 +637,8 @@ export function ArtifactPanel({
                       </select>
                     </Field>
                     <Field>
-                      Reason
-                      <textarea
-                        name="reason"
-                        required
-                        rows={2}
-                        maxLength={2048}
-                      />
+                      Note (optional)
+                      <textarea name="reason" rows={2} maxLength={2048} />
                     </Field>
                     <div className="n-action-row">
                       <Button type="submit" disabled={busy}>

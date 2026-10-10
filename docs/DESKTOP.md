@@ -9,11 +9,35 @@ The desktop uses shared designer components and an injected application client.
 agents. See [frontend architecture and checks](FRONTEND.md) for replacing the
 presentation layer, adding components and maintaining the host boundary.
 
+## Assisted mission drafting (0.4.8)
+
+The current source lets you shape an idea with your local Claude Code, Codex or
+Grok Build, or write it manually. Conversation and editable brief share one saved
+draft, with explicit assumptions, protection for human edits, undo and recovery.
+Review the exact brief before creating a mission in Preparing. The private
+conversation is not published; Coordinator setup and human Start follow in the
+existing Slack workspace. Included in the 0.4.8 developer preview.
+See [mission drafting](MISSION-DRAFTING.md) for usage, CLI compatibility and the
+local-profile trust boundary.
+
+## Optional VM internet (0.4.9)
+
+Agent setup now includes **Workspace internet**: blocked by default, or public
+HTTPS access for websites, APIs and downloads. Existing local agents can change
+it in **Access & limits** after stopping. Applying the setting preserves files
+and guest sign-in, then requires fresh execution approval. Coordinators and
+remote owners cannot enable it on another contributor's device. Public requests
+can send mission data externally; host files, guest provider credentials and
+private network addresses remain isolated. This setting is separate from peer
+discovery and from offline artifact previews. See [the internet policy](EXECUTION.md#optional-workspace-internet-049).
+Included in the 0.4.9 developer preview. Existing agents remain restricted on
+upgrade until their contributor explicitly changes the setting.
+
 ## Run on macOS
 
 The app requires **macOS 13 or newer**. The current DMG targets **Apple Silicon (M1 and later)**; it does not require a separate Node.js installation. Building from source requires Node.js 24+, Rustup with the pinned Rust 1.94.0 toolchain, and native build tools. Installed development packages include the Rust service; end users do not need Rust.
 
-The [landing page](https://bb.harakiri.io/#download) offers the **0.4.7 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.7 applies shared designer controls throughout the desktop and separates screens from the native application adapter. **0.4.4 through 0.4.7 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [the 0.4.7 changes](#shared-components-and-frontend-boundary-047) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
+The [landing page](https://bb.harakiri.io/#download) offers the **0.4.9 developer preview** DMG and its SHA-256 checksum, with a [first-mission guide](https://bb.harakiri.io/#getting-started). Open the DMG and drag **Harakiri Desktop** to **Applications**. It is ad-hoc signed, not notarized; see the macOS launch guidance below. Version 0.4.9 adds contributor-controlled public HTTPS access, alongside assisted mission drafting and separate mission-completion confirmation. **0.4.4 through 0.4.9 share the same protocol; Macs on 0.4.3 or earlier must upgrade before connecting.** See [mission drafting](MISSION-DRAFTING.md) and the [isolated runtime setup](EXECUTION.md#first-run-current-branch).
 
 Version 0.4.2 adds recovery of interrupted agent sessions with fresh execution approval, scoped artifact reviews and human-triggered HTML layout checks. **When upgrading from 0.4.1, update every connected desktop before reconnecting.**
 
@@ -24,7 +48,7 @@ npm run desktop
 
 The app builds its own UI and host into `var/desktop/build`. It does not start the web server, rebuild the live web `dist/`, read the board database or change runtime configuration. Peer sockets open only after the human enables networking; there is no node HTTP API.
 
-Versions 0.4.4 through 0.4.7 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
+Versions 0.4.4 through 0.4.9 use peer protocol 11 and SQLite schema 15. Versions 0.4.2 and 0.4.3 use protocol 10/schema 14; upgrade every connected desktop together and back up profiles before opening them in 0.4.4 or later. Peers must use the same protocol. Opening an older profile upgrades its projections transactionally while preserving signed records; older builds cannot reopen the upgraded schema. Use separate profiles when comparing with 0.4.1 (protocol 9 / schema 13).
 
 To produce a local development `.app`:
 
@@ -54,6 +78,52 @@ Copy the app into **Applications** before launching it. A generic Finder alert d
 ```
 
 A valid ad-hoc signature verifies file integrity; it does **not** establish an identified developer or Gatekeeper acceptance. If macOS specifically blocks an unidentified developer, Apple's [Open Anyway procedure](https://support.apple.com/102445) describes a per-app exception. That exception does not fix an incompatible or damaged bundle. The public release gate remains Developer ID signing, notarization and a first-launch test on a clean Mac.
+
+### Contributor-controlled internet (0.4.9)
+
+The Apple Silicon developer preview adds a local **Workspace internet** choice
+for Grok Build, Claude Code and Codex, including Coordinator contributions.
+Existing agents keep restricted access on upgrade. Changing access after a
+confirmed stop preserves the workspace and guest login, invalidates previous
+execution consent and requires another explicit approval. No peer or mission
+agent can change this setting for a contributor.
+
+Public HTTPS uses a filtered proxy; the worker still has no direct external
+network interface. Private destinations, host files and provider credentials
+remain isolated. Public requests can send workspace data externally; this is
+not a data-loss-prevention boundary. See [supported protocols and enforcement](EXECUTION.md#optional-workspace-internet-049).
+
+Validation includes 252 application tests, 22 signed onboarding/approval tests,
+eight proxy tests and 17 renderer scenes. A fresh, credential-free Lima VM
+verified HTTPS metadata and package downloads, denial of private destinations
+and direct-network bypass, and preserved files when returning to restricted
+mode. Protocol 11/schema 15 are unchanged.
+
+The 0.4.9 DMG passes image-integrity, mounted deep-signature and bundled-resource
+checks. The exact packaged app passes startup and pre-enrollment renderer/IPC
+checks, including rejection of malformed network changes. Its identity creation
+test timed out awaiting macOS Keychain approval on 10 October; packaged identity
+creation and signed-history restart remain **unverified for this package**.
+It remains ad-hoc signed and not notarized. Independent-device validation and
+independent security review are still open.
+
+### Mission drafting and completion (0.4.8)
+
+The Apple Silicon developer preview includes manual/assisted mission drafting,
+private saved briefs, human-edit protection and exact review before creation.
+Plan acceptance keeps a mission open; final completion has a separate explicit
+confirmation and optional note. Closed missions explain why execution is no
+longer authorized. See [drafting](MISSION-DRAFTING.md) and the artifact workflow
+below.
+
+Validation includes 247 application tests, renderer regressions for plan
+acceptance/completion and development-app identity, creation and restart.
+The 0.4.8 DMG passes image and mounted deep-signature checks. Its packaged app
+loads the bundled UI and passes the pre-enrollment bridge checks; the exact
+package's Keychain-protected identity/creation/restart check timed out awaiting
+macOS approval on 10 October and remains **unverified for this package**.
+This is an ad-hoc signed developer preview, not a notarized release.
+Protocol 11/schema 15 and the independent-device/security gates are unchanged.
 
 ### Shared components and frontend boundary (0.4.7)
 
@@ -169,7 +239,7 @@ Background users can separately opt into macOS decision notifications. These cov
 
 **This device** also offers optional local onboarding timings. They contain bounded sampled state transitions and elapsed durations, without message text, login output or invitation secrets. They are off by default, never uploaded, and can be cleared. These diagnostics do not measure successful first-time usability.
 
-These 0.4.4 capabilities are retained in the current 0.4.7 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
+These 0.4.4 capabilities are retained in the current 0.4.9 download. To build it locally, use the commands above. Independent-device G6, first-time user trials and public signing/security G7 remain open.
 
 ## Create an offline mission
 
@@ -302,6 +372,8 @@ Offline peers learn about withdrawal when a working route is available, directly
 **Publish** accepts files or an offline application's built folder, preserving relative paths. Choose Main, a public workstream or the current private conversation. Drafts and complete contributions are distinct. Revisions retain their artifact identity and older files; they do not inherit reviews or acceptance. Concurrent peer revisions are preserved, with an explicit review-and-reconcile step. Local stale editors cannot overwrite newly observed work. There is no automatic merge of file contents.
 
 A review names the exact revision, checks, conditions and optional evidence. Self-review is labelled. Changed mission instructions, exact input revisions or unavailable author authority flag evidence for review. The mission owner accepts public revisions; a private conversation's initiating human controls its private acceptance. The owner or current Coordinator may highlight public outputs. Neither publication, verification nor acceptance closes a mission.
+
+**Plan approval and mission completion (0.4.8):** a complete plan is a finished artifact, not a finished mission. Review the plan and use **Start** to begin work; no acceptance message is required. **Record acceptance** in artifact details affects only that revision, with an optional note. When an Active or Paused mission has current reports for all success criteria, the owner can review final deliverables. **Review mission completion** opens a separate confirmation explaining that finishing closes the mission and withdraws agents' execution permission. Only **Accept deliverables and finish mission** submits that decision; the acceptance note is optional. Saved reviews never confirm themselves, and changed mission/artifact revisions require another review. Owners can still explicitly **Close mission** under **Close or archive mission**, including when there are no criteria or work remains incomplete. Closed missions show execution as no longer authorized; process termination still needs a fresh observation.
 
 Files are content-addressed, retrieved from authorized peers on demand and retained locally after successful retrieval. Metadata can arrive before bytes; a disconnected holder produces a retryable unavailable-file error. The creator can disconnect once another authorized holder has saved the output. A private artifact follows its conversation's readers, including the agent's host as a necessary transport recipient; it is not confidential against that machine's operator.
 

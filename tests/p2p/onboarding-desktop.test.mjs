@@ -15,6 +15,7 @@ import { OnboardingService } from "../../desktop/onboarding.mjs";
 import {
   POLICY_DIGEST,
   POLICY_DIGESTS,
+  INTERNET_POLICY_DIGESTS,
 } from "../../desktop/execution/contract.mjs";
 import { secureStorage } from "../helpers/secure-storage.mjs";
 
@@ -47,6 +48,7 @@ async function fixture(t, coordination = "coordinated") {
     version: 2,
     policy: POLICY_DIGEST,
     policies: POLICY_DIGESTS,
+    internetPolicies: INTERNET_POLICY_DIGESTS,
     maximum: 2,
     prepared: [],
     launches: 0,
@@ -167,6 +169,25 @@ test("guided Coordinator setup persists identity, shares and appoints once, with
   await f.service().setup(f.request);
   assert.equal(f.contributors.store.read().contributions.length, 1);
   assert.equal(f.provider.prepared.length, 1);
+});
+
+test("bulk setup preserves explicit internet choices and cannot change a saved setup's consent", async (t) => {
+  const f = await fixture(t, "peer");
+  const request = { ...f.request, count: 2, networkAccess: "internet" };
+  await f.onboarding.setup(request);
+  await until(() => f.onboarding.state(f.mission)[0].status === "complete");
+  for (const c of f.contributors.store.read().contributions) {
+    assert.equal(c.networkAccess, "internet");
+    assert.equal(
+      f.executions.store.read(c.id).policy,
+      INTERNET_POLICY_DIGESTS.grok,
+    );
+  }
+  await assert.rejects(
+    f.onboarding.setup({ ...request, networkAccess: "restricted" }),
+    /reviewed terms/,
+  );
+  assert.equal(f.provider.launches, 0);
 });
 
 test("interrupted bulk setup retries saved identities and rejects changed mission terms", async (t) => {
@@ -306,6 +327,87 @@ test("reviewed Start launches once, preserves independent local caps, and Stop d
   await f.agreements.tick();
   assert.equal(f.provider.launches, 1);
   assert.equal(f.agreements.list(f.mission)[0].status, "stopped");
+});
+
+test("changing internet access invalidates standing and stale approvals; fresh consent binds the new policy", async (t) => {
+  const f = await continuationFixture(t);
+  await f.agreements.approve(f.input);
+  await f.executions.setNetwork(f.c.id, "internet", null);
+  await f.agreements.tick();
+  assert.equal(f.agreements.list(f.mission)[0].status, "review");
+  assert.equal(f.provider.launches, 0);
+  await assert.rejects(
+    f.agreements.approve({ ...f.input, id: randomUUID() }),
+    /Internet access changed/,
+  );
+  const c = f.contributors.store.read().contributions[0];
+  f.executions.store.update(c.id, { status: "ready" });
+  const approval = {
+    ...f.input,
+    id: randomUUID(),
+    networkRevision: c.networkRevision,
+  };
+  await f.agreements.startReviewed({
+    id: randomUUID(),
+    mission: f.mission,
+    revision: f.mission,
+    readiness: null,
+    approvals: [approval],
+  });
+  await until(() => f.provider.launches === 1);
+  const ledger = await f.node.handle("governance", { mission: f.mission });
+  const { executionBinding } =
+    await import("../../desktop/execution/permissions.mjs");
+  assert.equal(ledger.grants[0].consent_binding, executionBinding(c));
+  await assert.rejects(
+    f.node.handle("consentGrant", {
+      mission: f.mission,
+      contributionId: c.id,
+      grant: ledger.grants[0].id,
+    }),
+    /Internet access changed/,
+  );
+  await f.agreements.cancel(approval.id);
+  assert.equal(f.provider.launches, 1);
+});
+
+test("a consented permission that never launched cannot strand resources after an internet change", async (t) => {
+  const f = await continuationFixture(t);
+  const start = f.executions.start.bind(f.executions);
+  f.executions.start = async () => {
+    throw new Error("Simulated interruption before launch");
+  };
+  await f.agreements.startReviewed({
+    id: randomUUID(),
+    mission: f.mission,
+    revision: f.mission,
+    readiness: null,
+    approvals: [f.input],
+  });
+  const old = (await f.node.handle("governance", { mission: f.mission }))
+    .grants[0];
+  assert.ok(old.consent);
+  assert.equal(old.reserved, 0);
+  assert.equal(old.sealed, false);
+  f.executions.start = start;
+  await f.executions.setNetwork(f.c.id, "internet", null);
+  const c = f.contributors.store.read().contributions[0];
+  f.executions.store.update(c.id, { status: "ready" });
+  const approval = {
+    ...f.input,
+    id: randomUUID(),
+    networkRevision: c.networkRevision,
+  };
+  await f.agreements.approve(approval);
+  await f.agreements.tick();
+  await until(() => f.provider.launches === 1, {
+    describe: () =>
+      JSON.stringify(f.agreements.list(f.mission).map((a) => a.message)),
+  });
+  const ledger = await f.node.handle("governance", { mission: f.mission });
+  assert.equal(ledger.grants.find((g) => g.id === old.id).sealed, true);
+  assert.equal(ledger.grants.length, 2);
+  await f.agreements.cancel(approval.id);
 });
 
 test("approval waits for human Start and survives a host-service restart without extending expiry", async (t) => {
@@ -525,6 +627,7 @@ test("real signed deliverable acceptance and closure remain distinct and survive
     control,
     revisions: [revision],
     reason: "Human reviewed this exact fixture.",
+    closeConfirmed: true,
   };
   await complete.complete(r);
   await complete.complete(r);

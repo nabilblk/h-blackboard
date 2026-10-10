@@ -20,6 +20,8 @@ import {
   type Runtime,
 } from "../application/contracts/workspace";
 import { Heading, Status, type Perform } from "./ui";
+import { NetworkAccessField } from "./NetworkAccess";
+import type { NetworkAccess } from "../application/contracts/workspace";
 
 export default function Prepare({
   busy,
@@ -45,6 +47,8 @@ export default function Prepare({
     path: string;
   } | null>(null);
   const [runtime, setRuntime] = useState<Runtime>("grok");
+  const [networkAccess, setNetworkAccess] =
+    useState<NetworkAccess>("restricted");
   const [mode, setMode] = useState<"bounded" | "unlimited">("bounded");
   const [concurrency, setConcurrency] = useState("1");
   const [turns, setTurns] = useState("20");
@@ -152,6 +156,7 @@ export default function Prepare({
                     reviewId: review.reviewId,
                     workspaceChoiceId: workspace.id,
                     runtime,
+                    networkAccess,
                     limits,
                   },
                 ),
@@ -225,6 +230,13 @@ export default function Prepare({
                   ))}
                 </select>
               </Field>
+              {nodeReview ? (
+                <NetworkAccessField
+                  value={networkAccess}
+                  onChange={setNetworkAccess}
+                  disabled={busy}
+                />
+              ) : null}
               <p className="d-field-help">
                 Sign in with your own subscription inside each agent’s isolated
                 environment after preparation.

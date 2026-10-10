@@ -22,6 +22,7 @@ import {
   POLICY,
   Session,
   POLICY_DIGESTS,
+  INTERNET_POLICY_DIGESTS,
   policyDigest,
 } from "./contract.mjs";
 import { runtimeConnection } from "./runtime-connection.mjs";
@@ -46,6 +47,7 @@ export class LimaProvider {
   version = EXECUTION_PROVIDER_VERSION;
   policy = POLICY_DIGEST;
   policies = POLICY_DIGESTS;
+  internetPolicies = INTERNET_POLICY_DIGESTS;
   handles = new Map();
   bootQueue = Promise.resolve();
   constructor({
@@ -246,8 +248,11 @@ export class LimaProvider {
   }
   async prepare({ contribution, signal, onProgress = () => {} }) {
     const id = contribution.id;
-    const spec = runtimeSpec(contribution.runtime);
-    const digest = policyDigest(contribution.runtime);
+    const spec = runtimeSpec(contribution.runtime, contribution.networkAccess);
+    const digest = policyDigest(
+      contribution.runtime,
+      contribution.networkAccess,
+    );
     signal?.throwIfAborted();
     onProgress("Checking this Mac and the isolated environment provider.");
     await this.binary();
@@ -302,11 +307,24 @@ export class LimaProvider {
       "-c",
       "if [ -f /opt/harakiri/policy ]; then cat /opt/harakiri/policy; fi",
     ]);
-    if (prior && prior.trim() !== digest)
+    if (
+      prior &&
+      prior.trim() !== digest &&
+      !(
+        contribution.networkRevision &&
+        ["restricted", "internet"].some(
+          (mode) => prior.trim() === policyDigest(contribution.runtime, mode),
+        )
+      )
+    )
       throw new Error(
         "This VM belongs to a different runtime policy. Create a new contribution.",
       );
-    if (prior && !(await this.inspect({ contribution })).stopped)
+    if (
+      prior &&
+      !(await this.inspect({ contribution, expectedPolicy: prior.trim() }))
+        .stopped
+    )
       throw new Error(
         "Confirm the existing runtime and workers stopped before preparation.",
       );
@@ -332,6 +350,7 @@ export class LimaProvider {
       "control.py",
       "files.py",
       "proxy.py",
+      "worker-network.py",
       "setup.sh",
       "runtimes.py",
       "install-runtime.py",
@@ -343,7 +362,7 @@ export class LimaProvider {
       await this.guest(id, ["chmod", "0644", `/opt/harakiri/${file}`]);
     }
     await this.guest(id, ["tee", "/opt/harakiri/tools.json"], {
-      input: JSON.stringify(guestTools()),
+      input: JSON.stringify(guestTools(contribution.networkAccess)),
       maxBuffer: 256 * 1024,
     });
     await this.guest(id, ["tee", "/opt/harakiri/runtime.json"], {
@@ -360,14 +379,20 @@ export class LimaProvider {
     onProgress("Verifying isolation and checking guest sign-in.");
     return this.inspect({ contribution });
   }
-  async inspect({ contribution }) {
+  async inspect({
+    contribution,
+    expectedPolicy = policyDigest(
+      contribution.runtime,
+      contribution.networkAccess,
+    ),
+  }) {
     const state = await this.vm(contribution.id);
     if (!state.exists || !state.running)
       return { ...state, stopped: true, authenticated: false };
     const policy = (
       await this.guest(contribution.id, ["cat", "/opt/harakiri/policy"])
     ).trim();
-    if (policy !== policyDigest(contribution.runtime))
+    if (policy !== expectedPolicy)
       throw new Error("VM policy verification failed.");
     const detail = JSON.parse(
       await this.guest(contribution.id, [

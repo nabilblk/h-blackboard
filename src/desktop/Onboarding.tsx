@@ -6,12 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   type Contribution,
   type Runtime,
+  type NetworkAccess,
 } from "../application/contracts/workspace";
 import type { MissionView } from "../application/contracts/node";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { useSetupDraft } from "./useSetupDraft";
 import { AgentState, useExecutionStates } from "./ExecutionStatus";
 import { ProviderSetup } from "./ExecutionSetup";
+import { NetworkAccessField } from "./NetworkAccess";
 import { GroupContributionConsent } from "./ContributionApproval";
 import type {
   SetupRequest,
@@ -20,6 +22,7 @@ import type {
 } from "../application/contracts/setup";
 type AgentDraft = {
   runtime: Runtime;
+  networkAccess?: NetworkAccess;
   name: string;
   count: number;
   mode: "bounded" | "unlimited";
@@ -31,6 +34,8 @@ const validDraft = (v: unknown): v is AgentDraft => {
   const x = v as AgentDraft;
   return (
     ["grok", "claude", "codex"].includes(x.runtime) &&
+    (x.networkAccess === undefined ||
+      ["restricted", "internet"].includes(x.networkAccess)) &&
     typeof x.name === "string" &&
     x.name.length <= 90 &&
     Number.isInteger(x.count) &&
@@ -65,6 +70,7 @@ export function AgentSetup({
     `${mission.id}:${role}`,
     {
       runtime: "grok",
+      networkAccess: "restricted",
       name: role === "coordinator" ? "Coordinator" : "Agent",
       count: 1,
       mode: "bounded",
@@ -186,6 +192,7 @@ export function AgentSetup({
             terms,
             role,
             runtime: draft.runtime,
+            networkAccess: draft.networkAccess ?? "restricted",
             label: draft.name.trim(),
             count: role === "coordinator" ? 1 : draft.count,
             limits:
@@ -247,6 +254,10 @@ export function AgentSetup({
             />
           </Field>
         ) : null}
+        <NetworkAccessField
+          value={draft.networkAccess ?? "restricted"}
+          onChange={(networkAccess) => save({ ...draft, networkAccess })}
+        />
         <Disclosure
           title={
             <>
@@ -333,9 +344,10 @@ export function AgentSetup({
           </Button>
         </Disclosure>
         <label className="n-check">
-          <input type="checkbox" required />I approve these local limits,
-          downloading the verified environment, and sharing these agents’ names
-          and runtimes with this mission. Running requires a separate approval.
+          <input type="checkbox" required />I approve these local limits and
+          internet access, downloading the verified environment, and sharing
+          these agents’ names and runtimes with this mission. Running requires a
+          separate approval.
         </label>
         {terms !== mission.lifecycle.terms_revision ? (
           <p role="alert">

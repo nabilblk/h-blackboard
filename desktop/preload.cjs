@@ -1,5 +1,29 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+const draftCall = async (method, input = {}) => {
+  const result = await ipcRenderer.invoke(`drafting:${method}`, input);
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
+};
+contextBridge.exposeInMainWorld(
+  "blackboardDrafting",
+  Object.freeze({
+    current: () => draftCall("current"),
+    runtimes: () => draftCall("runtimes"),
+    edit: (input) => draftCall("edit", input),
+    send: (input) => draftCall("send", input),
+    stop: (id) => draftCall("stop", { id }),
+    undo: (input) => draftCall("undo", input),
+    resolve: (input) => draftCall("resolve", input),
+    review: (id) => draftCall("review", { id }),
+    create: (input) => draftCall("create", input),
+    discard: (id) => draftCall("discard", { id }),
+    signIn: () => draftCall("signIn"),
+    openLogin: () => draftCall("openLogin"),
+    cancelLogin: () => draftCall("cancelLogin"),
+  }),
+);
+
 const executionCall = async (method, input) => {
   const result = await ipcRenderer.invoke(`execution:${method}`, input);
   if (!result.ok) throw new Error(result.error);
@@ -13,6 +37,12 @@ contextBridge.exposeInMainWorld(
       executionCall("executionState", { contributionId }),
     prepare: (contributionId) =>
       executionCall("executionPrepare", { contributionId }),
+    setNetwork: (contributionId, networkAccess, expectedRevision) =>
+      executionCall("executionNetwork", {
+        contributionId,
+        networkAccess,
+        expectedRevision,
+      }),
     login: (contributionId) =>
       executionCall("executionLogin", { contributionId }),
     signIn: (contributionId) =>
@@ -109,8 +139,13 @@ contextBridge.exposeInMainWorld(
       nodeCall("updateInstructions", { mission, revision, definition }),
     setCoordination: (mission, revision, mode) =>
       nodeCall("setCoordination", { mission, revision, mode }),
-    consentGrant: (mission, grant, contributionId) =>
-      nodeCall("consentGrant", { mission, grant, contributionId }),
+    consentGrant: (mission, grant, contributionId, networkRevision = null) =>
+      nodeCall("consentGrant", {
+        mission,
+        grant,
+        contributionId,
+        networkRevision,
+      }),
     governance: (mission) => nodeCall("governance", { mission }),
     govern: (mission, control, action) =>
       nodeCall("govern", { mission, control, action }),

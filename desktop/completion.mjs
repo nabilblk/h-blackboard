@@ -3,7 +3,8 @@ import { readdirSync } from "node:fs";
 import { Id } from "./model.mjs";
 import { Hash } from "./execution/contract.mjs";
 import { OnboardingStore } from "./onboarding-store.mjs";
-const request = z
+// Old journals stay readable, but an old request cannot authorize a new close.
+const savedRequest = z
   .object({
     id: Id,
     mission: Hash,
@@ -14,8 +15,10 @@ const request = z
       .max(32)
       .refine((v) => new Set(v).size === v.length),
     reason: z.string().trim().min(1).max(2048),
+    closeConfirmed: z.literal(true).optional(),
   })
   .strict();
+const request = savedRequest.extend({ closeConfirmed: z.literal(true) });
 export const CompletionRequests = {
   completeMission: request,
   completionState: z.object({ mission: Hash }).strict(),
@@ -24,7 +27,7 @@ export const CompletionRequests = {
 const schema = z
   .object({
     id: Id,
-    request,
+    request: savedRequest,
     status: z.enum([
       "recording",
       "accepted",
@@ -63,7 +66,11 @@ export class CompletionService {
   }
   async run(r) {
     let job = this.store.read(r.id);
-    if (job && JSON.stringify(job.request) !== JSON.stringify(r))
+    if (
+      job &&
+      JSON.stringify({ ...job.request, closeConfirmed: true }) !==
+        JSON.stringify(r)
+    )
       throw new Error("Completion review changed. Review a new action.");
     if (job?.status === "complete") return job;
     if (job?.status === "abandoned")
@@ -75,6 +82,10 @@ export class CompletionService {
     if (!m || m.owner !== state.identity.owner || m.conflicted)
       throw new Error("Mission owner and unconflicted history required.");
     const closed = ["closed", "archived"].includes(m.lifecycle.phase);
+    if (m.lifecycle.phase === "preparing")
+      throw new Error(
+        "The mission is still preparing. Review the plan and Start before reviewing final results. To end preparation, use Close mission.",
+      );
     if (!closed && m.lifecycle.revision !== r.control)
       throw new Error("Mission changed. Review the current results.");
     job ??= {
@@ -84,6 +95,8 @@ export class CompletionService {
       accepted: [],
       message: "Recording acceptance of the exact reviewed revisions.",
     };
+    // Upgrade a pending legacy review only after renewed, explicit confirmation.
+    job.request = r;
     this.store.write(job);
     try {
       // Validate every selected revision before recording the first decision.

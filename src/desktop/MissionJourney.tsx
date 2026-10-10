@@ -177,11 +177,13 @@ export function MissionActivity({
           <div>
             <dt>Plan readiness</dt>
             <dd>
-              {mission.lifecycle.readiness
-                ? "Current plan acknowledged"
-                : mission.lifecycle.plan
-                  ? "Current plan not yet acknowledged"
-                  : "Planning not complete"}
+              {["closed", "archived"].includes(mission.lifecycle.phase)
+                ? "Not applicable — mission ended"
+                : mission.lifecycle.readiness
+                  ? "Current plan acknowledged"
+                  : mission.lifecycle.plan
+                    ? "Current plan not yet acknowledged"
+                    : "Planning not complete"}
             </dd>
           </div>
         ) : null}
@@ -199,7 +201,11 @@ export function MissionActivity({
         </div>
         <div>
           <dt>Start blockers</dt>
-          <dd>{mission.lifecycle.start_blockers.join(", ") || "None"}</dd>
+          <dd>
+            {["closed", "archived"].includes(mission.lifecycle.phase)
+              ? "Mission ended; execution is no longer authorized."
+              : mission.lifecycle.start_blockers.join(", ") || "None"}
+          </dd>
         </div>
       </dl>
     </section>

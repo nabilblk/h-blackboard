@@ -289,9 +289,20 @@ test("background decisions are opt-in, coalesced and disclose no mission or prov
   await monitor.poll(snapshot, { enabled: true, focused: false });
   assert.equal(sent.length, 2, "At most two alerts per exchange");
   await monitor.poll(snapshot, { enabled: true, focused: false });
-  assert.equal(sent.length, 4);
+  assert.equal(
+    sent.length,
+    3,
+    "Preparing does not request final-result acceptance",
+  );
   await monitor.poll(snapshot, { enabled: true, focused: false });
-  assert.equal(sent.length, 4, "Identical conditions are not repeated");
+  assert.equal(sent.length, 3, "Identical conditions are not repeated");
+  m.lifecycle.phase = "active";
+  await monitor.poll(snapshot, { enabled: true, focused: false });
+  assert.equal(
+    sent.length,
+    4,
+    "Final review can be requested after work has started",
+  );
   assert.doesNotMatch(JSON.stringify(sent), /PRIVATE|PROVIDER|TOKEN/);
   assert.doesNotMatch(
     JSON.stringify([...monitor.seen]),

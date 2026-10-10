@@ -9,7 +9,7 @@ const object = (properties, required = Object.keys(properties)) => ({
 });
 const string = { type: "string" };
 const paths = { type: "array", items: string, minItems: 1, maxItems: 32 };
-export function guestTools() {
+export function guestTools(networkAccess = "restricted") {
   return [
     {
       name: "board",
@@ -22,7 +22,11 @@ export function guestTools() {
     {
       name: "workspace_exec",
       description:
-        "Run a shell command in /workspace. Linux filesystem jail, no network, no credentials, no host mounts. Python 3 and standard Linux utilities are available. Maximum 60 seconds; background processes are killed when this call ends.",
+        "Run a shell command in /workspace. Linux filesystem jail, no credentials or host mounts. " +
+        (networkAccess === "internet"
+          ? "Public HTTPS (port 443) is available through HTTPS_PROXY/http_proxy with system CA certificates; use a proxy-aware client such as Python urllib, curl or git over HTTPS when installed. No direct sockets, HTTP-only sites, SSH, private/LAN/host/metadata destinations. Requests can send workspace data externally: follow the human's mission scope. "
+          : "Workspace internet access is blocked. Ask the contributor to allow it in Access & limits if the mission requires downloads. ") +
+        "Python 3 and standard Linux utilities are available. Maximum 60 seconds; background processes are killed when this call ends.",
       inputSchema: object({ command: { type: "string", maxLength: 16384 } }),
     },
     {

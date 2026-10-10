@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { Id } from "../model.mjs";
+import { Id, NetworkAccess } from "../model.mjs";
 
 // Separate from the trusted-local web runner's v1 protocol. That provider is
 // deliberately not an implementation of this contract.
@@ -67,14 +67,32 @@ export const POLICIES = Object.freeze({
     ]),
   }),
 });
-export function runtimePolicy(runtime) {
+export const INTERNET_POLICIES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(POLICIES).map(([runtime, policy]) => [
+      runtime,
+      Object.freeze({
+        ...policy,
+        version: 2,
+        workerNetwork: "public-https-proxy",
+        workerPorts: Object.freeze([443]),
+        privateDestinations: false,
+        inboundNetwork: false,
+      }),
+    ]),
+  ),
+);
+export function runtimePolicy(runtime, networkAccess = "restricted") {
   if (!Object.hasOwn(POLICIES, runtime))
     throw new Error("Unsupported isolated runtime.");
-  return POLICIES[runtime];
+  NetworkAccess.parse(networkAccess);
+  return networkAccess === "internet"
+    ? INTERNET_POLICIES[runtime]
+    : POLICIES[runtime];
 }
-export function policyDigest(runtime) {
+export function policyDigest(runtime, networkAccess = "restricted") {
   return createHash("sha256")
-    .update(JSON.stringify(runtimePolicy(runtime)))
+    .update(JSON.stringify(runtimePolicy(runtime, networkAccess)))
     .digest("hex");
 }
 export const POLICY_DIGESTS = Object.freeze(
@@ -82,6 +100,24 @@ export const POLICY_DIGESTS = Object.freeze(
     Object.keys(POLICIES).map((runtime) => [runtime, policyDigest(runtime)]),
   ),
 );
+export const INTERNET_POLICY_DIGESTS = Object.freeze(
+  Object.fromEntries(
+    Object.keys(POLICIES).map((runtime) => [
+      runtime,
+      policyDigest(runtime, "internet"),
+    ]),
+  ),
+);
+export function providerPolicy(
+  provider,
+  runtime,
+  networkAccess = "restricted",
+) {
+  NetworkAccess.parse(networkAccess);
+  return networkAccess === "internet"
+    ? provider.internetPolicies?.[runtime]
+    : (provider.policies?.[runtime] ?? provider.policy);
+}
 export const Hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const Session = z
   .string()
@@ -92,6 +128,13 @@ export const ExecutionRequests = {
   executionOverview: z.object({ mission: Hash }).strict(),
   executionState: z.object({ contributionId: Id }).strict(),
   executionPrepare: z.object({ contributionId: Id }).strict(),
+  executionNetwork: z
+    .object({
+      contributionId: Id,
+      networkAccess: NetworkAccess,
+      expectedRevision: Id.nullable(),
+    })
+    .strict(),
   executionLogin: z.object({ contributionId: Id }).strict(),
   executionCancelSetup: z.object({ contributionId: Id }).strict(),
   executionSignIn: z.object({ contributionId: Id }).strict(),
@@ -120,7 +163,10 @@ export const Record = z
   .object({
     schema: z.literal(1),
     contribution: Id,
-    policy: z.enum(Object.values(POLICY_DIGESTS)),
+    policy: z.enum([
+      ...Object.values(POLICY_DIGESTS),
+      ...Object.values(INTERNET_POLICY_DIGESTS),
+    ]),
     status: z.enum([
       "preparing",
       "login_required",
@@ -180,11 +226,16 @@ export const Record = z
   })
   .strict();
 
-export function newRecord(contribution, now = Date.now(), runtime = "grok") {
+export function newRecord(
+  contribution,
+  now = Date.now(),
+  runtime = "grok",
+  networkAccess = "restricted",
+) {
   return Record.parse({
     schema: 1,
     contribution,
-    policy: policyDigest(runtime),
+    policy: policyDigest(runtime, networkAccess),
     status: "preparing",
     grant: null,
     execution: null,
@@ -218,6 +269,17 @@ export function validateProvider(provider) {
   )
     throw new Error(
       "Execution provider declares an unreviewed runtime policy.",
+    );
+  if (
+    provider.internetPolicies &&
+    Object.entries(provider.internetPolicies).some(
+      ([runtime, digest]) =>
+        !Object.hasOwn(INTERNET_POLICY_DIGESTS, runtime) ||
+        INTERNET_POLICY_DIGESTS[runtime] !== digest,
+    )
+  )
+    throw new Error(
+      "Execution provider declares an unreviewed internet policy.",
     );
   for (const method of [
     "prepare",

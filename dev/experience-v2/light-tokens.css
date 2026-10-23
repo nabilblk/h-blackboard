@@ -1,0 +1,26 @@
+/* Light values supplied by the designer; no replacement palette. */
+[data-theme="light"] {
+  --color-surface-canvas: #f4f1ea;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+  --color-surface-hover: #ebe7de;
+  --color-surface-sunken: #ece8df;
+  --color-border-subtle: #e6e1d6;
+  --color-border-default: #d6d0c3;
+  --color-border-strong: #b9b2a3;
+  --color-border-hover: #8f887a;
+  --color-text-primary: #171715;
+  --color-text-secondary: #55514a;
+  --color-text-tertiary: #6f6a61;
+  --color-text-disabled: #a19a8c;
+  --color-text-on-accent: #ffffff;
+  --color-accent-default: #cf3a22;
+  --color-accent-hover: #b83219;
+  --color-accent-soft: #cf3a2214;
+  --color-status-progress: #2f6fa8;
+  --color-status-success: #4f7f34;
+  --color-status-warning: #9a6a10;
+  --color-status-danger: #b8304a;
+  --color-status-neutral: #6f6a61;
+  --color-status-muted: #8f887a;
+}

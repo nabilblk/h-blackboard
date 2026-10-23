@@ -516,6 +516,29 @@
 .w-surface > section {
   max-width: 1050px;
 }
+.w-surface .n-artifacts {
+  max-width: 1050px;
+}
+.w-brief-tabs {
+  padding-inline: 36px;
+  margin: 0;
+}
+.w-surface .n-artifact-candidate {
+  margin-block: 24px;
+  padding: 24px;
+  border-left: 3px solid var(--color-accent-default);
+}
+.w-surface .n-artifact-candidate h3 {
+  margin-block: 12px 8px;
+  font-size: 22px;
+}
+.w-surface .n-artifact-candidate .n-action-row {
+  margin-top: 18px;
+}
+.w-surface .n-artifact-candidate > div + div {
+  margin-top: 24px;
+  border-top: 1px solid var(--color-border-default);
+}
 .w-conversation-surface {
   display: contents;
 }

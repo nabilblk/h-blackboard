@@ -753,6 +753,28 @@ function MissionWorkspace({
             </Button>
           </nav>
         ) : null}
+        {fullPage && (controls || panel === "budget") ? (
+          <ViewTabs
+            className="w-brief-tabs"
+            label="Brief views"
+            value={panel === "budget" ? "budget" : inspectorTab}
+            onChange={(value) => {
+              if (value === "budget") {
+                setPermissionAgent(null);
+                setPanel("budget");
+              } else inspect(value);
+            }}
+            items={[
+              { value: "overview", label: "Overview" },
+              {
+                value: "decisions",
+                label: `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`,
+              },
+              { value: "budget", label: "Budget & permissions" },
+              { value: "technical", label: "Technical" },
+            ]}
+          />
+        ) : null}
         {stalledPeers > 0 ? (
           <div className="d-alert" role="status">
             {stalledPeers}{" "}
@@ -847,6 +869,7 @@ function MissionWorkspace({
             error={error || observedError}
           >
             <ArtifactPanel
+              fullPage={fullPage}
               key={artifactId ?? "list"}
               mission={mission}
               owner={owner}
@@ -890,7 +913,11 @@ function MissionWorkspace({
           </ContextPanel>
         ) : null}
         {people ? (
-          <ContextPanel title="Members" close={closePanel} error={error}>
+          <ContextPanel
+            title={fullPage ? "People" : "Members"}
+            close={closePanel}
+            error={error}
+          >
             <ViewTabs
               label="Member views"
               value={memberTab}
@@ -1108,23 +1135,25 @@ function MissionWorkspace({
         ) : null}
         {controls ? (
           <ContextPanel
-            title="Mission"
+            title={fullPage ? "Brief" : "Mission"}
             close={closePanel}
             error={error || observedError}
           >
-            <ViewTabs
-              label="Mission inspector views"
-              value={inspectorTab}
-              onChange={setInspectorTab}
-              items={[
-                { value: "overview", label: "Overview" },
-                {
-                  value: "decisions",
-                  label: `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`,
-                },
-                { value: "technical", label: "Technical" },
-              ]}
-            />
+            {!fullPage ? (
+              <ViewTabs
+                label="Mission inspector views"
+                value={inspectorTab}
+                onChange={setInspectorTab}
+                items={[
+                  { value: "overview", label: "Overview" },
+                  {
+                    value: "decisions",
+                    label: `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`,
+                  },
+                  { value: "technical", label: "Technical" },
+                ]}
+              />
+            ) : null}
             <div hidden={inspectorTab !== "decisions"}>
               <MissionDecisions value={experience} act={act} />
             </div>

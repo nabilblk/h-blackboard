@@ -201,6 +201,9 @@ export function WorkspaceShell({
           {missions.some((m) => m.lifecycle.phase === "archived") ? (
             <Disclosure
               title="Archived"
+              count={
+                missions.filter((m) => m.lifecycle.phase === "archived").length
+              }
               variant="sidebar"
               open={mission?.lifecycle.phase === "archived" || undefined}
             >

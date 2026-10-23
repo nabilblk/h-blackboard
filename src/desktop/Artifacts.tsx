@@ -60,6 +60,7 @@ export function ArtifactPanel({
   perform,
   changed,
   openConversation,
+  fullPage = false,
 }: {
   mission: MissionView;
   owner: string;
@@ -72,6 +73,7 @@ export function ArtifactPanel({
   perform: Perform;
   changed: () => Promise<void>;
   openConversation: (channel: string) => void;
+  fullPage?: boolean;
 }) {
   const { missions: node } = useApplication();
   const [selected, setSelected] = useState(initial);
@@ -285,7 +287,11 @@ export function ArtifactPanel({
                 ) : null}
                 <Button
                   variant="primary"
-                  disabled={busy}
+                  disabled={
+                    busy ||
+                    (!detail.document.entrypoint &&
+                      !detail.document.files.length)
+                  }
                   onClick={() =>
                     void perform(() =>
                       node.artifactOpen(
@@ -785,10 +791,10 @@ export function ArtifactPanel({
         <>
           <div className="n-artifact-section-title">
             <div>
-              <h2>Shared outputs</h2>
+              {!fullPage ? <h2>Shared outputs</h2> : null}
               <p className="d-field-help">
                 {total} {total === 1 ? "artifact" : "artifacts"} · files,
-                reviews and revision history
+                reviews and revision history. Open a title to see the work.
               </p>
             </div>
             <Button
@@ -815,13 +821,19 @@ export function ArtifactPanel({
               className="d-panel n-artifact-candidate"
               aria-label="Delivery candidate"
             >
-              <h3>
+              <p className="d-label">
                 {candidates.length === 1
-                  ? "Current delivery candidate"
+                  ? "Selected for delivery"
                   : "Delivery choices need reconciliation"}
-              </h3>
+              </p>
               {candidates.map((candidate) => (
                 <div key={candidate.id}>
+                  <h3>{candidate.title}</h3>
+                  <p className={candidate.stale ? "d-alert" : "d-field-help"}>
+                    {candidate.stale
+                      ? "Newer work or changed inputs need review. This opens the selected revision."
+                      : "Ready to inspect. Review and acceptance are recorded separately below."}
+                  </p>
                   <div className="n-action-row">
                     <Button
                       variant="primary"
@@ -842,17 +854,12 @@ export function ArtifactPanel({
                         })
                       }
                     >
-                      Open {candidate.title}
+                      <ArrowUpRight size={16} /> Open result
                     </Button>
                     <Button onClick={() => choose(candidate.revision)}>
                       Review details
                     </Button>
                   </div>
-                  <p className={candidate.stale ? "d-alert" : "d-field-help"}>
-                    {candidate.stale
-                      ? "This selected revision needs review: newer work or changed inputs are available. Inspect its details before choosing a replacement."
-                      : "Exact revision selected for review and handoff. Acceptance remains separate."}
-                  </p>
                 </div>
               ))}
             </section>
@@ -975,7 +982,7 @@ export function ArtifactPanel({
                   <span>{when(a.updated_at_ms)}</span>
                   <span>
                     {channelName(a.conversation)} ·{" "}
-                    {a.stage === "draft" ? "Draft" : "Complete"} ·{" "}
+                    {a.stage === "draft" ? "Draft" : "Author marked complete"} ·{" "}
                     {a.revision_count}{" "}
                     {a.revision_count === 1 ? "revision" : "revisions"}
                   </span>
@@ -1004,7 +1011,7 @@ export function ArtifactPanel({
           </div>
           {!loading && !items.length ? (
             <p className="n-work-empty">
-              {search || channel
+              {search || channel || kind || reviewFilter
                 ? "No artifacts match these filters."
                 : "No artifacts yet. Publish a plan, report or working application when there is something to share."}
             </p>

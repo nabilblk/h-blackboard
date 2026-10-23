@@ -348,6 +348,92 @@ try {
     ),
     false,
   );
+  await browser("open", `${origin}/?work`);
+  await browser("wait", ".w-sidebar");
+  await browser("click", '.w-mission-link[title="Science festival"]');
+  await browser("wait", ".n-message");
+  await browser("click", ".w-mission-tabs button:nth-child(2)");
+  await browser("wait", ".n-artifact-candidate");
+  await browser("screenshot", join(evidence, "connected-work.png"));
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Open result",
+    "--exact",
+  );
+  assert.equal(
+    await evaluate("window.calls.filter(c=>c[0]==='open-artifact').length"),
+    1,
+  );
+  assert.equal(
+    await evaluate("window.calls.find(c=>c[0]==='open-artifact')[2]"),
+    (201).toString(16).padStart(64, "0"),
+  );
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Review details",
+    "--exact",
+  );
+  await browser("wait", "--text", "This revision has not been accepted.");
+  await browser("scrollintoview", ".n-artifact-reviews");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Record acceptance",
+    "--exact",
+  );
+  await browser("scrollintoview", 'select[name="accepted"]');
+  await browser(
+    "fill",
+    'textarea[name="reason"]',
+    "Reviewed for the visitor briefing.",
+  );
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Save decision",
+    "--exact",
+  );
+  await browser("wait", "--text", "Accepted by You");
+  const acceptance = await evaluate(
+    "window.calls.find(c=>c[0]==='artifact-action')",
+  );
+  assert.equal(acceptance[4].type, "accept");
+  assert.equal(acceptance[4].revision, (201).toString(16).padStart(64, "0"));
+  assert.equal(
+    await evaluate("window.calls.some(c=>c[0]==='close-mission')"),
+    false,
+  );
+  await browser("click", ".w-work-tabs button:nth-child(2)");
+  await browser("wait", "--text", "No tasks yet.");
+  await browser("click", ".w-mission-tabs button:nth-child(4)");
+  await browser("wait", 'nav[aria-label="Brief views"]');
+  await browser("click", 'nav[aria-label="Brief views"] button:nth-child(3)');
+  await browser("wait", "--text", "Accounted turns");
+  await browser("screenshot", join(evidence, "connected-budget.png"));
+  await browser("click", ".w-mission-tabs button:nth-child(3)");
+  await browser("wait", 'nav[aria-label="Member views"]');
+  assert.equal(
+    await evaluate("document.querySelector('.w-surface-title h2').textContent"),
+    "People",
+  );
+  assert.equal(
+    await evaluate("!!document.querySelector('.d-screen-error')"),
+    false,
+  );
   console.log(
     "Workspace journeys passed: missions, inbox, conversation, draft continuity, search, appearance, mobile and empty state.",
   );

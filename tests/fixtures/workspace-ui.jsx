@@ -57,6 +57,62 @@ let localState = {
   contributions: [],
   activity: [],
 };
+const workScene = new URLSearchParams(location.search).has("work");
+const artifact = {
+  id: hash(200),
+  revision: hash(201),
+  heads: [hash(201)],
+  conversation: "main",
+  title: "Festival programme",
+  summary:
+    "The two-day programme, accessible venue map and practical visitor guide.",
+  kind: "application",
+  stage: "complete",
+  author: hash(3),
+  updated_at_ms: Date.now(),
+  revision_count: 2,
+  file_count: 1,
+  entrypoint: "index.html",
+  stale: false,
+  review_status: "reviewed",
+  review_methods: ["browser_check", "visual_inspection"],
+  accepted: false,
+  highlighted: true,
+};
+const detail = {
+  artifact,
+  revision: artifact.revision,
+  author: artifact.author,
+  parents: [hash(199)],
+  stale: false,
+  document: {
+    title: artifact.title,
+    summary: artifact.summary,
+    kind: "application",
+    stage: "complete",
+    limitations: "Venue capacities still need confirmation.",
+    entrypoint: "index.html",
+    inputs: [],
+    files: [
+      {
+        path: "index.html",
+        hash: hash(202),
+        size: 4096,
+        media_type: "text/html",
+      },
+    ],
+  },
+  history: [],
+  freshness_notes: [],
+  reviews: [],
+  acceptance: null,
+  highlighted: true,
+  available_files: ["index.html"],
+  may_publish: true,
+  may_review: true,
+  may_accept: true,
+  may_highlight: true,
+};
 const agentScene = new URLSearchParams(location.search).has("agents");
 const executionRecords = {};
 if (agentScene) {
@@ -198,14 +254,54 @@ const client = {
     catchUp: async () => ({ items: [], after: hash(100), has_more: false }),
     workstreams: async () => [],
     tasks: async () => ({ items: [], after: null, total: 0 }),
-    artifacts: async () => ({
-      items: [],
+    artifacts: async (_m, query) => ({
+      items:
+        workScene &&
+        (!query?.search ||
+          artifact.title.toLowerCase().includes(query.search.toLowerCase()))
+          ? [artifact]
+          : [],
       after: null,
-      total: 0,
-      candidates: [],
+      total: workScene ? 1 : 0,
+      candidates: workScene
+        ? [
+            {
+              id: hash(203),
+              revision: artifact.revision,
+              title: artifact.title,
+              stale: false,
+            },
+          ]
+        : [],
     }),
+    artifactDetail: async () => structuredClone(detail),
+    artifactOpen: async (...args) => {
+      window.calls.push(["open-artifact", ...args]);
+    },
+    artifactCache: async () => ({
+      state: "saved",
+      completed: 1,
+      total: 1,
+      bytes: 4096,
+    }),
+    artifactAction: async (_m, control, audience, action) => {
+      window.calls.push(["artifact-action", _m, control, audience, action]);
+      if (action.type === "accept") {
+        detail.acceptance = {
+          id: hash(204),
+          author: owner,
+          accepted: action.accepted,
+          reason: action.reason,
+          stale: false,
+        };
+        artifact.accepted = action.accepted;
+      }
+    },
     governance: async () => ({
       criteria: [],
+      allocations: [],
+      handover_blockers: [],
+      execution_available: true,
       grants: [],
       reservations: [],
       claims: [],
@@ -226,6 +322,7 @@ const client = {
     takeInvitation: async () => null,
     takeNotification: async () => null,
     startState: async () => [],
+    completionState: async () => [],
     appPreferences: async () => ({
       background: false,
       notifications: false,

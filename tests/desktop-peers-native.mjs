@@ -116,7 +116,7 @@ async function app(name) {
     assert.ok(ready, `${name}: app did not start`);
     browser("connect", String(port));
     await wait(
-      `document.querySelector('h1')?.textContent==='Your missions, on your computer.' || !!document.querySelector('.n-conversations')`,
+      `document.querySelector('h1')?.textContent==='Big ideas. Shared effort.' || !!document.querySelector('.n-conversations')`,
       "Mission home or saved conversation did not load",
     );
     browser("snapshot", "-i");
@@ -152,17 +152,17 @@ async function app(name) {
   return instance;
 }
 function closePanel(app) {
-  if (app.evaluate("!!document.querySelector('.n-context-panel[open]')"))
+  if (app.evaluate("!!document.querySelector('.w-surface')"))
     app.browser("press", "Escape");
 }
 function members(app) {
   if (
     app.evaluate(
-      "document.querySelector('.n-context-panel > header h2')?.textContent || ''",
-    ) !== "Members"
+      "document.querySelector('.w-surface > header h2')?.textContent || ''",
+    ) !== "People"
   ) {
     closePanel(app);
-    app.button("Members");
+    app.button("People");
   }
 }
 function people(app) {
@@ -270,8 +270,8 @@ async function rosterProof(a, b) {
     b.evaluate("document.querySelector('#main-message').value"),
     "My unsent accessibility question",
   );
-  b.button("My missions", "document.querySelector('aside')");
-  b.click(".n-mission-row");
+  b.button("Home", "document.querySelector('aside')");
+  b.click(".w-mission-row");
   assert.equal(
     b.evaluate("document.querySelector('#main-message').value"),
     "My unsent accessibility question",
@@ -280,9 +280,10 @@ async function rosterProof(a, b) {
   members(b);
   assert.equal(
     b.evaluate(
-      "document.querySelector('.n-context-panel').getAttribute('aria-modal')",
+      "document.querySelector('.w-surface').getAttribute('aria-modal')",
     ),
-    "true",
+    null,
+    "Mission pages stay inline at compact widths",
   );
   assert.equal(
     b.evaluate("document.documentElement.scrollWidth > innerWidth"),
@@ -292,7 +293,7 @@ async function rosterProof(a, b) {
   closePanel(b);
   assert.equal(
     b.evaluate("document.activeElement.textContent.trim()"),
-    "Members",
+    "People",
   );
   assert.equal(
     b.evaluate("document.querySelector('#main-message').value"),
@@ -303,7 +304,7 @@ async function rosterProof(a, b) {
   members(b);
   b.click(".n-mission-title");
   await b.wait(
-    "document.querySelector('.n-context-panel > header h2')?.textContent === 'Mission'",
+    "document.querySelector('.w-surface > header h2')?.textContent === 'Brief'",
     "Panel did not switch in context",
   );
   closePanel(b);
@@ -656,10 +657,10 @@ async function communicationProof(a, b, c) {
 
 async function workProof(a, b, c) {
   a.button("Add workstream", "document.querySelector('.n-conversation-nav')");
-  a.browser("fill", '.n-context-panel input[name="name"]', "Accessibility");
+  a.browser("fill", '.w-surface input[name="name"]', "Accessibility");
   a.browser(
     "fill",
-    '.n-context-panel textarea[name="goal"]',
+    '.w-surface textarea[name="goal"]',
     "Compare two step-free routes, with distances and wet-weather access.",
   );
   a.button("Create workstream");
@@ -684,13 +685,13 @@ async function workProof(a, b, c) {
   a.browser("fill", "#main-message", "Draft: compare the wet-weather option");
   a.button("Goal & agents");
   const agent = a.evaluate(
-    "document.querySelector('.n-context-panel select[name=agent] option:not([disabled])')?.value",
+    "document.querySelector('.w-surface select[name=agent] option:not([disabled])')?.value",
   );
   assert.ok(agent);
-  a.browser("select", '.n-context-panel select[name="agent"]', agent);
+  a.browser("select", '.w-surface select[name="agent"]', agent);
   a.browser(
     "fill",
-    '.n-context-panel textarea[name="direction"]',
+    '.w-surface textarea[name="direction"]',
     "Measure both approaches and record the accessibility trade-offs.",
   );
   // Another authoritative update can arrive while a direction is being drafted.
@@ -706,18 +707,18 @@ async function workProof(a, b, c) {
     });
   })()`);
   await a.wait(
-    "[...document.querySelectorAll('.n-context-panel button')].some(b=>b.textContent==='Use reviewed goal')",
+    "[...document.querySelectorAll('.w-surface button')].some(b=>b.textContent==='Use reviewed goal')",
     "Changed goal did not require a new review",
   );
   assert.equal(
     a.evaluate(
-      "[...document.querySelectorAll('.n-context-panel button')].find(b=>b.textContent==='Assign direction').disabled",
+      "[...document.querySelectorAll('.w-surface button')].find(b=>b.textContent==='Assign direction').disabled",
     ),
     true,
   );
   assert.equal(
     a.evaluate(
-      "document.querySelector('.n-context-panel textarea[name=direction]').value",
+      "document.querySelector('.w-surface textarea[name=direction]').value",
     ),
     "Measure both approaches and record the accessibility trade-offs.",
   );
@@ -734,7 +735,8 @@ async function workProof(a, b, c) {
     "Draft: compare the wet-weather option",
   );
   a.browser("screenshot", join(evidence, "workstream-conversation.png"));
-  a.button("Tasks", "document.querySelector('.n-conversation-nav')");
+  a.click(".w-mission-tabs button:nth-child(2)");
+  a.click(".w-work-tabs button:nth-child(2)");
   a.click(".n-work-overrides > summary");
   a.button("Create a task");
   a.browser(
@@ -796,7 +798,8 @@ async function workProof(a, b, c) {
     "document.querySelector('.n-work-overrides').open=false;document.querySelector('.n-context-body').scrollTop=0",
   );
   a.browser("screenshot", join(evidence, "task-parallel-attempts.png"));
-  b.button("Tasks", "document.querySelector('.n-conversation-nav')");
+  b.click(".w-mission-tabs button:nth-child(2)");
+  b.click(".w-work-tabs button:nth-child(2)");
   await b.wait(
     "document.querySelector('.n-task-row')?.textContent.includes('2 attempts')",
     "Parallel attempts did not replicate",
@@ -830,7 +833,8 @@ async function workProof(a, b, c) {
 }
 
 async function network(app) {
-  app.button("This device");
+  app.button("Settings", "document.querySelector('aside')");
+  app.button("Connections");
   app.browser("select", ".n-network select", "direct");
   app.browser("check", ".n-network input[type=checkbox]");
   app.button("Save network settings");
@@ -864,7 +868,7 @@ async function discoverySetup(node, bootstrap = "") {
 }
 async function discoveryProof(a) {
   const aPeer = await discoverySetup(a);
-  a.click(".n-channel-nav");
+  a.click(".w-mission-link");
   people(a);
   a.browser(
     "fill",
@@ -908,10 +912,10 @@ async function discoveryProof(a) {
   );
   a.click(".n-requests button.primary");
   await c.wait(
-    "!!document.querySelector('.n-channel-nav')",
+    "!!document.querySelector('.w-mission-link')",
     "Approved channel missing",
   );
-  c.click(".n-channel-nav");
+  c.click(".w-mission-link");
   await send(
     c,
     "I will investigate accessible activities and share the evidence here.",
@@ -1128,7 +1132,7 @@ async function lifecycleProof(a, b, c) {
 
 try {
   const a = await app("owner");
-  a.click(".n-empty .d-button");
+  a.click(".w-first-mission .d-button");
   a.browser(
     "find",
     "role",
@@ -1170,7 +1174,7 @@ try {
   if (discoveryMode) {
     await discoveryProof(a);
   } else {
-    a.click(".n-channel-nav");
+    a.click(".w-mission-link");
     people(a);
     a.button("Create invitation");
     await a.wait(
@@ -1184,7 +1188,10 @@ try {
     const c = await app("participant-c");
     for (const participant of [b, c]) {
       await network(participant);
-      participant.button("Join a mission", "document.querySelector('aside')");
+      participant.button(
+        "Join with an invitation",
+        "document.querySelector('aside')",
+      );
       participant.browser("fill", ".n-join input", ticket);
       participant.click(".n-join button[type=submit]");
       await participant.wait(
@@ -1210,10 +1217,10 @@ try {
       );
       a.click(".n-requests button.primary");
       await participant.wait(
-        `!!document.querySelector('.n-channel-nav')`,
+        `!!document.querySelector('.w-mission-link')`,
         "Admitted mission did not appear",
       );
-      participant.click(".n-channel-nav");
+      participant.click(".w-mission-link");
       assert.equal(
         participant.evaluate(`window.blackboardNode.state()`).execution,
         "unavailable",

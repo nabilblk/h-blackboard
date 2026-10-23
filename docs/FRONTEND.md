@@ -8,7 +8,8 @@ remain in the host and Rust node.
 ```text
 src/ui/                       Designer tokens and reusable React controls
     ↑
-src/desktop/                  Slack workspace, forms, reading state and hooks
+src/workspace/                Connected shell, Home, Inbox, My agents and Settings
+src/desktop/                  Mission conversations, feature forms and hooks
     ↓
 src/application/client.ts     Framework-independent application ports
 src/application/contracts/   Requests and responses, including generated node types
@@ -19,7 +20,7 @@ desktop/ + crates/             Native services, protocol and enforcement
 ```
 
 `src/desktop/main.tsx` selects the Electron adapter and supplies it through
-`ApplicationProvider`. Screens call `useApplication()` rather than reading native
+`ApplicationProvider`, then mounts `src/workspace/Workspace.tsx`. Screens call `useApplication()` rather than reading native
 globals. Importing a screen does not require Electron to exist. Multiple isolated
 clients can run without replacing a process-wide singleton. Effects subscribe
 to the supplied port and clean up when it changes or the view unmounts.
@@ -59,8 +60,10 @@ not silently change that older product or its deployment.
 
 The supplied designer HTML and token file remain the visual source. `src/tokens.css`
 is unchanged. Reading/controls use IBM Plex Sans; labels, identifiers and code use
-IBM Plex Mono. Shared styles live in `src/ui/`, while `desktop.css` owns workspace
-layout. The component catalogue runs without a node, database or credentials:
+IBM Plex Mono. Shared styles live in `src/ui/`, while `src/workspace/workspace.css` owns the new workspace layout and
+`desktop.css` retains the feature layouts. The workspace defaults to the supplied
+designer light palette; its dark appearance uses the original dark tokens. Theme
+selection is local and also applies to portal-based dialogs. The component catalogue runs without a node, database or credentials:
 
 ```sh
 npm run dev:ui
@@ -77,6 +80,9 @@ Open <http://127.0.0.1:4518>. Its example records exist only in the page.
 | `ActionPopover` | Secondary action groups | Ordinary tab-reachable buttons; closes on action, outside click, focus exit or Escape. Escape restores trigger focus. |
 | `Field` | One labeled input/select/textarea | Native wrapping label, shared field typography and spacing. Form state and validation belong to the screen. |
 | `GrowingTextarea` | Editable brief fields and list entries | Fits the controlled text up to a bounded height, then scrolls; forwards normal native textarea props. |
+| `ChoiceGroup` | Runtime and other exclusive choices | Native labeled radio inputs, one shared focus and selected treatment. |
+| `JourneySteps` | Read-only setup progress | Ordered steps with `aria-current`; does not imply execution permission. |
+| `ScreenBoundary` | Recoverable screen failure | Preserves navigation and offers retry; never changes saved mission state. |
 | `Status` | Attributed state labels | Text plus a square marker. Neutral by default; explicit semantic tones. Color never replaces the label. |
 
 Use a sidebar disclosure for **Archived channels**. Use section disclosures for
@@ -94,7 +100,7 @@ must preserve human Start, contributor consent and local Stop.
 ```sh
 npm test                      # Includes frontend dependency/adapter checks
 npm run desktop:build         # Types, native service, renderer and host bundles
-npm run test:ui               # Catalogue interactions + eight inspector states
+npm run test:ui               # Components, inspectors, drafting, conversations and connected workspace
 node tests/desktop-native.mjs # Isolated native profile; requires macOS
 ```
 
@@ -117,3 +123,27 @@ runtime boundary.
 The default tests reject backend imports/direct native globals in screens and
 application dependencies in reusable controls. They also reject raw disclosures
 in desktop screens. This prevents the unstyled native controls from returning.
+
+## Connected workspace (0.5.0 source)
+
+Home, cross-mission Inbox, My agents, Discover and Settings stay outside the selected
+mission. Mission Conversation, Work, People and Brief share a stable shell. The
+conversation remains mounted across these views; drafts are scoped to the local
+author and mission. Global search finds missions/actions; conversation search
+queries saved message history. Keyboard navigation and Back/Forward preserve
+reading context rather than reissuing commands.
+
+`ContextPanel` supports inline pages inside the new workspace and the original
+inspector layout in isolated feature fixtures. Both use the same application
+operations; inline presentation does not create a second authorization path.
+`src/application/observations.ts` shares subscriptions by port identity, bounds
+parallel reads and backs off failures. My agents and Inbox use those observations
+instead of unbounded per-render request loops. Execution presentation preserves
+uncertain/stale states; no optimistic badge proves a process stopped.
+
+`tests/workspace-ui.mjs` drives the production components with isolated ports:
+first launch, mission switches, draft continuity, threads, invitation admission,
+setup configuration, stop failures, appearance, compact keyboard navigation,
+exact artifact opening/acceptance and capability destinations. Native tests use
+a temporary protected profile and the real preload/service. Neither seeds the
+user's workspace or changes runtime credentials.

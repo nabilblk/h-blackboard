@@ -301,7 +301,14 @@ function MissionWorkspace({
     setStartReviewRequest(review ? (v) => v + 1 : 0);
     setPanel("controls");
   };
-  const [setupRole, setSetupRole] = useState<"agent" | "coordinator">("agent");
+  const [setupRole, setSetupRole] = useState<"agent" | "coordinator">(() =>
+    initialSetup &&
+    mission.owner === owner &&
+    mission.definition.policy?.coordination === "coordinated" &&
+    !mission.lifecycle.coordinator
+      ? "coordinator"
+      : "agent",
+  );
   const prepare = (role: "agent" | "coordinator") => {
     setSetupRole(role);
     setPanel("setup");

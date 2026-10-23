@@ -61,7 +61,7 @@ export async function artifactProof(
   );
   const panel = (n) => {
     closePanel(n);
-    n.button("Artifacts", "document.querySelector('.n-conversation-nav')");
+    n.click(".w-mission-tabs button:nth-child(2)");
   };
   const publish = async (
     n,
@@ -69,7 +69,7 @@ export async function artifactProof(
   ) => {
     if (!revision) {
       panel(n);
-      n.button("Publish", "document.querySelector('.n-context-panel')");
+      n.button("Publish", "document.querySelector('.w-surface')");
     } else n.button("Publish revision");
     n.browser("fill", "input[name=title]", title);
     n.browser(
@@ -266,6 +266,18 @@ export async function artifactProof(
     );
     a.button("Save decision");
     await a.wait(
+      "!document.querySelector('select[name=accepted]')",
+      "Acceptance form did not settle",
+    );
+    const accepted = a.evaluate(
+      `window.blackboardNode.artifactDetail('${mission}','${first}')`,
+    );
+    assert.equal(
+      accepted.acceptance?.accepted,
+      true,
+      "The native node must persist the exact acceptance decision",
+    );
+    await a.wait(
       "document.querySelector('.n-artifacts:has(.n-artifact-eyebrow)')?.textContent.includes('Accepted by')",
       "Acceptance missing",
     );
@@ -377,7 +389,10 @@ export async function artifactProof(
       "Authorized cached output survives creator disconnect",
     );
     await a.start();
-    a.click(".n-mission-row");
+    assert.ok(
+      a.evaluate("!!document.querySelector('.n-conversations')"),
+      "Saved mission reopens after restart",
+    );
     const restored = a.evaluate(
       `window.blackboardNode.artifactDetail('${mission}','${first}')`,
     );

@@ -37,7 +37,9 @@ export function ContextPanel(props: Parameters<typeof Inspector>[0]) {
         document.activeElement === document.body
       ) {
         const target =
-          previous?.isConnected && previous.checkVisibility()
+          previous !== document.body &&
+          previous?.isConnected &&
+          previous.checkVisibility()
             ? previous
             : document.querySelector<HTMLElement>(".w-mission-tabs button");
         target?.focus({ preventScroll: true });

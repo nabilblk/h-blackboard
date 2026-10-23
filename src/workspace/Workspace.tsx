@@ -358,7 +358,7 @@ export default function Workspace() {
                   setState(value);
                   navigate({ missionId: contributionReview.mission.missionId });
                   setNotice(
-                    "Contribution prepared. Open Members to share your agent with the mission.",
+                    "Contribution prepared. Open People to share your agent with the mission.",
                   );
                 }}
               />

@@ -458,9 +458,9 @@ try {
   for (const width of [1100, 390]) {
     await browser("set", "viewport", String(width), "900");
     await browser("open", `${origin}/?scene=coordination-artifacts`);
-    await browser("wait", "--text", "Current delivery candidate");
+    await browser("wait", ".n-artifact-candidate");
     assert.match(await browser("get", "text", "body"), /source, tests/);
-    await click("Open Circuit explorer");
+    await click("Open result");
     assert.equal(
       (
         await evaluate(

@@ -106,7 +106,7 @@ async function startApp(invitation = null) {
       "The native app did not load its bundled UI within 20 seconds.",
   );
   browser("connect", String(port));
-  browser("wait", "--text", "Blackboard");
+  browser("wait", ".w-sidebar");
   browser("snapshot", "-i");
 }
 async function stopApp() {
@@ -160,7 +160,7 @@ try {
     ),
   );
   if (typeof evaluated === "string") evaluated = JSON.parse(evaluated);
-  assert.equal(evaluated.heading, "Your missions, on your computer.");
+  assert.equal(evaluated.heading, "Big ideas. Shared effort.");
   assert.equal(evaluated.node, "undefined");
   assert.equal(evaluated.require, "undefined");
   assert.deepEqual(
@@ -195,6 +195,8 @@ try {
       "exportFiles",
       "exportDiagnostics",
       "importFiles",
+      "cancelOperation",
+      "restoreCheckpoint",
     ].sort(),
   );
   assert.deepEqual(
@@ -223,7 +225,13 @@ try {
       "openAgentConversation",
       "artifacts",
       "copyArtifactReference",
+      "copyMessageReference",
       "artifactDetail",
+      "artifactCache",
+      "backupNode",
+      "restoreNode",
+      "readMessage",
+      "catchUp",
       "artifactAction",
       "artifactTransfer",
       "artifactOpen",
@@ -326,7 +334,7 @@ try {
 
   // Use actual form interactions and the OS key store, then restart the app.
   // No renderer mock or direct DB insert can make this path pass.
-  click(".n-empty .d-button");
+  click(".w-first-mission .d-button");
   browser("wait", "--text", "What would you like to accomplish?");
   browser(
     "find",
@@ -356,7 +364,7 @@ try {
   );
   browser("press", "Enter");
   click(".md-back");
-  click(".n-empty .d-button");
+  click(".w-first-mission .d-button");
   browser("wait", "input[name=name]");
   assert.equal(
     JSON.parse(
@@ -394,22 +402,15 @@ try {
     true,
     "Native completion cannot turn plan preparation into mission closure",
   );
-  assert.ok(
+  // Creation leads to setup, but cannot prepare or start an agent by itself.
+  assert.equal(
     JSON.parse(
       browser(
         "eval",
-        "[...document.querySelectorAll('button')].some(b => b.textContent.includes('Set up Coordinator') && !b.disabled)",
+        "(async () => (await window.contributor.state()).contributions.length)()",
       ),
     ),
-  );
-  browser(
-    "find",
-    "role",
-    "button",
-    "click",
-    "--name",
-    "Set up Coordinator",
-    "--exact",
+    0,
   );
   browser(
     "wait",
@@ -431,10 +432,10 @@ try {
     JSON.parse(
       browser(
         "eval",
-        "document.activeElement.matches('.n-mission-summary button') && document.activeElement.checkVisibility()",
+        "document.activeElement.matches('.w-mission-tabs button') && document.activeElement.checkVisibility()",
       ),
     ),
-    "Closing setup restores focus to the original summary action or its stable status control",
+    "Closing setup restores focus to the conversation tab",
   );
   browser("snapshot", "-i");
   browser(
@@ -466,7 +467,7 @@ try {
     browser(
       "eval",
       `(() => {
-    const panel = document.querySelector('.n-context-panel');
+    const panel = document.querySelector('.w-surface');
     const visibleButtons = [...panel.querySelectorAll('button')].filter(b => b.checkVisibility({visibilityProperty:true}));
     return {text: panel.innerText, primary: visibleButtons.filter(b => b.classList.contains('primary')).map(b => b.textContent.trim()),
       assessmentVisible: visibleButtons.some(b => b.textContent.includes('Update assessment'))};
@@ -521,9 +522,7 @@ try {
     0,
     "The primary action moves into the inspector",
   );
-  click(
-    '.n-context-panel nav[aria-label="Mission inspector views"] button:nth-child(3)',
-  );
+  click('nav[aria-label="Brief views"] button:nth-child(4)');
   browser("screenshot", resolve("var/desktop/native-mission-technical.png"));
   browser("wait", "--text", "Mission records");
   browser("press", "Escape");
@@ -598,24 +597,24 @@ try {
   browser(
     "wait",
     "--fn",
-    "!!document.querySelector('.d-mission-nav .hb-disclosure--sidebar[open]')",
+    "!!document.querySelector('.w-mission-list .hb-disclosure--sidebar[open]')",
   );
   const archivedDisclosure = JSON.parse(
     browser(
       "eval",
-      `(() => {const d=document.querySelector('.d-mission-nav .hb-disclosure--sidebar');const s=d.querySelector('summary');return {count:s.querySelector('.hb-count').textContent,height:s.getBoundingClientRect().height,list:getComputedStyle(s).listStyleType}})()`,
+      `(() => {const d=document.querySelector('.w-mission-list .hb-disclosure--sidebar');const s=d.querySelector('summary');return {count:s.querySelector('.hb-count').textContent,height:s.getBoundingClientRect().height,list:getComputedStyle(s).listStyleType}})()`,
     ),
   );
   assert.equal(archivedDisclosure.count, "1");
   assert.ok(archivedDisclosure.height >= 36);
   assert.equal(archivedDisclosure.list, "none");
   browser("set", "viewport", "1280", "900");
-  click(".d-mission-nav .hb-disclosure--sidebar > summary");
+  click(".w-mission-list .hb-disclosure--sidebar > summary");
   assert.equal(
     JSON.parse(
       browser(
         "eval",
-        "document.querySelector('.d-mission-nav .hb-disclosure--sidebar').open",
+        "document.querySelector('.w-mission-list .hb-disclosure--sidebar').open",
       ),
     ),
     false,
@@ -625,7 +624,7 @@ try {
     JSON.parse(
       browser(
         "eval",
-        "document.querySelector('.d-mission-nav .hb-disclosure--sidebar').open",
+        "document.querySelector('.w-mission-list .hb-disclosure--sidebar').open",
       ),
     ),
     true,
@@ -638,7 +637,7 @@ try {
   browser(
     "wait",
     "--fn",
-    "!document.querySelector('.d-mission-nav .hb-disclosure--sidebar')",
+    "!document.querySelector('.w-mission-list .hb-disclosure--sidebar')",
   );
   assert.equal(
     JSON.parse(

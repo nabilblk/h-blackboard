@@ -1,5 +1,34 @@
 # Blackboard desktop
 
+## New workspace (0.5.0 source)
+
+The rebuilt frontend uses the existing native application and peer protocol.
+Home brings together your missions, Inbox brings together messages that need your
+attention, and My agents shows execution on this computer. Within a mission,
+**Conversation**, **Work**, **People** and **Brief** keep messages, results, the
+team and decisions in predictable places. The default appearance is the designer's
+light palette, with a persistent dark toggle and IBM Plex typography.
+
+Creating a brief leads straight to team setup, without preparing or starting an
+agent automatically. Joining starts with an invitation, then a reviewed mission
+and explicit admission. Contributor approval, human Start and local Stop remain
+separate. See the [workspace guide](WORKSPACE.md).
+
+The local 0.5.0 installer is a development build. The landing download remains
+0.4.9 until the separate public release gates are satisfied. Version 0.5.0 uses
+protocol 13/schema 16; update peers together and back up profiles before testing.
+
+Validation:304 application tests,108 Rust tests (one other test remains ignored),
+61 P2P/cross-language checks,45 guest Python tests,all six browser suites, and real
+native temporary-profile journeys. Three local desktop profiles exercised
+admission, private messaging, owner-offline synchronization, revocation and the
+artifact lifecycle with isolated interactive preview. No live model run was made
+for this UI iteration. The local DMG passes image, mounted-content and deep
+signature checks. Its fresh-profile packaged identity/restart check still needs
+macOS Keychain approval; development-app identity and restart passed. This is an
+ad-hoc signed development build, not a notarized public release.
+
+
 ## Unreleased coordination improvements
 
 The current source uses **protocol 13 / schema 16**. Downloaded 0.4.9 remains
@@ -26,7 +55,7 @@ testing this source; the changes below are not in the existing DMG.
 - Agent details expose saved source, operation progress/cancellation and honest
   recovery. A recreated VM starts a new runtime session, retains its registration
   and can restore selected source into a fresh folder.
-- **Device → Node identity → Protect this node** creates an encrypted portable
+- **Settings → Security & recovery → Protect this node** creates an encrypted portable
   recovery file. Restore is available only on an empty node and opens offline.
 - Optional, replaceable endpoint lookup refreshes known routes under local network
   policy. It does not make discovery a global directory or grant membership. Wire

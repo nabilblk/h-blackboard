@@ -228,6 +228,39 @@ try {
     "Toggle navigation",
     "--exact",
   );
+  assert.equal(await evaluate("document.getElementById('main').inert"), true);
+  await browser("press", "Escape");
+  assert.equal(await evaluate("document.getElementById('main').inert"), false);
+  assert.equal(
+    await evaluate("document.activeElement.getAttribute('aria-label')"),
+    "Toggle navigation",
+  );
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Toggle navigation",
+    "--exact",
+  );
+  await browser("press", "Control+k");
+  await browser("wait", "dialog[open]");
+  assert.equal(await evaluate("document.getElementById('main').inert"), false);
+  assert.equal(
+    await evaluate("!!document.querySelector('.w-nav-open')"),
+    false,
+  );
+  await browser("press", "Escape");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Toggle navigation",
+    "--exact",
+  );
   await browser("find", "role", "button", "click", "--name", "Home", "--exact");
   await browser("wait", "--text", "Pick up where you left off.");
   assert.equal(

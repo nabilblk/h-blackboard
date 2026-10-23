@@ -135,7 +135,10 @@ export async function governanceProof(
   b.browser("fill", "#main-message", "Keep this draft across a restart");
   await b.stop();
   await b.start();
-  b.click(".n-mission-row");
+  assert.ok(
+    b.evaluate("!!document.querySelector('.n-conversations')"),
+    "Saved mission reopens after restart",
+  );
   assert.equal(
     b.evaluate("document.querySelector('#main-message').value"),
     "Keep this draft across a restart",

@@ -52,6 +52,58 @@ export function WorkspaceShell({
   const [query, setQuery] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
   const searchTrigger = useRef<HTMLButtonElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const sidebar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const media = window.matchMedia("(max-width: 760px)");
+    if (!media.matches) {
+      setMenu(false);
+      return;
+    }
+    const content = document.getElementById("main");
+    const wasInert = content?.inert ?? false;
+    if (content) content.inert = true;
+    const targets = () =>
+      [
+        menuTrigger.current,
+        ...Array.from(
+          sidebar.current?.querySelectorAll<HTMLElement>(
+            "button:not(:disabled), summary, a[href], input, select",
+          ) ?? [],
+        ),
+      ].filter(
+        (element): element is HTMLElement =>
+          !!element && element.checkVisibility(),
+      );
+    targets()[1]?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setMenu(false);
+      } else if (event.key === "Tab") {
+        const elements = targets();
+        const index = elements.indexOf(document.activeElement as HTMLElement);
+        event.preventDefault();
+        elements[
+          (index + (event.shiftKey ? -1 : 1) + elements.length) %
+            elements.length
+        ]?.focus();
+      }
+    };
+    const resize = () => {
+      if (!media.matches) setMenu(false);
+    };
+    document.addEventListener("keydown", key, true);
+    media.addEventListener("change", resize);
+    return () => {
+      document.removeEventListener("keydown", key, true);
+      media.removeEventListener("change", resize);
+      if (content) content.inert = wasInert;
+      menuTrigger.current?.focus();
+    };
+  }, [menu]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
@@ -65,6 +117,7 @@ export function WorkspaceShell({
     const key = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setMenu(false);
         setSearch((open) => !open);
       }
       if (event.key === "Escape") setMenu(false);
@@ -127,6 +180,7 @@ export function WorkspaceShell({
       </a>
       <header className="w-topbar">
         <IconButton
+          ref={menuTrigger}
           className="w-menu"
           aria-label="Toggle navigation"
           aria-expanded={menu}
@@ -138,7 +192,9 @@ export function WorkspaceShell({
         <button
           ref={searchTrigger}
           className="w-search-trigger"
+          aria-label="Find a mission or action"
           onClick={() => {
+            setMenu(false);
             setQuery("");
             setSearch(true);
           }}
@@ -174,7 +230,11 @@ export function WorkspaceShell({
           onClick={() => setMenu(false)}
         />
       ) : null}
-      <aside className="w-sidebar" aria-label="Workspace navigation">
+      <aside
+        ref={sidebar}
+        className="w-sidebar"
+        aria-label="Workspace navigation"
+      >
         <nav aria-label="Your workspace">
           {nav("missions", "Home", <Home size={17} />)}
           {nav("inbox", "Inbox", <Inbox size={17} />)}

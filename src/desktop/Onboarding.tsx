@@ -1,3 +1,5 @@
+import { ChoiceGroup } from "../ui/ChoiceGroup";
+import { JourneySteps } from "../ui/JourneySteps";
 import { CapabilityPackField } from "./CapabilityPack";
 import { Button } from "../ui/Button";
 import { Disclosure } from "../ui/Disclosure";
@@ -233,19 +235,16 @@ export function AgentSetup({
             onChange={(e) => save({ ...draft, name: e.target.value })}
           />
         </Field>
-        <Field>
-          Runtime
-          <select
-            value={draft.runtime}
-            onChange={(e) =>
-              save({ ...draft, runtime: e.target.value as Runtime })
-            }
-          >
-            <option value="grok">Grok Build</option>
-            <option value="claude">Claude Code</option>
-            <option value="codex">Codex</option>
-          </select>
-        </Field>
+        <ChoiceGroup<Runtime>
+          label="Choose your agent runtime"
+          value={draft.runtime}
+          onChange={(runtime) => save({ ...draft, runtime })}
+          options={[
+            { value: "grok", label: "Grok Build" },
+            { value: "claude", label: "Claude Code" },
+            { value: "codex", label: "Codex" },
+          ]}
+        />
         {role === "agent" ? (
           <Field>
             Number of agents
@@ -261,104 +260,108 @@ export function AgentSetup({
             />
           </Field>
         ) : null}
-        <CapabilityPackField
-          value={draft.capabilityPack ?? "general"}
-          onChange={(capabilityPack) => save({ ...draft, capabilityPack })}
-        />
         <NetworkAccessField
           value={draft.networkAccess ?? "restricted"}
           onChange={(networkAccess) => save({ ...draft, networkAccess })}
         />
         <Disclosure
-          title={
-            <>
-              Local limits ·{" "}
-              {draft.mode === "unlimited"
-                ? "Unlimited"
-                : `${draft.turns} turns · ${draft.minutes} minutes`}
-            </>
-          }
+          title={`Tools & limits · ${draft.mode === "unlimited" ? "Unlimited allowance" : `${draft.turns} turns · ${draft.minutes} minutes`}`}
         >
-          <Field>
-            Local allowance per agent
-            <select
-              value={draft.mode}
-              onChange={(e) =>
-                save({
-                  ...draft,
-                  mode: e.target.value as AgentDraft["mode"],
+          <CapabilityPackField
+            value={draft.capabilityPack ?? "general"}
+            onChange={(capabilityPack) => save({ ...draft, capabilityPack })}
+          />
+          <Disclosure
+            title={
+              <>
+                Local limits ·{" "}
+                {draft.mode === "unlimited"
+                  ? "Unlimited"
+                  : `${draft.turns} turns · ${draft.minutes} minutes`}
+              </>
+            }
+          >
+            <Field>
+              Local allowance per agent
+              <select
+                value={draft.mode}
+                onChange={(e) =>
+                  save({
+                    ...draft,
+                    mode: e.target.value as AgentDraft["mode"],
+                  })
+                }
+              >
+                <option value="bounded">Set turn and time limits</option>
+                <option value="unlimited">Unlimited</option>
+              </select>
+            </Field>
+            {draft.mode === "bounded" ? (
+              <div className="d-limit-fields">
+                <Field>
+                  Runtime turns
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={10000}
+                    value={draft.turns}
+                    onChange={(e) =>
+                      save({ ...draft, turns: Number(e.target.value) })
+                    }
+                  />
+                </Field>
+                <Field>
+                  Minutes from first run
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={10080}
+                    value={draft.minutes}
+                    onChange={(e) =>
+                      save({ ...draft, minutes: Number(e.target.value) })
+                    }
+                  />
+                </Field>
+              </div>
+            ) : (
+              <p>
+                No total local allowance. You still approve finite execution
+                windows, either together or one session at a time. Provider
+                subscription limits apply.
+              </p>
+            )}
+          </Disclosure>
+          <p>
+            Separate isolated workspaces. Sign in with your subscription for
+            each agent; your Mac’s credentials and folders stay private.
+          </p>
+          <Disclosure title={<>Export location</>}>
+            <p className="n-key">
+              {workspace?.path ??
+                "Documents / Harakiri Exports · a separate folder for each agent"}
+            </p>
+            <p>Files reach this Mac only when you explicitly export them.</p>
+            <Button
+              type="button"
+
+              onClick={() =>
+                void act(async () => {
+                  const selected = await desktop.chooseWorkspace();
+                  if (selected) setWorkspace(selected);
                 })
               }
             >
-              <option value="bounded">Set turn and time limits</option>
-              <option value="unlimited">Unlimited</option>
-            </select>
-          </Field>
-          {draft.mode === "bounded" ? (
-            <div className="d-limit-fields">
-              <Field>
-                Runtime turns
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  max={10000}
-                  value={draft.turns}
-                  onChange={(e) =>
-                    save({ ...draft, turns: Number(e.target.value) })
-                  }
-                />
-              </Field>
-              <Field>
-                Minutes from first run
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  max={10080}
-                  value={draft.minutes}
-                  onChange={(e) =>
-                    save({ ...draft, minutes: Number(e.target.value) })
-                  }
-                />
-              </Field>
-            </div>
-          ) : (
-            <p>
-              No total local allowance. You still approve finite execution
-              windows, either together or one session at a time. Provider
-              subscription limits apply.
-            </p>
-          )}
-        </Disclosure>
-        <p>
-          Separate isolated workspaces. Sign in with your subscription for each
-          agent; your Mac’s credentials and folders stay private.
-        </p>
-        <Disclosure title={<>Export location</>}>
-          <p className="n-key">
-            {workspace?.path ??
-              "Documents / Harakiri Exports · a separate folder for each agent"}
-          </p>
-          <p>Files reach this Mac only when you explicitly export them.</p>
-          <Button
-            type="button"
-
-            onClick={() =>
-              void act(async () => {
-                const selected = await desktop.chooseWorkspace();
-                if (selected) setWorkspace(selected);
-              })
-            }
-          >
-            Change export location…
-          </Button>
+              Change export location…
+            </Button>
+          </Disclosure>
         </Disclosure>
         <label className="n-check">
-          <input type="checkbox" required />I approve these local limits and
-          internet access, downloading the verified environment, and sharing
-          these agents’ names and runtimes with this mission. Running requires a
-          separate approval.
+          <input type="checkbox" required />
+          Prepare isolated environments with these settings and share the
+          agents’ names and runtimes with this mission. I will approve running
+          separately.
         </label>
         {terms !== mission.lifecycle.terms_revision ? (
           <p role="alert">
@@ -382,6 +385,15 @@ export function AgentSetup({
   );
   return (
     <section className="n-guided-setup" aria-label="Guided agent setup">
+      <JourneySteps
+        label="Agent setup"
+        steps={[
+          "Choose agents",
+          "Sign in",
+          role === "coordinator" ? "Allow planning" : "Review contribution",
+        ]}
+        current={!local.length ? 0 : signedIn.length < local.length ? 1 : 2}
+      />
       {!local.length && !pending.length ? (
         <p>
           {role === "coordinator"
@@ -539,7 +551,11 @@ export function AgentSetup({
       {local.length || pending.length ? (
         <Disclosure
           className="n-secondary-section"
-          title={<>Add another agent</>}
+          title={
+            role === "coordinator"
+              ? "Prepare another Coordinator"
+              : "Add another agent"
+          }
         >
           {setupForm}
         </Disclosure>

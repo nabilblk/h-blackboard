@@ -778,3 +778,101 @@
   flex-shrink: 0;
   white-space: nowrap;
 }
+.w-shell .md-authoring {
+  padding: 32px;
+  max-width: 1300px;
+  margin: 0 auto !important;
+}
+.w-shell .md-page-heading .d-heading {
+  margin-top: 16px;
+}
+.w-shell .md-page-heading .d-label {
+  display: none;
+}
+.w-shell .md-entry {
+  max-width: 780px;
+  padding: 28px;
+  background: var(--color-surface-canvas);
+}
+.w-shell .md-entry textarea {
+  min-height: 150px;
+  background: var(--color-surface-raised);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.w-shell .md-entry .d-field-help {
+  max-width: 64ch;
+}
+.w-shell .md-entry .md-local-note {
+  margin-bottom: 0;
+}
+.w-surface .n-guided-setup {
+  max-width: 820px;
+}
+.w-surface .n-guided-setup > p:first-of-type {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  margin: 0 0 24px;
+}
+.w-surface .n-guided-setup > form {
+  padding: 24px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-surface-canvas);
+  border-radius: var(--radius-card);
+}
+.w-surface .n-guided-setup .n-fields {
+  gap: 22px;
+}
+.w-surface .n-guided-setup .n-check {
+  line-height: 1.7;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.w-surface .n-guided-setup .n-check input {
+  margin-top: 5px;
+}
+.w-surface .n-mission-brief {
+  max-height: none;
+  overflow: visible;
+  padding: 0 0 28px;
+}
+.w-surface .n-mission-brief .n-mission-objective {
+  font-size: 20px;
+  max-width: 60ch;
+  line-height: 1.5;
+}
+.w-surface .n-mission-brief .n-preserve {
+  line-height: 1.7;
+  max-width: 78ch;
+}
+.w-surface .n-current-step {
+  padding: 24px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-surface-canvas);
+  border-radius: var(--radius-card);
+}
+.w-surface .n-control {
+  padding: 0;
+}
+.w-surface .n-control-bar > div {
+  display: block;
+}
+.w-surface .n-control-bar p {
+  font-size: 14px;
+}
+@media (max-width: 760px) {
+  .w-shell .md-authoring {
+    padding: 24px 16px;
+  }
+  .w-shell .md-entry {
+    padding: 20px;
+  }
+  .w-surface .n-guided-setup > form {
+    padding: 18px;
+  }
+  .hb-journey-steps {
+    gap: 12px;
+  }
+}

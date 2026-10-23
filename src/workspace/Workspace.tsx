@@ -378,8 +378,10 @@ export default function Workspace() {
               cancel={() => navigate("missions")}
               complete={async (id) => {
                 await refreshNode();
-                navigate({ missionId: id });
-                setNotice("Mission created.");
+                navigate({ missionId: id, startSetup: true });
+                setNotice(
+                  "Mission created. Choose your team when you’re ready.",
+                );
               }}
             />
           ) : null}

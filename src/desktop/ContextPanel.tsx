@@ -16,8 +16,33 @@ export function ContextPanel(props: Parameters<typeof Inspector>[0]) {
   const layout = useContext(PanelLayout);
   const heading = useId();
   const ref = useRef<HTMLElement>(null);
+  const closeRef = useRef(props.close);
+  closeRef.current = props.close;
   useEffect(() => {
-    if (layout === "page") ref.current?.focus({ preventScroll: true });
+    if (layout !== "page") return;
+    const previous = document.activeElement as HTMLElement | null;
+    const page = ref.current;
+    page?.focus({ preventScroll: true });
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !document.querySelector("dialog[open]")) {
+        event.preventDefault();
+        closeRef.current();
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("keydown", key);
+      if (
+        page?.contains(document.activeElement) ||
+        document.activeElement === document.body
+      ) {
+        const target =
+          previous?.isConnected && previous.checkVisibility()
+            ? previous
+            : document.querySelector<HTMLElement>(".w-mission-tabs button");
+        target?.focus({ preventScroll: true });
+      }
+    };
   }, [layout, props.title]);
   if (layout === "inspector") return <Inspector {...props} />;
   return (

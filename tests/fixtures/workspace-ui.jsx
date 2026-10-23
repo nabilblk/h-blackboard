@@ -145,6 +145,18 @@ const client = {
     takeNotification: async () => null,
     startState: async () => [],
     state: async () => [],
+    preflight: async () => ({
+      supported: true,
+      available: true,
+      capacity: 3,
+      capacityCeiling: 5,
+      freeDiskBytes: 20 * 1024 ** 3,
+      minimumDiskBytes: 4 * 1024 ** 3,
+      installer: { active: false },
+    }),
+    setup: async (request) => {
+      window.calls.push(["prepare", request]);
+    },
   },
   execution: { overview: async () => ({}) },
   drafting: {

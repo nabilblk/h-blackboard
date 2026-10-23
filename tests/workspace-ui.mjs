@@ -170,6 +170,49 @@ try {
     "--fn",
     "document.querySelector('.n-mission-title').textContent.includes('Community garden')",
   );
+  await browser("find", "role", "button", "click", "--name", "More", "--exact");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Add my agents",
+    "--exact",
+  );
+  await browser("wait", ".n-guided-setup");
+  await browser("click", 'input[type="radio"][value="claude"]');
+  await browser("select", 'select[name="networkAccess"]', "internet");
+  await browser("fill", '.n-guided-setup input[type="number"]', "2");
+  assert.equal(
+    await evaluate("window.calls.some(c => c[0] === 'prepare')"),
+    false,
+  );
+  await browser("check", ".n-guided-setup .n-check input");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Prepare agents",
+    "--exact",
+  );
+  await browser("wait", "--fn", "window.calls.some(c => c[0] === 'prepare')");
+  const request = await evaluate("window.calls.find(c=>c[0] === 'prepare')[1]");
+  assert.equal(request.runtime, "claude");
+  assert.equal(request.count, 2);
+  assert.equal(request.networkAccess, "internet");
+  assert.equal(request.role, "agent");
+  assert.equal(await evaluate("window.calls.some(c=>c[0] === 'start')"), false);
+  await browser("screenshot", join(evidence, "connected-setup.png"));
+  await browser("press", "Escape");
+  assert.equal(
+    await evaluate(
+      "document.querySelector('.w-mission-tabs button').checkVisibility()",
+    ),
+    true,
+  );
   await browser("set", "viewport", "390", "844");
   await browser("screenshot", join(evidence, "connected-mobile.png"));
   assert.equal(

@@ -1,3 +1,4 @@
+import { JourneySteps } from "../ui/JourneySteps";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Undo2 } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -155,7 +156,7 @@ export function CreateMission({
         <p role={saveError ? "alert" : "status"}>
           {saveError || "Opening your saved draft…"}
         </p>
-        <Button onClick={cancel}>Back to My missions</Button>
+        <Button onClick={cancel}>Back to Home</Button>
       </div>
     );
   const thinking = draft.status === "thinking";
@@ -199,13 +200,18 @@ export function CreateMission({
     <div
       className={`md-authoring ${draft.mode === "assisted" && !review && !frozen ? "md-authoring--assisted" : ""}`}
     >
+      <JourneySteps
+        steps={["Mission brief", "Prepare team", "Review & start"]}
+        current={0}
+        label="Create a mission"
+      />
       <div className="md-page-heading">
         <Button
           className="md-back"
           disabled={working || (frozen && draft.status === "creating")}
           onClick={() => void act(async () => cancel())}
         >
-          <ArrowLeft size={14} /> My missions
+          <ArrowLeft size={14} /> Home
         </Button>
         <Heading
           section="New mission · Private draft"
@@ -256,7 +262,7 @@ export function CreateMission({
       ) : draft.status === "uncertain" ? (
         <div className="d-panel">
           <p role="alert">{draft.error}</p>
-          <Button onClick={cancel}>Check My missions</Button>
+          <Button onClick={cancel}>Check your missions</Button>
         </div>
       ) : review ? (
         <MissionDraftReview
@@ -299,17 +305,15 @@ export function CreateMission({
             {selectedRuntime}
             <Button
               variant="primary"
-              disabled={
-                working || !draft.idea.trim() || runtime?.available === false
-              }
+              disabled={working || !draft.idea.trim() || !runtime?.available}
               onClick={startAssisted}
             >
               Shape it with my agent <ArrowRight size={16} />
             </Button>
           </div>
           <p className="d-field-help">
-            Start with a conversation. Your brief takes shape beside it, and you
-            can edit anything.
+            Your agent asks questions and drafts a brief. You edit and approve
+            it before creating the mission.
           </p>
           <Button
             disabled={working}
@@ -329,6 +333,12 @@ export function CreateMission({
           >
             Write the brief myself
           </Button>
+          {!runtime && !runtimeError ? (
+            <p className="d-field-help" role="status">
+              Checking your installed agents… You can write the brief yourself
+              at any time.
+            </p>
+          ) : null}
           {runtime?.available === false || runtimeError ? (
             <p role="status" className="d-field-help">
               {runtimeError || runtime?.detail}{" "}

@@ -7,6 +7,55 @@ use harakiri_protocol::{Event, Payload, artifacts::*};
 use std::collections::{BTreeMap, BTreeSet};
 
 impl Store {
+    fn artifact_freshness_notes(&self, e: &Event, records: &Records) -> Result<Vec<String>> {
+        let mut notes = Vec::new();
+        let history = self.control_history(e.mission_id())?;
+        if history.at(control(e))?.lifecycle.terms_revision
+            != history.current()?.lifecycle.terms_revision
+        {
+            notes.push("Mission instructions changed after this revision was published.".into());
+        }
+        if let Some((root, doc, _)) = revision(e) {
+            let current = heads(records, &root);
+            if current.len() > 1 {
+                notes.push("Concurrent revisions need reconciliation.".into());
+            } else if current.first().is_some_and(|h| h.id != e.id) {
+                notes.push("You are viewing a saved earlier revision.".into());
+            }
+            for (id, relation) in doc
+                .inputs
+                .iter()
+                .map(|id| (id, &ArtifactRelation::Live))
+                .chain(doc.references.iter().map(|r| (&r.revision, &r.relation)))
+            {
+                if *relation == ArtifactRelation::Citation {
+                    continue;
+                }
+                let Some(source) = records.get(id) else {
+                    notes.push("A required input is unavailable.".into());
+                    continue;
+                };
+                let Some((root, input, _)) = revision(source) else {
+                    continue;
+                };
+                let current = heads(records, &root);
+                if *relation == ArtifactRelation::Live
+                    && (current.len() != 1 || current[0].id != *id)
+                {
+                    notes.push(format!(
+                        "Live input ‘{}’ has changed. Review and update this dependency.",
+                        input.title
+                    ));
+                } else if self.artifact_stale(source, records, &mut BTreeSet::new())? {
+                    notes.push(format!("Input ‘{}’ needs review of its instructions, dependencies or author authority.", input.title));
+                }
+            }
+        }
+        if notes.is_empty() && self.artifact_stale(e, records, &mut BTreeSet::new())? {
+            notes.push("Author authority or the verified history changed. Review this evidence before relying on it.".into());
+        }
+        Ok(notes)
+    }
     pub(crate) fn artifact_evidence_stale(&self, mission: &str, id: &str) -> Result<bool> {
         let records = self.artifact_records(mission)?;
         let Some(e) = records.get(id) else {
@@ -46,7 +95,17 @@ impl Store {
             if self.is_revoked(e.mission_id(),&offer.body.author)? || records.values().any(|r|matches!(&r.body.payload,Payload::AgentWithdrawn{registration} if registration==&reg)) || history.at(reviewed)?.lifecycle.terms_revision!=history.current()?.lifecycle.terms_revision {return Ok(true);}
         }
         if let Some((_, doc, _)) = revision(e) {
-            for input in &doc.inputs {
+            for (input, relation) in doc
+                .inputs
+                .iter()
+                .map(|id| (id, &ArtifactRelation::Live))
+                .chain(doc.references.iter().map(|r| (&r.revision, &r.relation)))
+            {
+                // A citation records history. It never asserts current fitness
+                // and therefore cannot introduce a freshness dependency cycle.
+                if *relation == ArtifactRelation::Citation {
+                    continue;
+                }
                 let Some(r) = records.get(input) else {
                     return Ok(true);
                 };
@@ -54,7 +113,9 @@ impl Store {
                     return Ok(true);
                 };
                 let h = heads(records, &id);
-                if h.len() != 1 || h[0].id != *input || self.artifact_stale(r, records, seen)? {
+                if (*relation == ArtifactRelation::Live && (h.len() != 1 || h[0].id != *input))
+                    || self.artifact_stale(r, records, seen)?
+                {
                     return Ok(true);
                 }
             }
@@ -246,6 +307,24 @@ impl Store {
             entrypoint: doc.entrypoint,
             stale,
             review_status: review_status.into(),
+            review_methods: [
+                ReviewMethod::SourceInspection,
+                ReviewMethod::ExecutedTests,
+                ReviewMethod::BrowserCheck,
+                ReviewMethod::VisualInspection,
+            ]
+            .into_iter()
+            .filter(|method| {
+                reviews.iter().any(|r| {
+                    !r.stale
+                        && !r.self_review
+                        && r.verdict == ReviewVerdict::Verified
+                        && r.checks
+                            .iter()
+                            .any(|c| c.method == *method && c.result == CheckResult::Passed)
+                })
+            })
+            .collect(),
             accepted: heads.len() == 1 && acceptance.is_some_and(|a| a.accepted && !a.stale),
             highlighted,
         })
@@ -267,6 +346,18 @@ impl Store {
                 .is_none_or(harakiri_protocol::event::is_hash)
                 && query.search.as_ref().is_none_or(|q| q.len() <= 512),
             "invalid artifact filter"
+        );
+        ensure!(
+            query.review_status.as_deref().is_none_or(|s| [
+                "unreviewed",
+                "reviewed",
+                "self_reviewed",
+                "changes_requested",
+                "needs_review",
+                "conflict",
+            ]
+            .contains(&s)),
+            "invalid artifact review filter"
         );
         if let Some(channel) = &query.conversation {
             ensure!(
@@ -292,15 +383,26 @@ impl Store {
                 roots.insert(id);
             }
         }
-        let total = roots.len();
+        let mut filtered = Vec::new();
+        for root in roots {
+            let item = self.artifact_summary(&root, &records)?;
+            if query.kind.as_ref().is_none_or(|kind| kind == &item.kind)
+                && query
+                    .review_status
+                    .as_ref()
+                    .is_none_or(|status| status == &item.review_status)
+            {
+                filtered.push(item);
+            }
+        }
+        let total = filtered.len();
         let mut items = Vec::new();
         let mut bytes = 0;
         let mut after = None;
-        for root in roots
+        for item in filtered
             .into_iter()
-            .filter(|r| query.after.as_ref().is_none_or(|a| r > a))
+            .filter(|r| query.after.as_ref().is_none_or(|a| &r.id > a))
         {
-            let item = self.artifact_summary(&root, &records)?;
             let size = serde_json::to_vec(&item)?.len();
             if items.len() >= 32 || bytes + size > 768 * 1024 {
                 after = items.last().map(|i: &ArtifactSummary| i.id.clone());
@@ -313,6 +415,31 @@ impl Store {
             items,
             after,
             total,
+            candidates: crate::artifacts::candidate_heads(&records)
+                .iter()
+                .map(|e| {
+                    let Payload::ArtifactRecorded {
+                        action: ArtifactAction::Candidate { revision: id, .. },
+                        ..
+                    } = &e.body.payload
+                    else {
+                        unreachable!()
+                    };
+                    let source = records
+                        .get(id)
+                        .ok_or_else(|| anyhow!("candidate revision unavailable"))?;
+                    Ok(ArtifactCandidate {
+                        id: e.id.clone(),
+                        revision: id.clone(),
+                        title: revision(source)
+                            .ok_or_else(|| anyhow!("candidate revision required"))?
+                            .1
+                            .title,
+                        stale: self.artifact_evidence_stale(mission, id)?
+                            || self.artifact_stale(e, &records, &mut BTreeSet::new())?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
         })
     }
     pub fn artifact_detail(&self, mission: &str, viewer: &str, id: &str) -> Result<ArtifactDetail> {
@@ -370,6 +497,7 @@ impl Store {
             document,
             parents,
             stale: self.artifact_stale(e, &records, &mut BTreeSet::new())?,
+            freshness_notes: self.artifact_freshness_notes(e, &records)?,
             history,
             reviews: self.artifact_review_views(e, &records)?,
             acceptance: self.artifact_acceptance(e, &records)?,

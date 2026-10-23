@@ -1,3 +1,4 @@
+import { authoringPack } from "../../shared/authoring-packs.mjs";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
 import { Disclosure } from "../ui/Disclosure";
@@ -190,13 +191,19 @@ export function RunApproval({
 }) {
   const { setup } = useApplication();
   const planning = mission.lifecycle.phase === "preparing";
+  const capabilityRevision =
+    execution.capabilityRevision ?? item.capabilityRevision ?? null;
   const networkRevision =
     execution.networkRevision ?? item.networkRevision ?? null;
   const [review, setReview] = useState<
-    Pick<PermissionRequest, "id" | "control" | "direction" | "networkRevision">
+    Pick<
+      PermissionRequest,
+      "id" | "control" | "direction" | "networkRevision" | "capabilityRevision"
+    >
   >(() => ({
     id: crypto.randomUUID(),
     networkRevision,
+    capabilityRevision,
     control: mission.lifecycle.revision,
     direction: planning
       ? mission.lifecycle.revision
@@ -234,6 +241,7 @@ export function RunApproval({
             control: r.control,
             direction: r.direction,
             networkRevision: r.networkRevision ?? null,
+            capabilityRevision: r.capabilityRevision ?? null,
           });
           setTurns(r.turns);
           setMinutes(r.minutes);
@@ -257,6 +265,7 @@ export function RunApproval({
     };
   }, [item.id, mission.id, retryRestore, setup]);
   const stale =
+    (review.capabilityRevision ?? null) !== capabilityRevision ||
     (review.networkRevision ?? null) !== networkRevision ||
     review.control !== mission.lifecycle.revision ||
     review.direction !==
@@ -305,7 +314,8 @@ export function RunApproval({
         it at any time; your local limits still apply.
       </p>
       <p className="d-field-help">
-        Workspace internet:{" "}
+        {authoringPack(execution.capabilityPack ?? item.capabilityPack).label}{" "}
+        tools · Workspace internet:{" "}
         {(execution.networkAccess ?? item.networkAccess) === "internet"
           ? "Public HTTPS allowed; requests may send mission data externally."
           : "Blocked. AI provider access remains available."}
@@ -374,6 +384,7 @@ export function RunApproval({
               setReview({
                 id: crypto.randomUUID(),
                 networkRevision,
+                capabilityRevision,
                 control: mission.lifecycle.revision,
                 direction: planning
                   ? mission.lifecycle.revision

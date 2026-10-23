@@ -202,10 +202,10 @@ impl Ledger {
                 ensure!(
                     !validate
                         || g.charged + g.reserved < g.turns
-                            && a.turns.is_none_or(|n| a.charged + a.reserved < n)
-                            && a.active < a.slots,
+                            && a.turns.is_none_or(|n| a.charged + a.reserved < n),
                     "allowance exhausted"
                 );
+                ensure!(!validate || a.active < a.slots, "execution capacity busy");
                 ensure!(
                     !validate
                         || !self.reservations.values().any(|r| r.grant == *grant
@@ -722,19 +722,22 @@ impl Store {
                                 }))
                     }
                     Payload::AgentDirected {
-                        registration: r,
-                        control: c,
-                        ..
-                    } => r == registration && c == control,
+                        registration: r, ..
+                    } => {
+                        r == registration
+                            && self.assignment_applies_at(e.mission_id(), control, &direction)?
+                    }
                     Payload::WorkRecorded {
-                        control: c,
                         action:
                             harakiri_protocol::work::WorkAction::AssignWorkstream {
                                 registration: r,
                                 ..
                             },
                         ..
-                    } => r == registration && c == control,
+                    } => {
+                        r == registration
+                            && self.assignment_applies_at(e.mission_id(), control, &direction)?
+                    }
                     _ => false,
                 };
                 ensure!(

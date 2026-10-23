@@ -11,8 +11,13 @@ export type AgentLifecycle = {
   observedAt: number | null;
 };
 export function agentContributorLabel(
-  agent: AgentView | undefined,
-  mission: MissionView,
+  agent:
+    | {
+        contributor?: string;
+        identity?: Pick<AgentView["identity"], "contributor_name">;
+      }
+    | undefined,
+  mission: Pick<MissionView, "owner">,
   local?: boolean,
 ): string;
 export function agentLifecycle(input: {

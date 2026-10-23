@@ -67,6 +67,44 @@ test(
       (await n.state()).missions.find((m) => m.id === mission);
     const human = (transfer) =>
       n.handle("artifactTransfer", { mission, transfer });
+    const resumable = {
+      type: "begin",
+      control: mission,
+      conversation: "main",
+      path: "resume.txt",
+      media_type: "text/plain",
+      size: 6,
+      resume_key: "a".repeat(64),
+    };
+    const partial = await human(resumable);
+    await human({
+      type: "chunk",
+      upload: partial.upload,
+      offset: 0,
+      hex: Buffer.from("abc").toString("hex"),
+    });
+    await n.close();
+    start();
+    await n.state();
+    const resumed = await human(resumable);
+    assert.equal(resumed.upload, partial.upload);
+    assert.equal(resumed.offset, 3);
+    // Exact replay is safe; a different chunk can never replace received bytes.
+    await human({
+      type: "chunk",
+      upload: resumed.upload,
+      offset: 0,
+      hex: Buffer.from("abc").toString("hex"),
+    });
+    await assert.rejects(
+      human({
+        type: "chunk",
+        upload: resumed.upload,
+        offset: 0,
+        hex: "000000",
+      }),
+    );
+    await human({ type: "cancel", upload: resumed.upload });
     const upload = async (call, control, conversation, bytes) => {
       const { upload } = await call({
         type: "begin",
@@ -102,6 +140,22 @@ test(
       uploads: [handle],
       retain: [],
     });
+    const repeat = await upload(human, mission, "main", bytes);
+    const replay = await human({
+      type: "publish",
+      control: mission,
+      conversation: "main",
+      artifact: null,
+      parents: [],
+      document: document(),
+      uploads: [repeat],
+      retain: [],
+    });
+    assert.equal(
+      replay.event,
+      first,
+      "A lost response must not duplicate an identical publication",
+    );
     assert.deepEqual(
       await n.readArtifactFile({
         mission,
@@ -118,6 +172,33 @@ test(
     await assert.rejects(
       n.readArtifactFile({ mission, revision: first, path: "../node.sqlite" }),
     );
+    assert.equal(
+      (
+        await n.handle("artifactCache", {
+          mission,
+          revision: first,
+          action: "save",
+        })
+      ).state,
+      "saving",
+    );
+    await n.artifactCaches.get(`${mission}:${first}`).pending;
+    assert.equal(
+      (
+        await n.handle("artifactCache", {
+          mission,
+          revision: first,
+          action: "status",
+        })
+      ).state,
+      "saved",
+    );
+    assert.equal(
+      (await n.handle("artifactDetail", { mission, revision: first }))
+        .available_files.length,
+      1,
+    );
+
     let inspected = 0;
     n.inspectArtifact = async (request, detail) => {
       inspected++;
@@ -216,6 +297,14 @@ test(
         summary: "Read exact saved bytes",
         conditions: "Native service fixture; no process or model",
         evidence: [first],
+        checks: [
+          {
+            method: "executed_tests",
+            result: "passed",
+            details:
+              "Compared imported bytes with the exact published fixture bytes; no browser or quality assessment.",
+          },
+        ],
       },
     });
     await assert.rejects(

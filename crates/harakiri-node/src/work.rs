@@ -34,6 +34,7 @@ pub fn link(e: &Event) -> Option<WorkLink> {
             harakiri_protocol::artifacts::ArtifactAction::Publish { .. } => &e.id,
             harakiri_protocol::artifacts::ArtifactAction::Review { revision, .. }
             | harakiri_protocol::artifacts::ArtifactAction::Accept { revision, .. }
+            | harakiri_protocol::artifacts::ArtifactAction::Candidate { revision, .. }
             | harakiri_protocol::artifacts::ArtifactAction::Highlight { revision, .. } => revision,
         };
         return Some(WorkLink {
@@ -445,11 +446,10 @@ impl Store {
                 "invalid work authorization"
             );
             let valid = match &direction.body.payload {
-                Payload::AgentDirected {
-                    registration,
-                    control: c,
-                    ..
-                } => Some(registration) == agent.as_ref() && c == control,
+                Payload::AgentDirected { registration, .. } => {
+                    Some(registration) == agent.as_ref()
+                        && self.assignment_applies_at(mission, control, &direction)?
+                }
                 Payload::MissionControlled {
                     action: harakiri_protocol::lifecycle::ControlAction::Start { participants, .. },
                     ..
@@ -463,12 +463,11 @@ impl Store {
                                 .is_some_and(|p| p.coordination == Coordination::Peer))
                 }
                 Payload::WorkRecorded {
-                    control: c,
                     action: WorkAction::AssignWorkstream { registration, .. },
                     ..
                 } => {
                     Some(registration) == agent.as_ref()
-                        && history.at(c)?.lifecycle.terms_revision == state.lifecycle.terms_revision
+                        && self.assignment_applies_at(mission, control, &direction)?
                 }
                 _ => false,
             };

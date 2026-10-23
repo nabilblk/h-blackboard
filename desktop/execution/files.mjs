@@ -38,8 +38,8 @@ export async function exportWorkspace(contribution, input) {
     path: f.path,
     bytes: Buffer.from(f.base64, "base64"),
   }));
-  if (decoded.reduce((n, f) => n + f.bytes.length, 0) > MAX)
-    throw new Error("Export exceeds 16 MiB.");
+  if (decoded.reduce((n, f) => n + f.bytes.length, 0) > 2 * MAX)
+    throw new Error("Export exceeds 32 MiB.");
   // Validate prefix conflicts before creating any files.
   const names = new Set(files.map((f) => f.path));
   for (const file of files) {

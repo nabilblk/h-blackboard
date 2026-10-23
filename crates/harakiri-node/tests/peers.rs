@@ -223,6 +223,65 @@ async fn interrupted_bounded_catchup_resumes_from_another_replica_after_restart(
 }
 
 #[tokio::test]
+async fn concurrent_writers_cross_page_boundaries_over_real_peer_transport() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let a = local(&root.path().join("a"), 1).await?;
+    let b = local(&root.path().join("b"), 2).await?;
+    let c = local(&root.path().join("c"), 3).await?;
+    let mission = with_store(&a.store, |s| {
+        s.create(&a.identity, a.endpoint.id().to_string(), definition())
+    })?
+    .id;
+    admit(&a, &mission, &b)?;
+    admit(&a, &mission, &c)?;
+    for i in 0..80 {
+        a.append(
+            &mission,
+            Payload::MessagePosted {
+                text: format!("Common prefix {i}"),
+            },
+        )?;
+    }
+    b.pull(a.endpoint.addr(), &mission).await?;
+    c.pull(a.endpoint.addr(), &mission).await?;
+    // Each peer now has an unknown remote head and a known prefix larger than
+    // a page: the old bounded-head delta could resend that prefix indefinitely.
+    for (peer, count) in [(&a, 63), (&b, 64), (&c, 65)] {
+        for i in 0..count {
+            peer.append(
+                &mission,
+                Payload::MessagePosted {
+                    text: format!("Independent branch {i}"),
+                },
+            )?;
+        }
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        for _ in 0..6 {
+            tokio::try_join!(
+                a.sync_scope(b.endpoint.addr(), &mission, "main"),
+                b.sync_scope(c.endpoint.addr(), &mission, "main"),
+                c.sync_scope(a.endpoint.addr(), &mission, "main"),
+            )?;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    let expected = with_store(&a.store, |s| s.heads(&mission))?;
+    for peer in [&a, &b, &c] {
+        assert_eq!(
+            with_store(&peer.store, |s| s.missions())?[0].event_count,
+            3 + 80 + 63 + 64 + 65
+        );
+        assert_eq!(with_store(&peer.store, |s| s.heads(&mission))?, expected);
+    }
+    a.shutdown().await?;
+    b.shutdown().await?;
+    c.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn agent_private_stream_replicates_only_to_its_host_and_stops_after_withdrawal() -> Result<()>
 {
     use harakiri_node::communication::AgentOperation;
@@ -371,6 +430,7 @@ async fn forged_public_manifest_cannot_launder_private_blob_access() -> Result<(
                     limitations: String::new(),
                     entrypoint: Some("index.html".into()),
                     inputs: vec![],
+                    references: vec![],
                     files: files.clone(),
                 },
             },
@@ -386,5 +446,43 @@ async fn forged_public_manifest_cannot_launder_private_blob_access() -> Result<(
         .can_read_blob(&b.endpoint.id().to_string(), &files[0].hash))?);
     a.shutdown().await?;
     b.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn stable_compatibility_does_not_expose_or_authorize_history() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let owner = local(&root.path().join("owner"), 81).await?;
+    let stranger = local(&root.path().join("stranger"), 82).await?;
+    let reply = stranger.compatibility(owner.endpoint.addr()).await?;
+    assert!(reply.compatible);
+    assert_eq!(reply.protocol, harakiri_protocol::limits::VERSION as u16);
+    let connection = stranger
+        .endpoint
+        .connect(owner.endpoint.addr(), harakiri_node::compatibility::ALPN)
+        .await?;
+    let (mut send, mut recv) = connection.open_bi().await?;
+    send.write_all(br#"{"protocol":1}"#).await?;
+    send.finish()?;
+    let bytes = recv.read_to_end(256).await?;
+    let reply: serde_json::Value = serde_json::from_slice(&bytes)?;
+    assert_eq!(reply.as_object().unwrap().len(), 2);
+    assert_eq!(reply["compatible"], false);
+    connection.close(0u32.into(), b"done");
+    let mission = with_store(&owner.store, |s| {
+        s.create(
+            &owner.identity,
+            owner.endpoint.id().to_string(),
+            definition(),
+        )
+    })?;
+    assert!(
+        stranger
+            .pull(owner.endpoint.addr(), &mission.id)
+            .await
+            .is_err()
+    );
+    stranger.shutdown().await?;
+    owner.shutdown().await?;
     Ok(())
 }

@@ -126,12 +126,83 @@ fn exact_start_snapshot_late_direction_and_human_precedence_survive_reordering()
     let early = offer(&mut s, &contributor, m, "Accessibility");
     history.push(early.bytes().to_vec());
     assert_eq!(view(&s, m, &early.id).status, AgentStatus::WaitingForStart);
+    assert!(
+        s.direct_agent(
+            &contributor,
+            m,
+            &appointment.id,
+            &early.id,
+            "Self-assign".into()
+        )
+        .is_err()
+    );
+    let prepared = s
+        .direct_agent(
+            &coordinator,
+            m,
+            &appointment.id,
+            &early.id,
+            "Review the first draft after Start".into(),
+        )
+        .unwrap();
+    history.push(prepared.bytes().to_vec());
+    let repeated = s
+        .direct_agent(
+            &coordinator,
+            m,
+            &appointment.id,
+            &early.id,
+            "Review the first draft after Start".into(),
+        )
+        .unwrap();
+    assert_eq!(prepared.id, repeated.id);
+    assert_eq!(view(&s, m, &early.id).status, AgentStatus::WaitingForStart);
+    let worker = contributor
+        .coordinator_identity(m, "Accessibility")
+        .unwrap();
+    let task = harakiri_protocol::work::WorkAction::CreateTask {
+        definition: harakiri_protocol::work::TaskDefinition {
+            title: "Review the draft".into(),
+            description: "Inspect the delivered page".into(),
+            criteria: vec![],
+            workstream: None,
+        },
+        assignees: vec![early.id.clone()],
+    };
+    assert!(s.work(&worker, m, &appointment.id, task.clone()).is_err());
+    assert!(
+        s.append(
+            &worker,
+            m,
+            Payload::AgentAcknowledged {
+                registration: early.id.clone(),
+                control: appointment.id.clone(),
+                direction: prepared.id.clone()
+            }
+        )
+        .is_err()
+    );
     let begun = start(&mut s, &owner, m);
     history.push(begun.bytes().to_vec());
     assert_eq!(
         view(&s, m, &early.id).status,
         AgentStatus::DirectionAssigned
     );
+    assert_eq!(view(&s, m, &early.id).direction.unwrap().id, prepared.id);
+    let ack = s
+        .append(
+            &worker,
+            m,
+            Payload::AgentAcknowledged {
+                registration: early.id.clone(),
+                control: begun.id.clone(),
+                direction: prepared.id.clone(),
+            },
+        )
+        .unwrap();
+    history.push(ack.bytes().to_vec());
+    let work = s.work(&worker, m, &begun.id, task).unwrap();
+    history.push(work.bytes().to_vec());
     let late = offer(&mut s, &contributor, m, "Schedule");
     history.push(late.bytes().to_vec());
     assert_eq!(
@@ -354,7 +425,7 @@ fn schema_eight_rebuild_is_atomic_and_keeps_signed_bytes() {
     let offer = offer(&mut s, &owner, &m, "Persistent");
     drop(s);
     let db = rusqlite::Connection::open(&path).unwrap();
-    db.execute_batch("DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; PRAGMA user_version=7;")
+    db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; PRAGMA user_version=7;")
         .unwrap();
     drop(db);
     let s = Store::open(&path).unwrap();
@@ -362,7 +433,7 @@ fn schema_eight_rebuild_is_atomic_and_keeps_signed_bytes() {
     assert_eq!(s.agent_page(&m, None).unwrap().total, 1);
     drop(s);
     let db = rusqlite::Connection::open(&path).unwrap();
-    db.execute_batch("DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; PRAGMA user_version=7;")
+    db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; PRAGMA user_version=7;")
         .unwrap();
     db.execute(
         "UPDATE events SET bytes=?1 WHERE id=?2",

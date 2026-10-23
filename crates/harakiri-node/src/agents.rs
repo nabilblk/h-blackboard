@@ -22,10 +22,81 @@ pub fn is_agent_record(p: &Payload) -> bool {
             | Payload::AgentWithdrawn { .. }
             | Payload::AgentDirected { .. }
             | Payload::AgentAcknowledged { .. }
+            | Payload::AgentClarified { .. }
+            | Payload::AgentClarificationAcknowledged { .. }
     )
 }
 
 impl Store {
+    /// Shared by roster projection and permission validation. A preparation
+    /// assignment may carry through Start only for a participant in that exact
+    /// reviewed snapshot, with unchanged terms and assignment authority. This
+    /// evaluates the named control, never whatever arrived later on this node.
+    pub(crate) fn assignment_applies_at(
+        &self,
+        mission: &str,
+        control: &str,
+        assignment: &Event,
+    ) -> Result<bool> {
+        let (assigned_control, registration, peer_assignment) = match &assignment.body.payload {
+            Payload::AgentDirected {
+                control,
+                registration,
+                ..
+            } => (control.as_str(), registration, false),
+            _ => match crate::work::action(assignment) {
+                Some((
+                    control,
+                    harakiri_protocol::work::WorkAction::AssignWorkstream { registration, .. },
+                )) => (control, registration, true),
+                _ => return Ok(false),
+            },
+        };
+        let history = self.control_history(mission)?;
+        let current = history.at(control)?;
+        let previous = history.at(assigned_control)?;
+        if previous.lifecycle.terms_revision != current.lifecycle.terms_revision {
+            return Ok(false);
+        }
+        let coordinator = current.lifecycle.coordinator.as_ref().is_some_and(|c| {
+            c.identity.author == assignment.body.author
+                && previous
+                    .lifecycle
+                    .coordinator
+                    .as_ref()
+                    .is_some_and(|p| p.appointment == c.appointment)
+        });
+        if assignment.body.author != history.root.body.author
+            && !coordinator
+            && (!peer_assignment
+                || current
+                    .definition
+                    .policy
+                    .as_ref()
+                    .is_none_or(|p| p.coordination != Coordination::Peer))
+        {
+            return Ok(false);
+        }
+        if control != assigned_control && current.lifecycle.phase == MissionPhase::Active {
+            let started = history.get(control)?;
+            if !matches!(&started.body.payload, Payload::MissionControlled { action: ControlAction::Start { participants, .. }, .. } if participants.contains(registration))
+            {
+                return Ok(false);
+            }
+        }
+        let mut cursor = control;
+        for _ in 0..harakiri_protocol::limits::MAX_CONTROL_EVENTS {
+            if cursor == assigned_control {
+                return Ok(true);
+            }
+            let event = history.get(cursor)?;
+            let Payload::MissionControlled { previous, .. } = &event.body.payload else {
+                return Ok(false);
+            };
+            cursor = previous;
+        }
+        Ok(false)
+    }
     pub(crate) fn agent_records(&self, mission: &str) -> Result<Arc<Records>> {
         if let Some(records) = self.agent_cache.borrow().get(mission) {
             return Ok(records.clone());
@@ -144,7 +215,10 @@ impl Store {
         let current = self.control_state(mission)?;
         ensure!(
             current.lifecycle.revision == revision
-                && current.lifecycle.phase == MissionPhase::Active,
+                && matches!(
+                    current.lifecycle.phase,
+                    MissionPhase::Preparing | MissionPhase::Active
+                ),
             "mission direction changed"
         );
         let view = self
@@ -155,7 +229,9 @@ impl Store {
         ensure!(
             matches!(
                 view.status,
-                AgentStatus::WaitingForDirection | AgentStatus::DirectionAssigned
+                AgentStatus::WaitingForStart
+                    | AgentStatus::WaitingForDirection
+                    | AgentStatus::DirectionAssigned
             ),
             "agent cannot receive a direction"
         );
@@ -282,12 +358,19 @@ impl Store {
                 Payload::AgentWithdrawn { registration } => {
                     withdrawn.insert(registration);
                 }
-                Payload::AgentDirected {
-                    registration,
-                    control,
-                    ..
-                } if control == &state.lifecycle.revision => {
-                    let rank = |r: &Event| (r.body.author == owner, r.body.sequence);
+                Payload::AgentDirected { registration, .. }
+                    if self.assignment_applies_at(mission, &state.lifecycle.revision, e)? =>
+                {
+                    let rank = |r: &Event| {
+                        let Payload::AgentDirected { control: c, .. } = &r.body.payload else {
+                            unreachable!()
+                        };
+                        (
+                            r.body.author == owner,
+                            control.get(c).map_or(0, |event| event.body.sequence),
+                            r.body.sequence,
+                        )
+                    };
                     if directions
                         .get(registration.as_str())
                         .is_none_or(|r| rank(e) > rank(r))
@@ -332,6 +415,17 @@ impl Store {
             ) {
                 AgentStatus::Paused
             } else if state.lifecycle.phase == MissionPhase::Preparing {
+                if let Some(record) = directions.get(e.id.as_str()) {
+                    let Payload::AgentDirected { text, .. } = &record.body.payload else {
+                        unreachable!()
+                    };
+                    direction = Some(DirectionView {
+                        id: record.id.clone(),
+                        author: record.body.author.clone(),
+                        text: text.clone(),
+                        source: "individual".into(),
+                    });
+                }
                 AgentStatus::WaitingForStart
             } else {
                 // Human direction wins over Coordinator direction for this
@@ -347,6 +441,13 @@ impl Store {
                         .ok_or_else(|| anyhow!("invalid assignment record"))?
                         .0;
                     direct.is_none_or(|d| {
+                        let Payload::AgentDirected {
+                            control: directed_control,
+                            ..
+                        } = &d.body.payload
+                        else {
+                            unreachable!()
+                        };
                         (
                             a.author == owner,
                             control
@@ -355,7 +456,7 @@ impl Store {
                             record.body.sequence,
                         ) > (
                             d.body.author == owner,
-                            started.body.sequence,
+                            control.get(directed_control).map_or(0, |r| r.body.sequence),
                             d.body.sequence,
                         )
                     })
@@ -413,6 +514,15 @@ impl Store {
                 contributor: e.body.author.clone(),
                 terms_revision: terms,
                 status,
+                pending_clarifications: direction.as_ref().map_or(0, |d| {
+                    crate::clarifications::pending(
+                        &records,
+                        &e.id,
+                        &state.lifecycle.revision,
+                        &d.id,
+                    )
+                    .len()
+                }),
                 direction,
                 acknowledgment,
                 assignment: assignments.get(&e.id).cloned(),
@@ -507,10 +617,12 @@ impl Store {
                     }
                     let p = history.at(control)?;
                     ensure!(
-                        p.lifecycle.phase == MissionPhase::Active
-                            && history.at(reviewed)?.lifecycle.terms_revision
-                                == p.lifecycle.terms_revision,
-                        "direction requires current active mission terms"
+                        matches!(
+                            p.lifecycle.phase,
+                            MissionPhase::Preparing | MissionPhase::Active
+                        ) && history.at(reviewed)?.lifecycle.terms_revision
+                            == p.lifecycle.terms_revision,
+                        "direction requires current preparing or active mission terms"
                     );
                     ensure!(
                         e.body.author == history.root.body.author

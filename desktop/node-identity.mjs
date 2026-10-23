@@ -16,7 +16,7 @@ import {
 import { join } from "node:path";
 import { z } from "zod";
 
-const Keys = z
+export const Keys = z
   .object({
     version: z.literal(1),
     owner_seed: z.string().regex(/^[a-f0-9]{64}$/),
@@ -115,6 +115,7 @@ export class NodeIdentity {
   }
 
   async save(keys) {
+    keys = Keys.parse(keys);
     const ciphertext = await this.secureStorage.encryptStringAsync(
       JSON.stringify(keys),
     );

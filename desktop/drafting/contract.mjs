@@ -20,6 +20,12 @@ export const Brief = z
     name: text(120),
     objective: text(4096),
     scope: text(8192),
+    audience: text(512).default(""),
+    deliveryFormat: text(1024).default(""),
+    evidence: text(1024).default(""),
+    qualityBar: text(1024).default(""),
+    aspirations: text(1024).default(""),
+    approach: text(1024).default(""),
     deliverables: list,
     criteria: z.array(text(1024)).max(32),
     assumptions: list,
@@ -46,7 +52,10 @@ export const Response = z
     patch: z
       .object(
         Object.fromEntries(
-          Object.entries(Brief.shape).map(([k, v]) => [k, v.nullable()]),
+          Object.entries(Brief.shape).map(([k, v]) => [
+            k,
+            v.nullable().default(null),
+          ]),
         ),
       )
       .strict(),
@@ -85,7 +94,7 @@ export const Draft = z
     fieldRevisions: z
       .object(
         Object.fromEntries(
-          Object.keys(Brief.shape).map((k) => [k, z.number()]),
+          Object.keys(Brief.shape).map((k) => [k, z.number().default(0)]),
         ),
       )
       .strict(),

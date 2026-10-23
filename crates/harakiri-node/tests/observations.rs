@@ -44,6 +44,7 @@ fn reports_require_contributor_signature_current_scope_and_freshness_without_cha
         .unwrap()
         .as_millis() as u64;
     let report = Observation {
+        resources: None,
         mission: root.id.clone(),
         registration: offered.id.clone(),
         control: root.id.clone(),
@@ -146,6 +147,7 @@ fn expired_report_cannot_be_replayed_to_refresh_receipt_age() {
         .unwrap()
         .as_millis() as u64;
     let report = Observation {
+        resources: None,
         mission: root.id.clone(),
         registration: offered.id,
         control: root.id.clone(),

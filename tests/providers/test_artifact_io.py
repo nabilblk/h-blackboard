@@ -7,7 +7,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "desktop/execution/guest"))
-from artifact_io import import_artifact, CHUNK, MAX_FILE
+from artifact_io import import_artifact, import_project, publication_context, publication_preflight, CHUNK, MAX_FILE
 
 
 class Transfer:
@@ -45,6 +45,14 @@ class Transfer:
 
 
 class ArtifactImportTests(unittest.TestCase):
+    def test_scoped_transfer_retains_native_error_code_and_retryability(self):
+        f = Transfer()
+        f.modify = lambda value, operation: {"error":"Required bytes have not arrived.","code":"history_incomplete","retryable":True}
+        with self.assertRaises(ValueError) as failure: f.run()
+        self.assertEqual(failure.exception.code,"history_incomplete")
+        self.assertTrue(failure.exception.retryable)
+        self.assertEqual(f.writes,[])
+
     def test_exact_binary_and_multichunk_transfer_with_small_receipt(self):
         f = Transfer(bytes(range(256)) * 500)
         receipt = f.run()
@@ -118,6 +126,67 @@ class ArtifactImportTests(unittest.TestCase):
         f = Transfer()
         with self.assertRaisesRegex(ValueError, "Denied"):
             import_artifact(f.args, f.board, lambda _: {"error": "Denied"})
+
+
+class PublicationTests(unittest.TestCase):
+    def test_new_publication_uses_workstream_but_existing_lineage_is_never_guessed(self):
+        control, stream = "a" * 64, "b" * 64
+        def board(tool, args):
+            if args["operation"]["type"] == "artifact_detail":
+                return {"artifact":{"conversation":"private:"+stream}}
+            return {"lifecycle":{"revision":control},"agent":{"assignment":{"workstream":stream}}}
+        value = publication_context({"document":{}},board)
+        self.assertEqual(value["conversation"],"workstream:"+stream)
+        self.assertEqual(value["control"],control)
+        self.assertEqual(value["parents"],[])
+        self.assertEqual(publication_context({"conversation":"main"},board)["conversation"],"main")
+        with self.assertRaisesRegex(ValueError,"parent revisions"):
+            publication_context({"artifact":"c"*64},board)
+        revised = publication_context({"artifact":"c"*64,"parents":["d"*64]},board)
+        self.assertEqual(revised["conversation"],"private:"+stream)
+        self.assertEqual(revised["parents"],["d"*64])
+
+    def test_project_is_written_only_when_every_file_and_permission_pass(self):
+        for failure in (None, "second-file", "permission"):
+            writes=[]
+            def board(tool,args):
+                if tool=="check_permission":
+                    return {"allowed":failure!="permission"}
+                operation=args["operation"]
+                if operation["type"]=="artifact_detail":
+                    return {"revision":"a"*64,"document":{"files":[{"path":p,"size":1,"hash":"b"*64} for p in ("index.html","src/data.json")]}}
+                if failure=="second-file" and operation["transfer"]["path"]=="src/data.json":
+                    return {"error":"Transfer failed"}
+                return {"hex":"78","offset":1,"complete":True,"size":1,"hash":"b"*64}
+            def files(request):
+                writes.append(request)
+                return {"imported":2}
+            args={"revision":"a"*64,"destination":"review/project"}
+            if failure:
+                with self.assertRaises(ValueError): import_project(args,board,files)
+                self.assertEqual(writes,[])
+            else:
+                result=import_project(args,board,files)
+                self.assertEqual(len(writes),1)
+                self.assertEqual(writes[0]["action"],"import_project")
+                self.assertEqual([f["path"] for f in writes[0]["files"]],["index.html","src/data.json"])
+                self.assertEqual(len(result["files"]),2)
+
+    def test_lineage_error_precedes_upload(self):
+        calls = []
+        root, current, wrong = "a" * 64, "b" * 64, "c" * 64
+        def board(tool, args):
+            calls.append(args)
+            return {"artifact": {"id": root, "heads": [current]}}
+        args = {"artifact": root, "parents": [wrong], "paths": ["index.html"], "document": {"entrypoint": "index.html", "inputs": []}}
+        with self.assertRaisesRegex(ValueError, "Parents"):
+            publication_preflight(args, board)
+        self.assertEqual(len(calls), 1)
+        args["parents"] = [current]
+        publication_preflight(args, board)
+        args["document"]["inputs"] = [current]
+        with self.assertRaisesRegex(ValueError, "own earlier version"):
+            publication_preflight(args, board)
 
 
 if __name__ == "__main__":

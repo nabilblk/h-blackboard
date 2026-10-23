@@ -1,3 +1,4 @@
+import { CapabilityPackField } from "./CapabilityPack";
 import { Field } from "../ui/Field";
 import { Disclosure } from "../ui/Disclosure";
 import { Button } from "../ui/Button";
@@ -21,7 +22,10 @@ import {
 } from "../application/contracts/workspace";
 import { Heading, Status, type Perform } from "./ui";
 import { NetworkAccessField } from "./NetworkAccess";
-import type { NetworkAccess } from "../application/contracts/workspace";
+import type {
+  NetworkAccess,
+  CapabilityPack,
+} from "../application/contracts/workspace";
 
 export default function Prepare({
   busy,
@@ -47,6 +51,8 @@ export default function Prepare({
     path: string;
   } | null>(null);
   const [runtime, setRuntime] = useState<Runtime>("grok");
+  const [capabilityPack, setCapabilityPack] =
+    useState<CapabilityPack>("general");
   const [networkAccess, setNetworkAccess] =
     useState<NetworkAccess>("restricted");
   const [mode, setMode] = useState<"bounded" | "unlimited">("bounded");
@@ -157,6 +163,7 @@ export default function Prepare({
                     workspaceChoiceId: workspace.id,
                     runtime,
                     networkAccess,
+                    capabilityPack,
                     limits,
                   },
                 ),
@@ -231,11 +238,18 @@ export default function Prepare({
                 </select>
               </Field>
               {nodeReview ? (
-                <NetworkAccessField
-                  value={networkAccess}
-                  onChange={setNetworkAccess}
-                  disabled={busy}
-                />
+                <>
+                  <CapabilityPackField
+                    value={capabilityPack}
+                    onChange={setCapabilityPack}
+                    disabled={busy}
+                  />
+                  <NetworkAccessField
+                    value={networkAccess}
+                    onChange={setNetworkAccess}
+                    disabled={busy}
+                  />
+                </>
               ) : null}
               <p className="d-field-help">
                 Sign in with your own subscription inside each agent’s isolated

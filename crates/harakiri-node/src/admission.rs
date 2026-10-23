@@ -442,15 +442,30 @@ impl Store {
         Ok(())
     }
     pub fn contacts(&self, mission: &str) -> Result<Vec<String>> {
+        self.recovery_contacts(mission, false)
+    }
+    pub(crate) fn recovery_contacts(
+        &self,
+        mission: &str,
+        include_expired: bool,
+    ) -> Result<Vec<String>> {
         let mut q=self.connection.prepare("SELECT signed FROM contacts WHERE mission=?1 AND expires_ms>?2
             AND NOT EXISTS(SELECT 1 FROM revocations WHERE revocations.mission=contacts.mission AND member=contacts.author)
             AND NOT EXISTS(SELECT 1 FROM revocation_notices WHERE revocation_notices.mission=contacts.mission AND member=contacts.author)
             AND NOT EXISTS(SELECT 1 FROM withdrawals WHERE withdrawals.mission=contacts.mission AND author=contacts.author)
             ORDER BY author LIMIT 1024")?;
-        Ok(
-            q.query_map(params![mission, i64::try_from(now())?], |r| r.get(0))?
-                .collect::<rusqlite::Result<_>>()?,
-        )
+        Ok(q.query_map(
+            params![
+                mission,
+                if include_expired {
+                    0
+                } else {
+                    i64::try_from(now())?
+                }
+            ],
+            |r| r.get(0),
+        )?
+        .collect::<rusqlite::Result<_>>()?)
     }
     pub fn remember_join(
         &mut self,

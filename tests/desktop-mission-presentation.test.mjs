@@ -80,14 +80,14 @@ test("a new mission has one setup dependency; peer collaboration does not invent
   );
 });
 
-test("paused plan re-review is the same next step in the summary and inspector", () => {
+test("intentional pause is calm and does not demand a Resume decision", () => {
   const f = fixture();
   f.mission.lifecycle.phase = "paused";
   f.mission.lifecycle.plan = { text: "Compare the alternatives" };
   const p = project(f, { agents: [], contributions: [] });
-  assert.equal(p.decisions.length, 1);
-  assert.equal(p.next.action.label, "Review plan to resume");
-  assert.equal(p.next.action.review, true);
+  assert.equal(p.decisions.length, 0);
+  assert.equal(p.next, null);
+  assert.equal(p.summary, "Mission paused");
   assert.equal(project(f, { viewer: "visitor", agents: [] }).next, null);
   f.mission.lifecycle.phase = "archived";
   assert.equal(project(f, { agents: [] }).next, null);
@@ -297,4 +297,29 @@ test("capacity and new-work waits preserve confirmed process state and name the 
   assert.equal(s.cause, "capacity");
   assert.equal(s.responsible, "automatic within your approval");
   assert.equal(s.action, null);
+});
+
+test("a declared dependency remains visible instead of generic automatic-approval text", () => {
+  const f = fixture();
+  f.mission.lifecycle.phase = "active";
+  f.execution.record.status = "waiting";
+  f.execution.record.wake = {
+    waiting: {
+      reason: "Waiting for the circuit review",
+      artifacts: [],
+      reviews: ["review"],
+    },
+  };
+  f.execution.agreement = {
+    status: "active",
+    waitingFor: "new_work",
+    message: "Waiting for new work",
+  };
+  const status = project(f).rows[0].status;
+  assert.equal(status.state, "waiting");
+  assert.equal(status.cause, "artifact_dependency");
+  assert.equal(status.reason, "Agent reports: Waiting for the circuit review");
+  assert.equal(status.action, null);
+  f.mission.lifecycle.phase = "paused";
+  assert.notEqual(project(f).rows[0].status.cause, "artifact_dependency");
 });

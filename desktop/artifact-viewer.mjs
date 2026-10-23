@@ -5,6 +5,12 @@ import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { layoutObservation, layoutLimitations } from "./artifact-layout.mjs";
+import {
+  ArtifactBrowserRequest,
+  interactionScript,
+  browserObservation,
+} from "./artifact-browser.mjs";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const ARTIFACT_CSP = [
   "default-src 'none'",
@@ -101,6 +107,7 @@ export function createArtifactViewer(nodeService, ownerWindow) {
     const routes = new Map(files);
     if (!html) routes.set(readerPath, null);
     const bytes = await nodeService.readArtifactFile(input);
+    observation?.signal?.throwIfAborted();
     const partition = session.fromPartition(`artifact-${nonce}`, {
       cache: false,
     });
@@ -178,7 +185,7 @@ export function createArtifactViewer(nodeService, ownerWindow) {
     });
     const win = new BrowserWindow({
       width: observation?.width ?? 1100,
-      height: observation ? 900 : 820,
+      height: observation?.height ?? (observation ? 900 : 820),
       useContentSize: !!observation,
       minWidth: observation ? 0 : 500,
       minHeight: 400,
@@ -186,7 +193,10 @@ export function createArtifactViewer(nodeService, ownerWindow) {
       autoHideMenuBar: true,
       backgroundColor: "#0d0d0c",
       title: `Artifact · ${detail.document.title} · ${input.revision.slice(0, 8)}`,
-      webPreferences: prefs(partition),
+      webPreferences: {
+        ...prefs(partition),
+        webgl: !observation?.disableWebgl,
+      },
     });
     windows.add(win);
     for (const contents of [win.webContents]) {
@@ -210,6 +220,10 @@ export function createArtifactViewer(nodeService, ownerWindow) {
       void partition.clearStorageData();
     });
     let timer;
+    const abort = () => {
+      if (!win.isDestroyed()) win.destroy();
+    };
+    observation?.signal?.addEventListener("abort", abort, { once: true });
     const errors = [];
     if (observation)
       win.webContents.on("console-message", (details) => {
@@ -217,19 +231,111 @@ export function createArtifactViewer(nodeService, ownerWindow) {
           errors.push(String(details.message).slice(0, 240));
       });
     try {
-      const loaded = win.loadURL(
-        `${origin}/${html ? input.path.split("/").map(encodeURIComponent).join("/") : readerPath}`,
-      );
+      observation?.signal?.throwIfAborted();
+      const loaded = (async () => {
+        if (observation?.browser) {
+          // Initialize the renderer before requesting CDP emulation. Sending
+          // the command on a not-yet-navigated WebContents can wait forever.
+          await win.loadURL("about:blank");
+          // Fixed host-owned emulation only: callers cannot issue CDP commands.
+          win.webContents.debugger.attach("1.3");
+          await win.webContents.debugger.sendCommand(
+            "Emulation.setEmulatedMedia",
+            {
+              features: [
+                {
+                  name: "prefers-reduced-motion",
+                  value: observation.reducedMotion ? "reduce" : "no-preference",
+                },
+              ],
+            },
+          );
+        }
+        observation?.signal?.throwIfAborted();
+        await win.loadURL(
+          `${origin}/${html ? input.path.split("/").map(encodeURIComponent).join("/") : readerPath}`,
+        );
+      })();
       if (observation)
         return await Promise.race([
           (async () => {
             await loaded;
+            const steps = [];
+            if (observation.browser) {
+              for (const step of observation.steps) {
+                observation.signal?.throwIfAborted();
+                if (step.type === "wait") {
+                  await delay(step.milliseconds);
+                  steps.push({ ...step, ok: true });
+                } else if (step.type === "press") {
+                  win.webContents.sendInputEvent({
+                    type: "keyDown",
+                    keyCode: step.key,
+                  });
+                  // Chromium performs native Enter activation on the character
+                  // event. KeyDown/KeyUp alone focus controls but do not model
+                  // a real key press; pages must not need custom key handlers.
+                  const character = { Enter: "\r", Space: " " }[step.key];
+                  if (character)
+                    win.webContents.sendInputEvent({
+                      type: "char",
+                      keyCode: character,
+                    });
+                  win.webContents.sendInputEvent({
+                    type: "keyUp",
+                    keyCode: step.key,
+                  });
+                  steps.push({ ...step, ok: true });
+                } else
+                  steps.push(
+                    await win.webContents.executeJavaScriptInIsolatedWorld(
+                      999,
+                      [{ code: interactionScript(step) }],
+                    ),
+                  );
+                await delay(50);
+              }
+            }
             // The observation runs in an isolated JS world, separate from page
             // globals. It is still a limited measurement, not a trust verdict.
             const measured =
               await win.webContents.executeJavaScriptInIsolatedWorld(999, [
                 { code: layoutObservation },
               ]);
+            if (observation.browser) {
+              await delay(150);
+              const dom =
+                await win.webContents.executeJavaScriptInIsolatedWorld(999, [
+                  { code: browserObservation },
+                ]);
+              const screenshot = (await win.webContents.capturePage())
+                .resize({ width: Math.min(observation.width, 1280) })
+                .toJPEG(75);
+              if (screenshot.length > 768 * 1024)
+                throw new Error("Preview image exceeds the bounded tool size.");
+              return {
+                revision: input.revision,
+                path: input.path,
+                engine: `Chromium ${process.versions.chrome}`,
+                conditions: {
+                  width: observation.width,
+                  height: observation.height,
+                  reducedMotion: observation.reducedMotion,
+                  webglDisabled: observation.disableWebgl,
+                  network: "offline",
+                },
+                layout: measured,
+                steps,
+                dom,
+                errors,
+                image: {
+                  mimeType: "image/jpeg",
+                  data: screenshot.toString("base64"),
+                },
+                limitations:
+                  "Offline sandboxed Chromium renderer on the contributor host; no preload, board bridge, credentials, host files or external network. DOM and screenshots remain untrusted evidence. This is not a scientific or accessibility certification.",
+              };
+            }
             return { ...measured, errors };
           })(),
           new Promise((_, reject) => {
@@ -246,6 +352,7 @@ export function createArtifactViewer(nodeService, ownerWindow) {
       throw error;
     } finally {
       clearTimeout(timer);
+      observation?.signal?.removeEventListener("abort", abort);
       if (observation && !win.isDestroyed()) win.destroy();
     }
     return null;
@@ -286,6 +393,20 @@ export function createArtifactViewer(nodeService, ownerWindow) {
   return {
     open,
     inspect,
+    browse: async (input, detail, signal) => {
+      const { mission: _mission, ...fields } = input;
+      const request = ArtifactBrowserRequest.parse(fields);
+      signal?.throwIfAborted();
+      return open(
+        {
+          mission: input.mission,
+          revision: request.revision,
+          path: request.path,
+        },
+        detail,
+        { ...request, browser: true, signal },
+      );
+    },
     save,
     close: () => {
       for (const win of windows) win.close();

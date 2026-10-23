@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { Id, NetworkAccess } from "../model.mjs";
+import { Id, NetworkAccess, CapabilityPack } from "../model.mjs";
 
 // Separate from the trusted-local web runner's v1 protocol. That provider is
 // deliberately not an implementation of this contract.
@@ -127,11 +127,24 @@ export const Session = z
 export const ExecutionRequests = {
   executionOverview: z.object({ mission: Hash }).strict(),
   executionState: z.object({ contributionId: Id }).strict(),
+  executionCancelOperation: z
+    .object({ contributionId: Id, operation: Hash })
+    .strict(),
+  executionRestoreCheckpoint: z
+    .object({ contributionId: Id, checkpoint: Hash })
+    .strict(),
   executionPrepare: z.object({ contributionId: Id }).strict(),
   executionNetwork: z
     .object({
       contributionId: Id,
       networkAccess: NetworkAccess,
+      expectedRevision: Id.nullable(),
+    })
+    .strict(),
+  executionCapabilities: z
+    .object({
+      contributionId: Id,
+      capabilityPack: CapabilityPack,
       expectedRevision: Id.nullable(),
     })
     .strict(),
@@ -158,6 +171,14 @@ export const ExecutionRequests = {
   executionDiagnostics: z.object({ contributionId: Id }).strict(),
   executionImport: z.object({ contributionId: Id }).strict(),
 };
+
+export const WorkWait = z
+  .object({
+    reason: z.string().min(1).max(500),
+    artifacts: z.array(Hash).max(8),
+    reviews: z.array(Hash).max(8),
+  })
+  .strict();
 
 export const Record = z
   .object({
@@ -186,6 +207,15 @@ export const Record = z
     nonce: Hash.nullable(),
     reservation: Hash.nullable(),
     session: Session.nullable(),
+    reconstructedAt: z.number().int().nonnegative().optional(),
+    recoveredSource: z
+      .object({
+        directory: z.string().regex(/^recovered-\d+$/),
+        checkpoint: Hash,
+        at: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
     // A launched turn is conservatively charged even if the harness crashes.
     dispatched: z.boolean(),
     receipt: Hash.nullable(),
@@ -194,8 +224,11 @@ export const Record = z
     wake: z
       .object({
         fingerprint: Hash,
-        seen: z.array(Hash).max(768),
+        seen: z.array(Hash).max(2048),
+        cursor: Hash.nullable().optional(),
+        priorityCursor: Hash.nullable().optional(),
         messages: z.number().int().nonnegative(),
+        waiting: WorkWait.nullable().optional(),
       })
       .strict()
       .optional(),

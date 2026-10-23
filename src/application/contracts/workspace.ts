@@ -1,4 +1,5 @@
 export type Runtime = "claude" | "codex" | "grok";
+export type CapabilityPack = "general" | "web-3d";
 export type NetworkAccess = "restricted" | "internet";
 export type ArtifactInspection = {
   revision: string;
@@ -32,7 +33,9 @@ export type Contribution = {
   nodeBinding?: { owner: string; revision: string };
   runtime: Runtime;
   networkAccess?: NetworkAccess;
+  capabilityPack?: CapabilityPack;
   networkRevision?: string;
+  capabilityRevision?: string;
   sharedAgent?: {
     registration: string;
     author: string;
@@ -58,7 +61,8 @@ export type LocalState = {
       | "contributor_named"
       | "contribution_prepared"
       | "consent_revoked"
-      | "network_changed";
+      | "network_changed"
+      | "capabilities_changed";
     contributionId: string | null;
     label: string;
   }[];
@@ -68,6 +72,7 @@ export type PrepareInput = {
   workspaceChoiceId: string;
   runtime: Runtime;
   networkAccess?: NetworkAccess;
+  capabilityPack?: CapabilityPack;
   limits: Limits;
 };
 export type DesktopAPI = {
@@ -167,7 +172,25 @@ export type NodeAPI = {
     path: string,
   ): Promise<{ saved: boolean }>;
   state(): Promise<NodeState>;
+  artifactCache(
+    mission: string,
+    revision: string,
+    action: "status" | "save" | "cancel",
+  ): Promise<{
+    state: string;
+    completed: number;
+    total: number;
+    bytes: number;
+    error: string | null;
+  }>;
   enroll(): Promise<NodeState>;
+  backupNode(
+    passphrase: string,
+  ): Promise<{ cancelled: boolean; files?: number; bytes?: number }>;
+  restoreNode(
+    passphrase: string,
+    previousNodeStopped: true,
+  ): Promise<{ cancelled: boolean; files?: number; created?: number }>;
   createMission(definition: MissionDefinition): Promise<{ mission: string }>;
   updateInstructions(
     mission: string,
@@ -184,6 +207,7 @@ export type NodeAPI = {
     grant: string,
     contributionId: string,
     networkRevision?: string | null,
+    capabilityRevision?: string | null,
   ): Promise<{ event: string }>;
   governance(mission: string): Promise<import("./node").GovernanceView>;
   govern(
@@ -256,6 +280,7 @@ export type NodeAPI = {
     revision: string,
     registration: string,
     text: string,
+    clarification?: string,
   ): Promise<{ event: string }>;
   networkState(): Promise<NetworkView>;
   configureNetwork(config: NetworkConfig): Promise<NetworkView>;
@@ -297,6 +322,15 @@ export type NodeAPI = {
     registration: string,
   ): Promise<{ audience: string }>;
   queryMessages(mission: string, query: MessageQuery): Promise<MessagePage>;
+  readMessage(
+    mission: string,
+    id: string,
+  ): Promise<import("./node").MessageView>;
+  copyMessageReference(mission: string, id: string): Promise<null>;
+  catchUp(
+    mission: string,
+    after: string | null,
+  ): Promise<import("./node").Updates>;
   markMessagesRead(mission: string, ids: string[]): Promise<null>;
   postMessage(
     mission: string,

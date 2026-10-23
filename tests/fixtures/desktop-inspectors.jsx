@@ -7,6 +7,7 @@ import "@fontsource/ibm-plex-sans/latin-600.css";
 import "@fontsource/ibm-plex-mono/latin-400.css";
 import "../../src/desktop/desktop.css";
 import { MissionCompletionScene } from "./mission-completion";
+import { CoordinationReviewScene } from "./coordination-review";
 
 const scene = new URLSearchParams(location.search).get("scene") ?? "sign-in";
 const mission = {
@@ -152,9 +153,20 @@ const client = {
     artifacts: async () => ({ items: [], after: null }),
   },
   execution: {
+    overview: async () => ({ [item.id]: await client.execution.state(item.id) }),
     state: async () => ({ ...execution, observedAt: Date.now() }),
     signIn: denied,
     stop: denied,
+    setCapabilityPack: async (id, capabilityPack, expectedRevision) => {
+      networkCalls.push({
+        type: "toolkit",
+        id,
+        capabilityPack,
+        expectedRevision,
+      });
+      execution.capabilityPack = capabilityPack;
+      execution.capabilityRevision = crypto.randomUUID();
+    },
     setNetwork: async (id, networkAccess, expectedRevision) => {
       networkCalls.push({
         type: "network",
@@ -206,6 +218,8 @@ createRoot(document.getElementById("root")).render(
             contributions={[]}
             updated={async () => {}}
           />
+        ) : scene.startsWith("coordination-") ? (
+          <CoordinationReviewScene scene={scene} />
         ) : scene.startsWith("completion-") ? (
           <MissionCompletionScene scene={scene} />
         ) : scene.startsWith("budget") ? (

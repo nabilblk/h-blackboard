@@ -22,8 +22,13 @@ export const agreementRequest = z
     registration: Hash,
     contributionId: Id.nullable(),
     networkRevision: Id.nullable().default(null),
+    capabilityRevision: Id.nullable().default(null),
     ownerPermission: z.boolean(),
     minutes: z.number().int().min(1).max(1440),
+    // Existing saved consent retains its original ten-minute limit. New UI
+    // approvals explicitly choose these limits; migration never expands them.
+    leaseMinutes: z.number().int().min(1).max(120).default(10),
+    offlineMinutes: z.number().int().min(1).max(120).default(10),
     turns: z.number().int().min(1).max(10000),
     followDirections: z.boolean(),
   })
@@ -114,6 +119,7 @@ const approvalEnded = (message) =>
 
 export class ContributionAgreements {
   closed = false;
+  queueCursor = 0;
   deadlines = new Map();
   starting = new Map();
   constructor({ directory, node, executions, clock = Date.now }) {
@@ -210,6 +216,10 @@ export class ContributionAgreements {
         contribution.mission.missionId !== r.mission
       )
         throw new Error("Contribution does not match the reviewed agent.");
+      if ((contribution.capabilityRevision ?? null) !== r.capabilityRevision)
+        throw new Error(
+          "Authoring tools changed. Review this agent’s current toolkit before approving.",
+        );
       if ((contribution.networkRevision ?? null) !== r.networkRevision)
         throw new Error(
           "Internet access changed. Review this agent's current access before approving.",
@@ -464,10 +474,18 @@ export class ContributionAgreements {
     return this.pending;
   }
   async reconcile() {
-    for (const a of readable(this.store).filter((a) => a.status === "active")) {
+    const queue = readable(this.store).filter((a) => a.status === "active");
+    // Rotate the first eligible approval. A returning Coordinator cannot keep
+    // taking the sole slot ahead of the same worker on every monitor tick.
+    const offset = this.queueCursor++ % (queue.length || 1);
+    for (const a of [...queue.slice(offset), ...queue.slice(0, offset)]) {
       try {
         await this.advance(a);
       } catch (e) {
+        if (["capacity_busy", "resources_allocated"].includes(e.code)) {
+          this.save(a, { waitingFor: "capacity", message: e.message });
+          continue;
+        }
         if (this.store.read(a.id)?.status === "active")
           this.save(a, {
             status:
@@ -645,6 +663,17 @@ export class ContributionAgreements {
       });
       return;
     }
+    const allocation = ledger.allocations.find(
+      (v) => v.id === grant.allocation,
+    );
+    if (allocation && allocation.active >= allocation.slots) {
+      this.save(a, {
+        waitingFor: "capacity",
+        message:
+          "Queued for a mission execution slot. Work resumes automatically when one is available.",
+      });
+      return;
+    }
     // Persist the exact permission before consent/start; a crash or duplicate
     // tick cannot spend a second permission or silently extend the window.
     if (!a.grants.includes(grant.id))
@@ -656,6 +685,7 @@ export class ContributionAgreements {
         grant: grant.id,
         contributionId: id,
         networkRevision: a.request.networkRevision,
+        capabilityRevision: a.request.capabilityRevision,
       });
     await this.check(a, (await this.mission(mission.id)).mission);
     await this.executions.start(id, grant.id);
@@ -694,6 +724,35 @@ export class ContributionAgreements {
     if (used >= a.request.turns)
       throw approvalEnded("The approved contribution allowance is complete.");
     const remaining = a.request.turns - used;
+    // Recycle only allocations whose contributor is this owner and whose
+    // entire grant history is already settled. Unknown remote work remains
+    // reserved; a timeout is never treated as proof of termination.
+    for (const allocation of ledger.allocations) {
+      if (
+        allocation.node !== mission.owner ||
+        allocation.reclaimed ||
+        allocation.active ||
+        allocation.reserved ||
+        allocation.turns === null ||
+        allocation.charged < allocation.turns
+      )
+        continue;
+      const grants = ledger.grants.filter(
+        (g) => g.allocation === allocation.id,
+      );
+      if (grants.some((g) => !g.sealed || !g.seal)) continue;
+      const seal =
+        allocation.sealed ??
+        (
+          await govern({
+            type: "seal_allocation",
+            allocation: allocation.id,
+            grants: grants.map((g) => g.seal),
+          })
+        ).event;
+      await govern({ type: "reclaim", seal });
+      ledger = await this.node.handle("governance", { mission: mission.id });
+    }
     let capacity = ledger.allocations.find((v) => v.id === a.allocation);
     if (
       capacity &&
@@ -725,23 +784,65 @@ export class ContributionAgreements {
         capacity = candidates[0];
         this.save(a, { allocation: capacity.id, allocationBefore: null });
       } else {
-        const existing = ledger.allocations.find(
+        const usable = ledger.allocations.filter(
           (v) =>
             v.node === agent.contributor &&
             !v.sealed &&
             !v.reclaimed &&
-            v.active < v.slots &&
             (v.turns === null || v.turns - v.charged - v.reserved > 0),
         );
+        const claims = readable(this.store).filter(
+          (other) => other.id !== a.id && other.status === "active",
+        );
+        const spare = usable.find((v) => {
+          const registrations = new Set([
+            ...claims
+              .filter((other) => other.allocation === v.id)
+              .map((other) => other.request.registration),
+            ...ledger.grants
+              .filter(
+                (g) =>
+                  g.allocation === v.id &&
+                  !g.sealed &&
+                  g.registration !== agent.id,
+              )
+              .map((g) => g.registration),
+          ]);
+          return Math.max(v.active, registrations.size) < v.slots;
+        });
+        const budget = mission.definition.policy?.budget;
+        const slots = ledger.allocations.reduce(
+          (n, v) => n + (v.reclaimed ? 0 : v.slots),
+          0,
+        );
+        const slotsLimited =
+          budget?.mode === "limited" &&
+          budget.concurrency != null &&
+          slots >= budget.concurrency;
+        const assigned = ledger.allocations.reduce(
+          (n, v) => n + (v.reclaimed ? v.charged : (v.turns ?? Infinity)),
+          0,
+        );
+        const turnsLimited =
+          budget?.mode === "limited" &&
+          budget.turns != null &&
+          assigned >= budget.turns;
+        const limited = slotsLimited || turnsLimited;
+        const existing = spare ?? (limited ? usable[0] : null);
         if (existing) {
           capacity = existing;
           this.save(a, { allocation: existing.id });
         } else {
-          const budget = mission.definition.policy?.budget;
-          const assigned = ledger.allocations.reduce(
-            (n, v) => n + (v.reclaimed ? v.charged : (v.turns ?? Infinity)),
-            0,
-          );
+          const charged = ledger.allocations.reduce((n, v) => n + v.charged, 0);
+          if (turnsLimited && charged >= budget.turns)
+            throw approvalEnded("The mission turn allowance is complete.");
+          if (limited)
+            throw Object.assign(
+              new Error(
+                "Mission resources are allocated. Waiting for capacity to be released.",
+              ),
+              { code: "resources_allocated" },
+            );
           const turns = Math.min(
             remaining,
             budget?.mode === "limited" && budget.turns != null
@@ -768,7 +869,10 @@ export class ContributionAgreements {
       }
     }
     await this.check(a, (await this.mission(mission.id)).mission);
-    const expires = Math.min(a.expiresAt, this.clock() + 10 * 60000);
+    const expires = Math.min(
+      a.expiresAt,
+      this.clock() + a.request.leaseMinutes * 60000,
+    );
     if (expires - this.clock() < 15000) return;
     const pending = a.pending ?? {
       execution: previous?.execution ?? hash(a.id),
@@ -801,16 +905,28 @@ export class ContributionAgreements {
           : remaining,
       ),
       expires_ms: expires,
-      offline_ms: Math.max(1, expires - this.clock() - 10000),
+      offline_ms: Math.max(
+        1,
+        Math.min(
+          a.request.offlineMinutes * 60000,
+          expires - this.clock() - 10000,
+        ),
+      ),
     });
     this.save(a, { grants: [...a.grants, result.event], pending: null });
   }
   constrain(id, context) {
     const grant = context.grant;
     if (!grant) return context;
-    const a = readable(this.store).find(
-      (a) => a.request.contributionId === id && a.grants.includes(grant.id),
-    );
+    // A recovered permission can appear in both the old and replacement
+    // journals. Directory/UUID order is not consent order. The latest review
+    // wins, including when it is stopped; never fall back to an older approval.
+    const a = readable(this.store)
+      .filter(
+        (a) => a.request.contributionId === id && a.grants.includes(grant.id),
+      )
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .at(-1);
     if (!a) return context; // Explicit legacy one-run consent stays one-run.
     if (
       a.status !== "active" ||
@@ -837,7 +953,16 @@ export class ContributionAgreements {
       ...context,
       grant: {
         ...grant,
-        expires_ms: Math.min(grant.expires_ms, a.expiresAt),
+        expires_ms: Math.min(
+          grant.expires_ms,
+          a.expiresAt,
+          grant.issued_ms + a.request.leaseMinutes * 60000,
+        ),
+        offline_ms: Math.min(
+          grant.offline_ms,
+          a.request.offlineMinutes * 60000,
+          a.request.leaseMinutes * 60000,
+        ),
         turns: Math.min(grant.turns, grant.charged + a.request.turns - used),
       },
     };

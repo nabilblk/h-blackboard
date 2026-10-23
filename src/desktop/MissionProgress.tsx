@@ -70,6 +70,8 @@ export function MissionProgress({
     };
   }, [mission.id, mission.lifecycle.revision, data, edit, node]);
   const own = owner === mission.owner;
+  const currentPlan =
+    mission.lifecycle.operational_plan ?? mission.lifecycle.plan;
   const archived = mission.lifecycle.phase === "archived";
   const readyForReview =
     !error && resultsReadyForReview(mission, data?.criteria);
@@ -272,8 +274,8 @@ export function MissionProgress({
           </Disclosure>
         ))}
       </div>
-      {mission.lifecycle.plan?.artifact ? (
-        <Button onClick={() => openArtifact(mission.lifecycle.plan!.artifact!)}>
+      {currentPlan?.artifact ? (
+        <Button onClick={() => openArtifact(currentPlan.artifact!)}>
           Open shared plan artifact
         </Button>
       ) : null}

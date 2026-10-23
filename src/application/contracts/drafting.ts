@@ -4,6 +4,12 @@ export type Brief = {
   name: string;
   objective: string;
   scope: string;
+  audience: string;
+  deliveryFormat: string;
+  evidence: string;
+  qualityBar: string;
+  aspirations: string;
+  approach: string;
   deliverables: string[];
   criteria: string[];
   assumptions: string[];

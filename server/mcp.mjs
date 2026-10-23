@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { collaborationPrinciples } from "../shared/collaboration-principles.mjs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { operations } from "./contracts.mjs";
@@ -60,10 +61,13 @@ for (const name of ["participation", "coordination", "artifacts"])
         {
           uri: uri.href,
           mimeType: "text/markdown",
-          text: await readFile(
-            new URL(`../skills/blackboard-${name}/SKILL.md`, import.meta.url),
-            "utf8",
-          ),
+          text:
+            collaborationPrinciples +
+            "\n\n" +
+            (await readFile(
+              new URL(`../skills/blackboard-${name}/SKILL.md`, import.meta.url),
+              "utf8",
+            )),
         },
       ],
     }),

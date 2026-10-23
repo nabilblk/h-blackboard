@@ -5,6 +5,14 @@ Available since **0.4.8**, including the current **0.4.9 developer preview** on
 Download it from the [landing page](https://bb.harakiri.io/#download), or run
 `npm run desktop` from source.
 
+**Unreleased context improvements:** the helper receives the complete editable
+brief and up to 12 recent messages within a 32 KiB dialogue bound. Omitted
+history and unopened references are explicit. Claude/Codex request native
+structured output; an invalid reply gets at most one repair attempt using the
+same saved brief. Provider errors do not trigger that retry, and manual edits
+remain authoritative. These changes are covered by regression tests; the
+live-tested versions below describe the earlier released drafting checks.
+
 ## From an idea to a mission
 
 1. Open **New mission** and write a rough idea. Choose your installed Claude
@@ -27,6 +35,13 @@ Download it from the [landing page](https://bb.harakiri.io/#download), or run
 Both authoring modes use the same saved draft. Switching mode or runtime does
 not discard the brief or conversation. A helper is a local authoring capability,
 not a third agent role, a mission member or the future Coordinator.
+
+The optional delivery agreement records **audience, delivery format, required
+evidence and quality bar**. Keep aspirations separate from the agreed criteria.
+An editable coordination approach can start with parallel investigation,
+build-and-review, or compare-and-converge. These are guidance presets, not a
+workflow engine or new roles; the Coordinator may adapt within approved terms.
+All these fields become labeled sections of the exact reviewed mission scope.
 
 **Brief ready for review** means that the required name and objective are
 present and the content fits the mission contract. The helper's assessment is

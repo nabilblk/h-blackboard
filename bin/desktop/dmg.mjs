@@ -1,3 +1,10 @@
+import {
+  releaseMode,
+  signDmg,
+  signingConfig,
+  assertReleaseTree,
+} from "./sign.mjs";
+import { signRelease } from "../../desktop/release-manifest.mjs";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -22,6 +29,7 @@ if (process.platform !== "darwin")
 
 const run = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+if (releaseMode) await assertReleaseTree(root);
 const project = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const appName = "Harakiri Desktop.app";
 const app = join(
@@ -75,6 +83,7 @@ try {
     "zlib-level=9",
     image,
   ]);
+  if (releaseMode) await signDmg(image);
   await command("/usr/bin/hdiutil", ["verify", image]);
   await command("/usr/bin/hdiutil", [
     "attach",
@@ -108,6 +117,50 @@ try {
     join(temporary, `${filename}.sha256`),
     `${digest}  ${filename}\n`,
   );
+  if (releaseMode) {
+    const keyPath = process.env.HARAKIRI_RELEASE_KEY;
+    const sequence = Number(process.env.HARAKIRI_RELEASE_SEQUENCE);
+    if (!keyPath || !Number.isSafeInteger(sequence) || sequence < 1)
+      throw new Error(
+        "Release manifest key and monotonic sequence are required.",
+      );
+    const keyInfo = await stat(keyPath);
+    if (!keyInfo.isFile() || keyInfo.size > 8192 || keyInfo.mode & 0o077)
+      throw new Error("Release key must be a private local file.");
+    const { stdout } = await run("git", ["rev-parse", "HEAD"], { cwd: root });
+    const protocolSource = await readFile(
+      join(root, "crates/harakiri-protocol/src/limits.rs"),
+      "utf8",
+    );
+    const protocol = Number(protocolSource.match(/VERSION: u\d+ = (\d+)/)?.[1]);
+    const envelope = signRelease(
+      {
+        schema: 1,
+        product: "io.harakiri.contributor",
+        version: project.version,
+        sequence,
+        protocol,
+        platform: "darwin",
+        arch: process.arch,
+        filename,
+        size: (await stat(image)).size,
+        sha256: digest,
+        team: signingConfig().team,
+        source: stdout.trim(),
+        issued: Date.now(),
+        expires: Date.now() + 30 * 86400000,
+      },
+      await readFile(keyPath),
+    );
+    await writeFile(
+      join(temporary, `${filename}.release.json`),
+      JSON.stringify(envelope) + "\n",
+    );
+    await rename(
+      join(temporary, `${filename}.release.json`),
+      join(releases, `${filename}.release.json`),
+    );
+  }
   await rename(image, join(releases, filename));
   await rename(
     join(temporary, `${filename}.sha256`),
@@ -117,7 +170,11 @@ try {
   console.log(`Verified DMG (${(size / 1024 / 1024).toFixed(1)} MiB):`);
   console.log(join(releases, filename));
   console.log(`SHA-256: ${digest}`);
-  console.log("Local development build; not Developer ID signed or notarized.");
+  console.log(
+    releaseMode
+      ? "Developer ID signed, notarized and stapled. Signed release manifest generated."
+      : "Local development build; not Developer ID signed or notarized.",
+  );
 } finally {
   // If detaching fails, leave the staging area intact for manual cleanup.
   // Never recursively remove a directory containing a mounted volume.

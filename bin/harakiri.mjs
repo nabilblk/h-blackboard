@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { collaborationPrinciples } from "../shared/collaboration-principles.mjs";
 import { parseArgs } from "node:util";
 import {
   readFile,
@@ -139,6 +140,8 @@ async function register(name, execution) {
 }
 async function guide() {
   return (
+    collaborationPrinciples +
+    "\n\n" +
     (
       await Promise.all(
         ["participation", "coordination", "artifacts"].map((name) =>

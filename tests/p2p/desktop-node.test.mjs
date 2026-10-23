@@ -157,3 +157,58 @@ test("damaged or concurrently opened profiles fail without replacing history or 
   assert.equal(readFileSync(identityFile, "utf8"), "damaged identity");
   assert.deepEqual(readFileSync(join(directory, "keys.v1.enc")), protectedKeys);
 });
+
+test("portable node recovery preserves identity and history but restores networking off", async (t) => {
+  const { directory, service } = fixture(t);
+  await service.handle("enroll", {});
+  await service.handle("createMission", { definition });
+  await service.handle("configureNetwork", {
+    config: {
+      mode: "direct",
+      relays: [],
+      allow_lan: true,
+      route_directory: null,
+    },
+  });
+  const before = await service.state(),
+    file = join(directory, "../saved.hbrecovery");
+  const passphrase = "isolated recovery test passphrase";
+  assert.equal(
+    (
+      await service.handle(
+        "backupNode",
+        { passphrase },
+        { recoveryFile: async () => file },
+      )
+    ).cancelled,
+    false,
+  );
+  assert.equal((await service.state()).identity.owner, before.identity.owner);
+  await service.close();
+  const restored = new NodeService({
+    directory: join(directory, "../restored"),
+    binary,
+    secureStorage: secureStorage(),
+  });
+  t.after(() => restored.close());
+  await restored.handle(
+    "restoreNode",
+    { passphrase, previousNodeStopped: true },
+    { recoveryFile: async () => file },
+  );
+  const after = await restored.state();
+  assert.deepEqual(after.identity, before.identity);
+  assert.equal(after.missions[0].id, before.missions[0].id);
+  assert.equal(after.network, "disabled");
+  assert.equal(after.connection.config.mode, "offline");
+  assert.equal(after.execution, "unavailable");
+  await assert.rejects(
+    restored.handle(
+      "restoreNode",
+      { passphrase, previousNodeStopped: true },
+      { recoveryFile: async () => file },
+    ),
+    /empty node profile/,
+  );
+  assert.equal((await restored.state()).missions[0].id, before.missions[0].id);
+});

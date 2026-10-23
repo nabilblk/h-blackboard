@@ -23,6 +23,8 @@ from runtimes import command, environment, private_directory, spec
 runtime = spec()["runtime"]
 assert runtime in ("claude", "codex")
 captured = queue.Queue()
+with open("/opt/harakiri/tools.json") as f:
+    expected_tools = {tool["name"] for tool in json.load(f)}
 
 
 class Fixture(http.server.BaseHTTPRequestHandler):
@@ -57,8 +59,6 @@ else:
     variables["CODEX_HOME"] = directory
     with open(private_directory() + "/config.toml", "rb") as f:
         approvals = tomllib.load(f)["mcp_servers"]["harakiri"]["tools"]
-    with open("/opt/harakiri/tools.json") as f:
-        expected_tools = {tool["name"] for tool in json.load(f)}
     assert set(approvals) == expected_tools, "Every scoped tool needs an explicit noninteractive policy"
     assert all(value == {"approval_mode": "approve"} for value in approvals.values())
     shutil.copyfile(private_directory() + "/config.toml", directory + "/config.toml")
@@ -132,7 +132,7 @@ try:
         assert tool.get("type", "function") in ("function", "custom"), tool
         names.append(tool["name"])
     prefix = "mcp__harakiri__" if runtime == "claude" else "mcp__harakiri."
-    scoped = {prefix + name for name in ("board", "workspace_exec", "workspace_read", "workspace_write", "import_artifact", "publish_artifact")}
+    scoped = {prefix + name for name in expected_tools}
     allowed = scoped | ({"EndConversation"} if runtime == "claude" else {"update_plan", "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource", "request_user_input", "skills.list", "skills.read"})
     assert scoped <= set(names), names
     assert set(names) <= allowed, names

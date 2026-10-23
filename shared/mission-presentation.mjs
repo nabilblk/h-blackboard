@@ -180,6 +180,11 @@ export function agentPresentation(input) {
       action = link(
         record?.status === "failed" ? "Continue setup" : "Prepare agent",
       );
+  } else if (local && observed === "waiting" && record?.wake?.waiting) {
+    cause = "artifact_dependency";
+    reason = `Agent reports: ${record.wake.waiting.reason}`;
+    responsible =
+      "the contributors producing the requested artifacts or reviews";
   } else if (execution?.agreement?.status === "active") {
     cause = execution.agreement.waitingFor ?? "approved_wait";
     responsible = [
@@ -332,7 +337,7 @@ export function missionDecisions({
     });
   if (
     !unfinished &&
-    ["preparing", "paused"].includes(mission.lifecycle.phase) &&
+    mission.lifecycle.phase === "preparing" &&
     !mission.lifecycle.start_blockers.length
   )
     decisions.push({
@@ -358,26 +363,8 @@ export function missionDecisions({
         review: true,
       },
     });
-  if (
-    !unfinished &&
-    mission.lifecycle.phase === "paused" &&
-    mission.lifecycle.plan &&
-    mission.lifecycle.start_blockers.includes("coordinator_not_ready")
-  )
-    decisions.push({
-      id: `resume-plan:${mission.lifecycle.revision}`,
-      kind: "start",
-      priority: 20,
-      title: "Review the plan to resume",
-      reason:
-        "Confirm the plan, then let the Coordinator prepare a fresh readiness acknowledgment. You approve Start separately.",
-      responsible: "you",
-      action: {
-        label: "Review plan to resume",
-        destination: "controls",
-        review: true,
-      },
-    });
+  // An intentional Pause is not an outstanding obligation to Resume. The
+  // mission controls retain Resume without adding a Needs you notification.
   if (resultsReadyForReview(mission, criteria))
     decisions.push({
       id: `results:${mission.lifecycle.revision}`,

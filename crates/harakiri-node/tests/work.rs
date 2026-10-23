@@ -399,6 +399,7 @@ fn parallel_attempts_preserve_ownership_reports_and_private_evidence_is_rejected
                     limitations: "Draft only".into(),
                     entrypoint: Some("report.md".into()),
                     inputs: vec![],
+                    references: vec![],
                     files: vec![ArtifactFile {
                         path: "report.md".into(),
                         hash: blake3::hash(b"Draft").to_hex().to_string(),
@@ -863,7 +864,7 @@ fn schema_ten_preserves_work_messages_and_rolls_back_damaged_history() {
     drop(f.s);
     let downgrade = || {
         let db = rusqlite::Connection::open(&path).unwrap();
-        db.execute_batch("DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP INDEX message_channel; ALTER TABLE message_details DROP COLUMN channel; PRAGMA user_version=9;").unwrap();
+        db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP INDEX message_channel; ALTER TABLE message_details DROP COLUMN channel; PRAGMA user_version=9;").unwrap();
     };
     downgrade();
     let s = Store::open(&path).unwrap();
@@ -984,6 +985,7 @@ fn complete_artifact_evidence_becomes_stale_when_its_exact_input_changes() {
                         limitations: "Fixture".into(),
                         entrypoint: Some("report.md".into()),
                         inputs,
+                        references: vec![],
                         files: vec![ArtifactFile {
                             path: "report.md".into(),
                             hash: blake3::hash(b"Report").to_hex().to_string(),

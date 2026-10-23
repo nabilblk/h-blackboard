@@ -92,19 +92,15 @@ image_generation = false
 command = "/usr/bin/python3"
 args = ["/opt/harakiri/mcp.py"]
 required = true
+tool_timeout_sec = 180
 # Keep the small scoped API directly available; do not route it through
 # native discovery/code execution even when the model prefers those modes.
 omit_tools_from = ["deferred", "code_mode"]
-[mcp_servers.harakiri.tools.board]
-approval_mode = "approve"
-[mcp_servers.harakiri.tools.workspace_exec]
-approval_mode = "approve"
-[mcp_servers.harakiri.tools.workspace_read]
-approval_mode = "approve"
-[mcp_servers.harakiri.tools.workspace_write]
-approval_mode = "approve"
-[mcp_servers.harakiri.tools.import_artifact]
-approval_mode = "approve"
-[mcp_servers.harakiri.tools.publish_artifact]
-approval_mode = "approve"
 ''')
+
+        with open(BASE + "/tools.json", encoding="utf8") as catalog:
+            for tool in json.load(catalog):
+                name = tool["name"]
+                if not name.replace("_", "").isalnum():
+                    raise ValueError("Invalid reviewed tool name")
+                f.write('\n[mcp_servers.harakiri.tools.' + name + ']\napproval_mode = "approve"\n')

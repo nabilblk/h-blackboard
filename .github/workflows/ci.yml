@@ -20,8 +20,9 @@ jobs:
       - run: npm test
         timeout-minutes: 5
       - run: python3 tests/providers/test_proxy.py
-      - run: python3 tests/providers/test_artifact_io.py
+      - run: python3 -m unittest discover -s tests/providers -p 'test_*.py'
       - run: python3 -m compileall -q desktop/execution/guest
+      - run: npm audit --audit-level=high
       - run: npm run build
   node-protocol:
     runs-on: ubuntu-latest
@@ -44,6 +45,8 @@ jobs:
           key: node-${{ runner.os }}-rust-1.94.0-${{ hashFiles('Cargo.lock') }}
       - run: npm ci
       - run: npm run check:node
+      - run: cargo install cargo-audit --locked --version 0.22.2 --no-default-features
+      - run: cargo audit --deny unsound --deny yanked
       - run: npm run test:node
       - run: npm run test:g6
         timeout-minutes: 5

@@ -51,6 +51,11 @@ export async function writeNodeInventory({
     );
   const notices = [];
   const missingNotices = [];
+  const supplement = JSON.parse(
+    await readFile(join(root, "licenses/cargo/supplemental.json"), "utf8"),
+  );
+  const supplementalSources = [];
+  const noticeReviewRequired = [];
   for (const pkg of components) {
     const directory = dirname(pkg.manifest_path);
     const candidates = new Set(
@@ -81,6 +86,38 @@ export async function writeNodeInventory({
           `${pkg.name} ${pkg.version} — ${name}\n${await readFile(join(root, name), "utf8")}`,
         );
       count++;
+    }
+    if (!count) {
+      const extra = supplement.packages.find(
+        (p) => p.name === pkg.name && p.version === pkg.version,
+      );
+      if (extra) {
+        const vcs = JSON.parse(
+          await readFile(join(directory, ".cargo_vcs_info.json"), "utf8"),
+        );
+        if (vcs.git.sha1 !== extra.vcs || extra.license !== pkg.license)
+          throw new Error(
+            `Supplemental notice no longer matches ${pkg.name}@${pkg.version}`,
+          );
+        for (const file of extra.files) {
+          if (!/^[a-f0-9]{64}\.txt$/.test(file.path))
+            throw new Error("Invalid supplemental notice path");
+          const bytes = await readFile(join(root, "licenses/cargo", file.path));
+          if (digest(bytes) !== file.sha256)
+            throw new Error("Supplemental notice digest mismatch");
+          notices.push(
+            `${pkg.name} ${pkg.version} — pinned upstream notice\nSource: ${file.source}\n${bytes.toString("utf8")}`,
+          );
+          count++;
+          supplementalSources.push({
+            package: `${pkg.name}@${pkg.version}`,
+            source: file.source,
+            sha256: file.sha256,
+          });
+        }
+        if (extra.reviewRequired)
+          noticeReviewRequired.push(`${pkg.name}@${pkg.version}`);
+      }
     }
     if (!count) missingNotices.push(`${pkg.name}@${pkg.version}`);
   }
@@ -139,6 +176,8 @@ export async function writeNodeInventory({
     signature,
     dependencies: components.length,
     missingLicenseTexts: missingNotices,
+    supplementalSources,
+    noticeReviewRequired,
     cargoLockSha256: sbom.metadata.properties[1].value,
   };
   await writeFile(

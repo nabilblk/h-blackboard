@@ -190,6 +190,12 @@ try {
   console.log(
     "Component interactions, focus, draft preservation and responsive layouts passed.",
   );
+} catch (error) {
+  console.error(
+    await browser("errors").catch(() => "Browser diagnostics unavailable"),
+  );
+  console.error(await browser("console").catch(() => ""));
+  throw error;
 } finally {
   await browser("close").catch(() => {});
   await server.close();

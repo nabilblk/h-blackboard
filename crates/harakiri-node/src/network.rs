@@ -94,11 +94,18 @@ impl Network {
         self.config = NetworkConfig::default();
         self.error = None;
         if config.mode != NetworkMode::Offline {
-            let endpoint = Endpoint::builder(presets::Minimal)
+            let mut builder = Endpoint::builder(presets::Minimal)
                 .secret_key(self.transport.clone())
-                .relay_mode(relays)
-                .bind()
-                .await?;
+                .relay_mode(relays);
+            if let Some(url) = &config.route_directory {
+                // Publish only the chosen relay route. IP/LAN addresses and
+                // mission data never enter this public route directory.
+                builder = builder.address_lookup(
+                    iroh::address_lookup::PkarrPublisher::builder(url.parse()?)
+                        .addr_filter(iroh::address_lookup::AddrFilter::relay_only()),
+                );
+            }
+            let endpoint = builder.bind().await?;
             let peer = Arc::new(
                 PeerNode::with_shared_store(
                     &self.root,
@@ -299,13 +306,15 @@ async fn discover(
                 for offset in 0..contacts.len().min(2) {
                     let (name,c)=&contacts[(round*2+offset)%contacts.len()];
                     let report=|outcome,received| health.lock().expect("discovery health lock").record(name,outcome,received,crate::contact::now());
-                    let Ok(addr)=c.address(&network) else {
+                    let Ok(addr)=peer.resolve_contact(c,&network).await else {
                         report(if c.expires_ms<=crate::contact::now() {DiscoveryOutcome::ExpiredAddress} else {DiscoveryOutcome::RouteBlocked},0);
                         continue;
                     };
                     let request=crate::peer::Request::Catalog{items:items.clone(),after:cursors.get(&c.endpoint).cloned().flatten()};
                     report(DiscoveryOutcome::Contacting,0);
-                    if let Ok(crate::peer::Response::Catalog{page})=peer.request(addr,&request).await {
+                    let reply = peer.request(addr,&request).await;
+                    if reply.as_ref().is_err_and(|error| crate::errors::public_code(error) == "peer_incompatible") { report(DiscoveryOutcome::Incompatible,0); continue; }
+                    if let Ok(crate::peer::Response::Catalog{page})=reply {
                         if page.items.len()>crate::discovery::PAGE || !crate::discovery::valid_cursor(page.after.as_deref()) {report(DiscoveryOutcome::InvalidCatalog,0);continue;}
                         let valid=page.items.iter().all(|r|Advertisement::parse(r).is_ok());
                         if !valid {report(DiscoveryOutcome::InvalidCatalog,0);continue;}
@@ -333,12 +342,15 @@ async fn reconcile(peer: Arc<PeerNode>, config: NetworkConfig) {
     }
 }
 async fn cycle(peer: &Arc<PeerNode>, config: &NetworkConfig, round: usize) -> Result<()> {
+    with_store(&peer.store, |s| {
+        s.refresh_known_peer_routes(&peer.endpoint.id().to_string(), config)
+    })?;
     let withdrawals = with_store(&peer.store, |s| s.pending_withdrawals())?;
     if !withdrawals.is_empty() {
         let (mission, notice, targets) = &withdrawals[round % withdrawals.len()];
         if !targets.is_empty() {
             let c = &targets[round % targets.len()];
-            if let Ok(addr) = c.address(config)
+            if let Ok(addr) = peer.resolve_contact(c, config).await
                 && matches!(
                     peer.request(
                         addr,
@@ -373,7 +385,9 @@ async fn cycle(peer: &Arc<PeerNode>, config: &NetworkConfig, round: usize) -> Re
             continue;
         }
         with_store(&peer.store, |s| s.save_contact(&mission.id, &own))?;
-        for signed in with_store(&peer.store, |s| s.contacts(&mission.id))? {
+        for signed in with_store(&peer.store, |s| {
+            s.recovery_contacts(&mission.id, config.route_directory.is_some())
+        })? {
             let (_, contact) = Contact::verify(&signed)?;
             if contact.endpoint != peer.endpoint.id().to_string() {
                 jobs.push((mission.id.clone(), contact));
@@ -389,7 +403,7 @@ async fn cycle(peer: &Arc<PeerNode>, config: &NetworkConfig, round: usize) -> Re
         let config = config.clone();
         tasks.spawn(async move {
             let result = tokio::time::timeout(Duration::from_secs(12), async {
-                let addr = contact.address(&config)?;
+                let addr = peer.resolve_contact(&contact, &config).await?;
                 peer.sync_scope(addr.clone(), &mission, "main").await?;
                 let scopes = peer.exchange(addr.clone(), &mission).await?;
                 // Both sides advertise their readable roots; four private

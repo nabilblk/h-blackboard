@@ -76,6 +76,7 @@ impl Store {
             let p = history.at(control)?;
             if p.lifecycle.terms_revision != current.lifecycle.terms_revision
                 || self.provisional(&e.id)?
+                || !self.assignment_applies_at(mission, &current.lifecycle.revision, e)?
             {
                 continue;
             }

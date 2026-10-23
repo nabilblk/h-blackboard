@@ -75,6 +75,9 @@ pub struct AgentView {
     pub direction: Option<DirectionView>,
     /// Receipt of the exact current direction; never evidence of execution.
     pub acknowledgment: Option<String>,
+    /// Read delivery alone never acknowledges a clarification. Pending updates
+    /// are read through the priority feed before the next consequential action.
+    pub pending_clarifications: usize,
     pub assignment: Option<crate::work::WorkstreamAssignmentView>,
 }
 

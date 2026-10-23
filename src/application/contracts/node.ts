@@ -54,6 +54,11 @@ export type LifecycleView = {
   phase: MissionPhase;
   coordinator: CoordinatorView | null;
   plan: PlanView | null;
+  /**
+   * Adaptive execution guidance. Never replaces the plan accepted by Start
+   * or widens mission terms, contributor consent, or execution permissions.
+   */
+  operational_plan: PlanView | null;
   readiness: ReadinessView | null;
   pause_reason: string | null;
   start_blockers: Array<string>;
@@ -129,6 +134,11 @@ export type AgentView = {
    * Receipt of the exact current direction; never evidence of execution.
    */
   acknowledgment: string | null;
+  /**
+   * Read delivery alone never acknowledges a clarification. Pending updates
+   * are read through the priority feed before the next consequential action.
+   */
+  pending_clarifications: number;
   assignment: WorkstreamAssignmentView | null;
 };
 export type AgentPage = {
@@ -170,6 +180,7 @@ export type NetworkConfig = {
   mode: NetworkMode;
   relays: Array<string>;
   allow_lan: boolean;
+  route_directory: string | null;
 };
 export type NetworkView = {
   config: NetworkConfig;
@@ -196,6 +207,7 @@ export type DiscoveryOutcome =
   | "expired_address"
   | "route_blocked"
   | "unreachable"
+  | "incompatible"
   | "invalid_catalog"
   | "cache_error";
 export type InvitationReview = {
@@ -224,6 +236,10 @@ export type DeliveryView = {
   pending: boolean;
   last_success_ms: number | null;
   last_error: string | null;
+  last_progress_ms: number | null;
+  last_converged_ms: number | null;
+  stalled_exchanges: number;
+  control_acknowledged: boolean;
 };
 export type AudienceView = {
   id: string;
@@ -274,7 +290,16 @@ export type MessageQuery = {
   anchor: string | null;
   search: string | null;
 };
+export type Updates = {
+  items: Array<MessageView>;
+  start_after: string | null;
+  after: string | null;
+  has_more: boolean;
+  scope: string;
+};
 export type AgentOperation =
+  | { type: "agent"; registration: string }
+  | { type: "clarifications" }
   | { type: "agents"; after: string | null }
   | { type: "governance" }
   | {
@@ -297,6 +322,16 @@ export type AgentOperation =
     }
   | { type: "artifact_transfer"; transfer: ArtifactTransfer }
   | { type: "context" }
+  | {
+      type: "snapshot";
+      watch: Array<string>;
+      after: string | null;
+      priority_after: string | null;
+    }
+  | { type: "message"; id: string }
+  | { type: "updates"; after: string | null }
+  | { type: "priority_updates"; after: string | null }
+  | { type: "observations" }
   | { type: "workstreams" }
   | { type: "tasks"; query: TaskQuery }
   | { type: "work"; control: string; action: WorkAction }
@@ -309,15 +344,27 @@ export type AgentOperation =
       thread: string | null;
     }
   | { type: "acknowledge"; control: string; direction: string }
+  | { type: "acknowledge_update"; control: string; clarification: string }
   | { type: "plan"; control: string; text: string }
   | { type: "ready"; control: string; plan: string }
-  | { type: "direct"; control: string; registration: string; text: string };
+  | { type: "direct"; control: string; registration: string; text: string }
+  | {
+      type: "clarify";
+      control: string;
+      registration: string;
+      direction: string;
+      text: string;
+    };
 export type AgentContext = {
   definition: MissionDefinition;
   lifecycle: LifecycleView;
   agent: AgentView;
   conversations: Array<AudienceView>;
   execution: string;
+};
+export type ResourceHint = {
+  free_slots: number;
+  permission_until_ms: number | null;
 };
 export type Observation = {
   mission: string;
@@ -326,6 +373,7 @@ export type Observation = {
   grant: string | null;
   state: ObservedState;
   issued_ms: number;
+  resources: ResourceHint | null;
 };
 export type ObservedState =
   | "setup"
@@ -508,7 +556,17 @@ export type ArtifactDocument = {
   limitations: string;
   entrypoint: string | null;
   inputs: Array<string>;
+  /**
+   * Legacy inputs keep live-following semantics. New references declare
+   * their intent; empty defaults preserve the exact signed legacy bytes.
+   */
+  references?: Array<ArtifactReference>;
   files: Array<ArtifactFile>;
+};
+export type ArtifactRelation = "live" | "pinned" | "citation";
+export type ArtifactReference = {
+  revision: string;
+  relation: ArtifactRelation;
 };
 export type ArtifactAction =
   | {
@@ -527,11 +585,14 @@ export type ArtifactAction =
       checks?: Array<ReviewCheck>;
     }
   | { type: "accept"; revision: string; accepted: boolean; reason: string }
-  | { type: "highlight"; revision: string; highlighted: boolean };
+  | { type: "highlight"; revision: string; highlighted: boolean }
+  | { type: "candidate"; revision: string; previous: Array<string> };
 export type ArtifactQuery = {
   after: string | null;
   conversation: string | null;
   search: string | null;
+  kind: ArtifactKind | null;
+  review_status: string | null;
 };
 export type ArtifactSummary = {
   id: string;
@@ -549,6 +610,7 @@ export type ArtifactSummary = {
   entrypoint: string | null;
   stale: boolean;
   review_status: string;
+  review_methods: Array<ReviewMethod>;
   accepted: boolean;
   highlighted: boolean;
 };
@@ -556,6 +618,13 @@ export type ArtifactPage = {
   items: Array<ArtifactSummary>;
   after: string | null;
   total: number;
+  candidates: Array<ArtifactCandidate>;
+};
+export type ArtifactCandidate = {
+  id: string;
+  revision: string;
+  title: string;
+  stale: boolean;
 };
 export type ArtifactRevisionSummary = {
   id: string;
@@ -590,6 +659,7 @@ export type ArtifactDetail = {
   parents: Array<string>;
   stale: boolean;
   history: Array<ArtifactRevisionSummary>;
+  freshness_notes: Array<string>;
   reviews: Array<ArtifactReviewView>;
   acceptance: ArtifactDecision | null;
   highlighted: boolean;
@@ -608,6 +678,11 @@ export type ArtifactTransfer =
       path: string;
       media_type: string;
       size: number;
+      /**
+       * Caller-chosen content/request digest. It scopes a restartable upload,
+       * never authenticates file bytes (BLAKE3 is computed after reception).
+       */
+      resume_key: string | null;
     }
   | { type: "chunk"; upload: string; offset: number; hex: string }
   | { type: "cancel"; upload: string }
@@ -825,6 +900,7 @@ export type Command =
       revision: string;
       registration: string;
       text: string;
+      clarification: string | null;
     }
   | {
       type: "agent_request";
@@ -835,6 +911,8 @@ export type Command =
     }
   | { type: "open_agent_conversation"; mission: string; registration: string }
   | { type: "query_messages"; mission: string; query: MessageQuery }
+  | { type: "read_message"; mission: string; id: string }
+  | { type: "catch_up"; mission: string; after: string | null }
   | { type: "mark_messages_read"; mission: string; ids: Array<string> }
   | { type: "network_state" }
   | { type: "configure_network"; config: NetworkConfig }

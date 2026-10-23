@@ -283,6 +283,7 @@ fn artifact_v7_vectors_preserve_private_scope_files_and_exact_reviews() {
                     limitations: "Static fixture only".into(),
                     entrypoint: Some("site/index.html".into()),
                     inputs: vec!["05".repeat(32)],
+                    references: vec![],
                     files: vec![ArtifactFile {
                         path: "site/index.html".into(),
                         hash: "06".repeat(32),

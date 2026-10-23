@@ -23,6 +23,21 @@ const query = z
     after: id.nullable().optional(),
     conversation: conversation.nullable().optional(),
     search: text(512, 0).nullable().optional(),
+    kind: z
+      .enum(["plan", "report", "application", "data", "code", "document"])
+      .nullable()
+      .optional(),
+    review_status: z
+      .enum([
+        "unreviewed",
+        "reviewed",
+        "self_reviewed",
+        "changes_requested",
+        "needs_review",
+        "conflict",
+      ])
+      .nullable()
+      .optional(),
   })
   .strict();
 const document = z
@@ -34,10 +49,24 @@ const document = z
     limitations: text(4096, 0),
     entrypoint: path.nullable(),
     inputs: ids(16),
+    references: z
+      .array(
+        z
+          .object({
+            revision: id,
+            relation: z.enum(["live", "pinned", "citation"]),
+          })
+          .strict(),
+      )
+      .max(16)
+      .optional(),
     files: z.array(z.never()).max(0),
   })
   .strict();
 const action = z.discriminatedUnion("type", [
+  z
+    .object({ type: z.literal("candidate"), revision: id, previous: ids(32) })
+    .strict(),
   z
     .object({
       type: z.literal("review"),
@@ -89,6 +118,7 @@ export const artifactTransfer = z.discriminatedUnion("type", [
       conversation,
       path,
       media_type: text(100),
+      resume_key: id.nullish(),
       size: z
         .number()
         .int()
@@ -120,8 +150,8 @@ export const artifactTransfer = z.discriminatedUnion("type", [
       artifact: id.nullable(),
       parents: ids(256),
       document,
-      uploads: ids(32),
-      retain: z.array(z.object({ revision: id, path }).strict()).max(32),
+      uploads: ids(256),
+      retain: z.array(z.object({ revision: id, path }).strict()).max(256),
     })
     .strict(),
   z
@@ -138,6 +168,13 @@ export const artifactTransfer = z.discriminatedUnion("type", [
     .strict(),
 ]);
 export const ArtifactRequests = {
+  artifactCache: z
+    .object({
+      mission: id,
+      revision: id,
+      action: z.enum(["status", "save", "cancel"]),
+    })
+    .strict(),
   artifacts: z.object({ mission: id, query }).strict(),
   artifactDetail: z.object({ mission: id, revision: id }).strict(),
   copyArtifactReference: z.object({ mission: id, revision: id }).strict(),
@@ -159,7 +196,16 @@ export const ArtifactAgentOperations = [
       type: z.literal("artifact_action"),
       control: id,
       conversation,
-      action,
+      action: z.discriminatedUnion(
+        "type",
+        action.options
+          .filter((option) => option.shape.type.value !== "accept")
+          .map((option) =>
+            option.shape.type.value === "review"
+              ? option.extend({ checks: option.shape.checks.unwrap().min(1) })
+              : option,
+          ),
+      ),
     })
     .strict(),
   z

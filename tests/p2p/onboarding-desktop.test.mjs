@@ -29,7 +29,11 @@ async function until(fn, { timeoutMs = 10000, describe } = {}) {
     await delay(15);
   }
 }
-async function fixture(t, coordination = "coordinated") {
+async function fixture(
+  t,
+  coordination = "coordinated",
+  budget = { mode: "unlimited" },
+) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-onboarding-")));
   const contributors = new ContributorService({
     store: new DesktopStore(join(root, "contributor")),
@@ -119,7 +123,7 @@ async function fixture(t, coordination = "coordinated") {
       policy: {
         coordination,
         participation: "private",
-        budget: { mode: "unlimited" },
+        budget,
       },
     },
   });
@@ -173,11 +177,17 @@ test("guided Coordinator setup persists identity, shares and appoints once, with
 
 test("bulk setup preserves explicit internet choices and cannot change a saved setup's consent", async (t) => {
   const f = await fixture(t, "peer");
-  const request = { ...f.request, count: 2, networkAccess: "internet" };
+  const request = {
+    ...f.request,
+    count: 2,
+    networkAccess: "internet",
+    capabilityPack: "web-3d",
+  };
   await f.onboarding.setup(request);
   await until(() => f.onboarding.state(f.mission)[0].status === "complete");
   for (const c of f.contributors.store.read().contributions) {
     assert.equal(c.networkAccess, "internet");
+    assert.equal(c.capabilityPack, "web-3d");
     assert.equal(
       f.executions.store.read(c.id).policy,
       INTERNET_POLICY_DIGESTS.grok,
@@ -329,6 +339,134 @@ test("reviewed Start launches once, preserves independent local caps, and Stop d
   assert.equal(f.agreements.list(f.mission)[0].status, "stopped");
 });
 
+test("a remote permission cannot exceed the contributor's reviewed session or offline limit", async (t) => {
+  const f = await continuationFixture(t);
+  await f.agreements.startReviewed({
+    id: randomUUID(),
+    mission: f.mission,
+    revision: f.mission,
+    readiness: null,
+    approvals: [{ ...f.input, leaseMinutes: 5, offlineMinutes: 3 }],
+  });
+  await until(() => f.provider.launches === 1);
+  const grantId = f.executions.store.read(f.c.id).grant;
+  const context = await f.node.executionContext(f.c.id, grantId);
+  const offered = {
+    ...context,
+    grant: {
+      ...context.grant,
+      expires_ms: context.grant.issued_ms + 45 * 60000,
+      offline_ms: 30 * 60000,
+    },
+  };
+  const constrained = f.agreements.constrain(f.c.id, offered).grant;
+  assert.equal(constrained.expires_ms, offered.grant.issued_ms + 5 * 60000);
+  assert.equal(constrained.offline_ms, 3 * 60000);
+  await f.agreements.cancel(f.input.id);
+});
+
+test("replacement consent takes precedence when recovery links a permission to both saved approvals", async (t) => {
+  const f = await continuationFixture(t);
+  f.input.id = "00000000-0000-4000-8000-000000000001";
+  await f.agreements.startReviewed({
+    id: randomUUID(),
+    mission: f.mission,
+    revision: f.mission,
+    readiness: null,
+    approvals: [f.input],
+  });
+  await until(() => f.provider.launches === 1);
+  const grantId = f.executions.store.read(f.c.id).grant;
+  const context = await f.node.executionContext(f.c.id, grantId);
+  await f.executions.stop(f.c.id, "Desktop is closing.");
+  const old = f.agreements.store.read(f.input.id);
+  f.agreements.save(old, { status: "interrupted" });
+  const next = await f.agreements.approve({
+    ...f.input,
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    leaseMinutes: 2,
+    offlineMinutes: 1,
+  });
+  // Recovery can discover the same durable permission after a lost response or
+  // an in-flight old issue. Preserve both journals; apply the latest consent.
+  f.agreements.save(next, { grants: [grantId] });
+  const constrained = f.agreements.constrain(f.c.id, context).grant;
+  assert.equal(constrained.offline_ms, 60000);
+  assert.ok(constrained.expires_ms <= context.grant.issued_ms + 120000);
+  f.agreements.save(next, { status: "interrupted" });
+  f.agreements.save(old, { status: "active" });
+  assert.throws(
+    () => f.agreements.constrain(f.c.id, context),
+    /approval ended or changed/,
+  );
+  f.agreements.save(next, { status: "stopped" });
+  assert.throws(
+    () => f.agreements.constrain(f.c.id, context),
+    /approval ended or changed/,
+  );
+});
+
+test("a fully assigned turn pool can queue another approved agent without a false budget failure", async (t) => {
+  const f = await fixture(t, "peer", {
+    mode: "limited",
+    turns: 2,
+    concurrency: 4,
+    deadline_ms: null,
+    tokens: null,
+    model_cost_microusd: null,
+  });
+  await f.onboarding.setup({ ...f.request, count: 2 });
+  await until(() => f.onboarding.state(f.mission)[0].status === "complete");
+  const agents = f.contributors.store.read().contributions;
+  agents.forEach((c) => f.executions.store.update(c.id, { status: "ready" }));
+  f.provider.launch = async ({ onSession }) => {
+    f.provider.launches++;
+    onSession("pooled-session");
+    return { done: delay(25).then(() => ({})) };
+  };
+  const agreements = new ContributionAgreements({
+    directory: join(f.root, "pool"),
+    node: f.node,
+    executions: f.executions,
+  });
+  f.executions.agreements = agreements;
+  t.after(() => agreements.close());
+  await agreements.startReviewed({
+    id: randomUUID(),
+    mission: f.mission,
+    revision: f.mission,
+    readiness: null,
+    approvals: agents.map((c) => ({
+      id: randomUUID(),
+      mission: f.mission,
+      terms: f.mission,
+      coordinator: null,
+      plan: null,
+      registration: c.sharedAgent.registration,
+      contributionId: c.id,
+      ownerPermission: true,
+      minutes: 60,
+      turns: 2,
+      followDirections: true,
+    })),
+  });
+  await until(async () => {
+    await agreements.tick();
+    return f.provider.launches === 2;
+  });
+  await until(async () =>
+    (
+      await f.node.handle("governance", { mission: f.mission })
+    ).reservations.every((r) => r.receipt),
+  );
+  const ledger = await f.node.handle("governance", { mission: f.mission });
+  assert.equal(ledger.allocations.length, 1);
+  assert.equal(ledger.allocations[0].charged, 2);
+  assert.ok(
+    agreements.list(f.mission).every((a) => a.status !== "interrupted"),
+  );
+});
+
 test("changing internet access invalidates standing and stale approvals; fresh consent binds the new policy", async (t) => {
   const f = await continuationFixture(t);
   await f.agreements.approve(f.input);
@@ -366,6 +504,48 @@ test("changing internet access invalidates standing and stale approvals; fresh c
       grant: ledger.grants[0].id,
     }),
     /Internet access changed/,
+  );
+  await f.agreements.cancel(approval.id);
+  assert.equal(f.provider.launches, 1);
+});
+
+test("changing authoring tools invalidates standing and stale approvals; fresh consent binds the selected toolkit", async (t) => {
+  const f = await continuationFixture(t);
+  await f.agreements.approve(f.input);
+  await f.executions.setCapabilityPack(f.c.id, "web-3d", null);
+  await f.agreements.tick();
+  assert.equal(f.agreements.list(f.mission)[0].status, "review");
+  assert.equal(f.provider.launches, 0);
+  await assert.rejects(
+    f.agreements.approve({ ...f.input, id: randomUUID() }),
+    /Authoring tools changed/,
+  );
+  const c = f.contributors.store.read().contributions[0];
+  f.executions.store.update(c.id, { status: "ready" });
+  const approval = {
+    ...f.input,
+    id: randomUUID(),
+    capabilityRevision: c.capabilityRevision,
+  };
+  await f.agreements.startReviewed({
+    id: randomUUID(),
+    mission: f.mission,
+    revision: f.mission,
+    readiness: null,
+    approvals: [approval],
+  });
+  await until(() => f.provider.launches === 1);
+  const ledger = await f.node.handle("governance", { mission: f.mission });
+  const { executionBinding } =
+    await import("../../desktop/execution/permissions.mjs");
+  assert.equal(ledger.grants[0].consent_binding, executionBinding(c));
+  await assert.rejects(
+    f.node.handle("consentGrant", {
+      mission: f.mission,
+      contributionId: c.id,
+      grant: ledger.grants[0].id,
+    }),
+    /Authoring tools changed/,
   );
   await f.agreements.cancel(approval.id);
   assert.equal(f.provider.launches, 1);
@@ -728,3 +908,99 @@ test("finite permission renewal preserves an idle session and never spends beyon
   assert.ok(ledger.grants.every((g) => g.sealed));
   assert.equal(f.provider.launches, 6);
 });
+
+for (const budget of [
+  { mode: "unlimited" },
+  {
+    mode: "limited",
+    turns: 6,
+    concurrency: 2,
+    deadline_ms: null,
+    tokens: null,
+    model_cost_microusd: null,
+  },
+])
+  test(`six approvals queue fairly, settle and reclaim slots with ${budget.mode} budget`, async (t) => {
+    const f = await fixture(t, "peer", budget);
+    await f.onboarding.setup({ ...f.request, count: 6 });
+    await until(() => f.onboarding.state(f.mission)[0].status === "complete");
+    const agents = f.contributors.store.read().contributions;
+    assert.equal(agents.length, 6);
+    for (const c of agents)
+      f.executions.store.update(c.id, { status: "ready" });
+    const running = new Set();
+    let maximum = 0;
+    f.provider.launch = async ({ contribution, onSession }) => {
+      running.add(contribution.id);
+      maximum = Math.max(maximum, running.size);
+      f.provider.launches++;
+      onSession("capacity-fixture-session");
+      return { done: delay(25).then(() => ({})) };
+    };
+    f.provider.terminate = async ({ contribution }) => {
+      running.delete(contribution.id);
+      return { stopped: true };
+    };
+    const agreements = new ContributionAgreements({
+      directory: join(f.root, "six-approvals"),
+      node: f.node,
+      executions: f.executions,
+    });
+    f.executions.agreements = agreements;
+    t.after(() => agreements.close());
+    const approvals = agents.map((c) => ({
+      id: randomUUID(),
+      mission: f.mission,
+      terms: f.mission,
+      coordinator: null,
+      plan: null,
+      registration: c.sharedAgent.registration,
+      contributionId: c.id,
+      ownerPermission: true,
+      minutes: 60,
+      leaseMinutes: 45,
+      offlineMinutes: 45,
+      turns: 1,
+      followDirections: true,
+    }));
+    await agreements.startReviewed({
+      id: randomUUID(),
+      mission: f.mission,
+      revision: f.mission,
+      readiness: null,
+      approvals,
+    });
+    await until(
+      async () => {
+        await agreements.tick();
+        return (
+          f.provider.launches === 6 &&
+          agents.every(
+            (c) => f.executions.store.read(c.id).status === "stopped",
+          )
+        );
+      },
+      {
+        timeoutMs: 30000,
+        describe: () =>
+          JSON.stringify(
+            agreements.list(f.mission).map((a) => ({
+              status: a.status,
+              waiting: a.waitingFor,
+              message: a.message,
+            })),
+          ),
+      },
+    );
+    assert.ok(maximum <= 2);
+    const ledger = await f.node.handle("governance", { mission: f.mission });
+    assert.equal(new Set(ledger.grants.map((g) => g.allocation)).size, 6);
+    assert.equal(ledger.reservations.length, 6);
+    assert.ok(ledger.reservations.every((r) => r.receipt && r.stopped));
+    assert.ok(
+      ledger.grants.every((g) => g.expires_ms - g.issued_ms > 44 * 60000),
+    );
+    assert.ok(
+      agreements.list(f.mission).every((a) => a.status !== "interrupted"),
+    );
+  });

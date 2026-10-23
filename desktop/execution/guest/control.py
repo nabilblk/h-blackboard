@@ -10,7 +10,7 @@ import uuid
 from runtimes import authenticated, private_directory, spec
 
 BASE = "/opt/harakiri"
-ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/workspace"}
+ENV = {"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/workspace"}
 
 
 def runtime_properties(seconds):
@@ -59,7 +59,7 @@ def worker(argv, data=b"", timeout=30, network=True):
         ]
         argv = ["python3", "-I", "/usr/local/lib/harakiri-worker-network.py", *argv]
     args += ["--property=" + p for p in properties]
-    args += ["--setenv=HOME=/workspace", "--setenv=PATH=/usr/bin:/bin", "--", *argv]
+    args += ["--setenv=HOME=/workspace", "--setenv=PATH=/usr/local/bin:/usr/bin:/bin", "--", *argv]
     # communicate is bounded by a regular file output quota for shell calls;
     # file transfers are separately bounded by files.py.
     try:
@@ -68,7 +68,7 @@ def worker(argv, data=b"", timeout=30, network=True):
                                     env=ENV, timeout=timeout + 10)
             out.seek(0)
             err.seek(0)
-            result.stdout = out.read(32 * 1024 * 1024 + 1)
+            result.stdout = out.read(64 * 1024 * 1024 + 1)
             result.stderr = err.read(16384)
             return result
     finally:
@@ -114,7 +114,10 @@ def main():
             raise ValueError("Stop execution before transferring workspace files")
         request = {"action": action}
         if action == "import":
-            request["files"] = json.loads(sys.stdin.buffer.read(48 * 1024 * 1024 + 1))["files"]
+            value = json.loads(sys.stdin.buffer.read(48 * 1024 * 1024 + 1))
+            request["files"] = value["files"]
+            if value.get("destination"):
+                request.update({"action": "import_project", "destination": value["destination"]})
         return files(request)
     raise ValueError("Unknown control operation")
 

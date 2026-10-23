@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { join, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { Response } from "./contract.mjs";
+import { Response, responseSchema } from "./contract.mjs";
 import { draftingPrompt, draftingInstructions } from "./prompt.mjs";
 import {
   JsonLines,
@@ -135,6 +135,8 @@ export function claudeArguments() {
     '{"disableAllHooks":true,"autoMemoryEnabled":false,"enabledPlugins":{}}',
     "--output-format",
     "stream-json",
+    "--json-schema",
+    JSON.stringify(responseSchema),
     "--session-id",
     randomUUID(),
     "--no-session-persistence",
@@ -177,9 +179,11 @@ export function parseDraftReply(text) {
   try {
     return Response.parse(JSON.parse(raw));
   } catch {
-    throw publicError(
+    const error = publicError(
       "The helper returned an invalid brief. Your existing work is safe. Ask it to try again or continue manually.",
     );
+    error.code = "invalid_draft_reply";
+    throw error;
   }
 }
 
@@ -304,9 +308,23 @@ export class DraftRuntimeService {
     );
   }
   async run({ draft, signal }) {
+    try {
+      return await this.runOnce({ draft, signal });
+    } catch (error) {
+      if (error.code !== "invalid_draft_reply" || signal.aborted) throw error;
+      // One repair only, with the original authoritative brief. Do not promote
+      // malformed model text into human instructions or silently edit the draft.
+      return this.runOnce({ draft, signal, repair: true });
+    }
+  }
+  async runOnce({ draft, signal, repair = false }) {
     const c = await this.configuration(draft.runtime, signal);
     if (signal.aborted) throw publicError("Stopped. Your draft is saved.");
-    const prompt = draftingPrompt(draft);
+    const prompt =
+      draftingPrompt(draft) +
+      (repair
+        ? "\nYour previous reply failed schema validation. Return one valid JSON object with every required field; use null for unchanged patch fields. Preserve the current brief."
+        : "");
     if (draft.runtime === "claude") {
       const status = JSON.parse(
         await collect(
@@ -338,7 +356,9 @@ export class DraftRuntimeService {
         if (m.type === "system" && m.subtype === "init") {
           if (
             !Array.isArray(m.tools) ||
-            m.tools.some((t) => t !== "EndConversation") ||
+            m.tools.some(
+              (t) => !["EndConversation", "StructuredOutput"].includes(t),
+            ) ||
             m.mcp_servers?.length
           )
             throw publicError(
@@ -348,7 +368,7 @@ export class DraftRuntimeService {
         }
         if (m.type === "assistant")
           for (const block of m.message?.content ?? []) {
-            if (block.type === "tool_use")
+            if (block.type === "tool_use" && block.name !== "StructuredOutput")
               throw publicError(
                 "Claude attempted a tool call. The drafting session was stopped.",
               );
@@ -362,7 +382,11 @@ export class DraftRuntimeService {
         await done;
         if (!initialized || result.is_error || result.subtype !== "success")
           throw runtimeFailure(JSON.stringify(result?.errors ?? []));
-        return parseDraftReply(result.result || text);
+        return parseDraftReply(
+          result.structured_output
+            ? JSON.stringify(result.structured_output)
+            : result.result || text,
+        );
       } finally {
         await wire.close();
       }
@@ -425,6 +449,7 @@ export class DraftRuntimeService {
           runtimeWorkspaceRoots: [],
           approvalPolicy: "never",
           sandboxPolicy: { type: "readOnly" },
+          outputSchema: responseSchema,
         });
         const result = (await done).params.turn;
         if (

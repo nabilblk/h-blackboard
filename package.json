@@ -28,7 +28,7 @@
     "test:desktop:peers": "npm run desktop:build && node tests/desktop-peers-native.mjs",
     "test:g6": "node tests/experiments/g6-rehearsal.mjs",
     "dev:ui": "vite --config vite.ui.config.mjs",
-    "test:ui": "node tests/ui-components.mjs && node tests/desktop-inspectors.mjs && node tests/mission-drafting-ui.mjs",
+    "test:ui": "node tests/ui-components.mjs && node tests/desktop-inspectors.mjs && node tests/mission-drafting-ui.mjs && node tests/conversation-readability.mjs && node tests/continuity-ui.mjs",
     "test:drafting:ui": "node tests/mission-drafting-ui.mjs"
   },
   "dependencies": {
@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
+    "@electron/osx-sign": "2.7.1",
     "@electron/packager": "20.3.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

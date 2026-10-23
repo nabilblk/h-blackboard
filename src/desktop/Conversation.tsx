@@ -1,7 +1,10 @@
+import { observations } from "../application/observations";
+import { readRoster } from "../application/mission-queries";
 import { Disclosure } from "../ui/Disclosure";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/Button";
 import { useApplication } from "./ApplicationProvider";
+import { agentContributorLabel } from "../../shared/agent-lifecycle.mjs";
 import type { ReactNode } from "react";
 import { AgentState } from "./ExecutionStatus";
 import type { Contribution } from "../application/contracts/workspace";
@@ -12,6 +15,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useMemo,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -43,6 +47,8 @@ export type MissionSession = {
   drafts: Record<string, string>;
   feed?: MessageFeed;
   recipients?: Record<string, string>;
+  anchor?: string | null;
+  thread?: { id: string; audience: string } | null;
 };
 type Props = {
   decisions?: ReactNode;
@@ -104,17 +110,38 @@ export function Conversation({
   const feed = session.feed ?? "conversation";
   const [scopes, setScopes] = useState<AudienceView[]>([]);
   const [agents, setAgents] = useState<AgentView[]>([]);
+  const agentsByAuthor = useMemo(
+    () => new Map(agents.map((agent) => [agent.identity.author, agent])),
+    [agents],
+  );
   const [people, setPeople] = useState<MemberView[]>([]);
   const [messages, setMessages] = useState<MessageView[]>([]);
+  const [windowEnd, setWindowEnd] = useState<number | null>(null);
+  const windowEndRef = useRef(windowEnd);
+  windowEndRef.current = windowEnd;
+  const visibleEnd = windowEnd ?? messages.length;
+  const visibleStart = Math.max(0, visibleEnd - 200);
+  const visibleMessages = messages.slice(visibleStart, visibleEnd);
+  const [readingSize, setReadingSize] = useState(() => {
+    try {
+      return localStorage.getItem("harakiri.reading-size") === "large"
+        ? "large"
+        : "standard";
+    } catch {
+      return "standard";
+    }
+  });
   const [older, setOlder] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [anchor, setAnchor] = useState<string | null>(null);
-  const [thread, setThread] = useState<{ id: string; audience: string } | null>(
-    null,
-  );
+  const anchor = session.anchor ?? null;
+  const setAnchor = (anchor: string | null) =>
+    updateSession((s) => ({ ...s, anchor }));
+  const thread = session.thread ?? null;
+  const setThread = (thread: MissionSession["thread"]) =>
+    updateSession((s) => ({ ...s, thread }));
   const [newMessages, setNewMessages] = useState(0);
   const [scopeLimit, setScopeLimit] = useState(20);
   const list = useRef<HTMLDivElement>(null);
@@ -149,9 +176,12 @@ export function Conversation({
     author === owner
       ? name
       : (agents.find((a) => a.identity.author === author)?.identity.label ??
-        (author === mission.owner
-          ? "Mission owner"
-          : `Participant ${author.slice(0, 8)}`));
+        agentContributorLabel(
+          agents.find((a) => a.contributor === author) ?? {
+            contributor: author,
+          },
+          mission,
+        ));
   const select = (audience: string, feed: MessageFeed = "conversation") => {
     setAnchor(null);
     setThread(null);
@@ -159,43 +189,28 @@ export function Conversation({
     setAppliedSearch("");
     updateSession((s) => ({ ...s, audience, feed }));
   };
-  const closeThread = useCallback(() => setThread(null), []);
-  useEffect(() => {
-    if (detailsOpen) setThread(null);
-  }, [detailsOpen]);
+  const closeThread = () => setThread(null);
   useEffect(() => {
     const t = setTimeout(() => setAppliedSearch(search.trim()), 250);
     return () => clearTimeout(t);
   }, [search]);
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const load = async () => {
-      try {
-        const peers = await node.peers(mission.id);
-        const all: AgentView[] = [];
-        let after: string | null = null;
-        do {
-          const page = await node.agents(mission.id, after);
-          all.push(...page.items);
-          after = page.after;
-        } while (after && !cancelled && all.length < 512);
-        if (!cancelled) {
-          setAgents(all);
-          setPeople(peers.members);
-        }
-      } catch (e) {
-        if (!cancelled)
-          setError(
-            e instanceof Error ? e.message : "Unable to read participants.",
-          );
-      }
-      if (!cancelled) timer = setTimeout(() => void load(), 10000);
-    };
-    void load();
+    const fail = (error: Error) => setError(error.message);
+    const roster = observations(node).subscribe(
+      `roster:${mission.id}`,
+      () => readRoster(node, mission.id),
+      setAgents,
+      fail,
+    );
+    const peers = observations(node).subscribe(
+      `peers:${mission.id}`,
+      () => node.peers(mission.id),
+      (value) => setPeople(value.members),
+      fail,
+    );
     return () => {
-      cancelled = true;
-      clearTimeout(timer);
+      roster();
+      peers();
     };
   }, [mission.id, node]);
   const markRead = async (items: MessageView[]) => {
@@ -216,22 +231,27 @@ export function Conversation({
   useEffect(() => {
     let cancelled = false;
     let first = true;
-    let timer: ReturnType<typeof setTimeout>;
     const seen = new Set<string>();
     const saved = readScroll(key);
     setMessages([]);
+    setWindowEnd(null);
     setOlder(null);
     setLoading(true);
     setError("");
     setNewMessages(0);
-    const poll = async () => {
-      try {
+    const stop = observations(node).subscribe(
+      `conversation:${mission.id}:${key}`,
+      async () => {
         const [page, audiences] = await Promise.all([
           node.queryMessages(mission.id, queryRef.current),
           node.audiences(mission.id),
         ]);
+        return { page, audiences };
+      },
+      ({ page, audiences }) => {
         if (cancelled) return;
         const nearBottom =
+          windowEndRef.current === null &&
           !!list.current &&
           list.current.scrollHeight -
             list.current.clientHeight -
@@ -264,6 +284,7 @@ export function Conversation({
           if (
             feed === "conversation" &&
             !appliedSearch &&
+            windowEndRef.current === null &&
             list.current.scrollHeight -
               list.current.clientHeight -
               list.current.scrollTop <
@@ -271,20 +292,17 @@ export function Conversation({
           )
             void markReadRef.current(page.items);
         });
-      } catch (e) {
+      },
+      (error) => {
         if (!cancelled) {
-          setError(
-            e instanceof Error ? e.message : "Unable to read conversation.",
-          );
+          setError(error.message);
           setLoading(false);
         }
-      }
-      if (!cancelled) timer = setTimeout(() => void poll(), 2500);
-    };
-    void poll();
+      },
+    );
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      stop();
     };
   }, [mission.id, key, node]);
   const openMessage = (m: MessageView) => {
@@ -326,14 +344,25 @@ export function Conversation({
       label={label}
       location={streams.find((s) => `workstream:${s.id}` === m.audience)?.name}
       owner={owner}
+      role={agentsByAuthor.get(m.author)?.identity.role}
+      runtime={agentsByAuthor.get(m.author)?.identity.runtime}
+      copyLink={() =>
+        perform(async () => {
+          await node.copyMessageReference(mission.id, m.id);
+        })
+      }
       openWork={(kind, id) => {
-        setThread(null);
         if (kind === "artifact") artifacts(id);
         else if (kind === "task") tasks(id);
+        else if (kind === "message" || kind === "thread")
+          void perform(async () => {
+            const message = await node.readMessage(mission.id, id);
+            if (kind === "thread") openThread(message);
+            else openMessage(message);
+          });
         else editStream(id);
       }}
       profile={(id) => {
-        setThread(null);
         profile(id);
       }}
       reply={inThread ? undefined : () => openThread(m)}
@@ -537,6 +566,24 @@ export function Conversation({
               placeholder={`Search ${title}…`}
             />
           </label>
+          <label className="n-reading-control">
+            <span className="sr-only">Message text size</span>
+            <select
+              aria-label="Message text size"
+              value={readingSize}
+              onChange={(e) => {
+                setReadingSize(e.target.value);
+                try {
+                  localStorage.setItem("harakiri.reading-size", e.target.value);
+                } catch {
+                  /* Session preference remains usable. */
+                }
+              }}
+            >
+              <option value="standard">Text size</option>
+              <option value="large">Larger text</option>
+            </select>
+          </label>
         </header>
         {isPrivate && feed === "conversation"
           ? agents
@@ -585,7 +632,7 @@ export function Conversation({
           </div>
         ) : null}
         <div
-          className="n-messages"
+          className={`n-messages n-reading-${readingSize}`}
           ref={list}
           aria-label={`${title} messages`}
           aria-busy={loading}
@@ -599,7 +646,11 @@ export function Conversation({
             ) {
               setNewMessages(0);
               if (feed === "conversation" && !appliedSearch)
-                void markRead(messages.slice(-200));
+                void markRead(visibleMessages);
+            } else if (windowEnd === null && messages.length > 200) {
+              // Hold the current window while reading/selecting older text.
+              // New messages remain available through the latest button.
+              setWindowEnd(messages.length);
             }
           }}
         >
@@ -608,12 +659,13 @@ export function Conversation({
               className="n-new-messages"
               onClick={() => {
                 setNewMessages(0);
+                setWindowEnd(null);
                 requestAnimationFrame(() => {
                   list.current?.scrollTo({ top: list.current.scrollHeight });
                 });
               }}
             >
-              {newMessages} new messages ↓
+              {newMessages} new {newMessages === 1 ? "message" : "messages"} ↓
             </Button>
           ) : null}
           {error ? (
@@ -621,11 +673,18 @@ export function Conversation({
           ) : loading ? (
             <p role="status">Loading conversation…</p>
           ) : null}
-          {older ? (
+          {older || visibleStart > 0 ? (
             <Button
               disabled={busy}
               onClick={() =>
                 void perform(async () => {
+                  if (visibleStart > 0) {
+                    setWindowEnd(Math.min(messages.length, visibleStart + 40));
+                    requestAnimationFrame(() =>
+                      list.current?.scrollTo({ top: 0 }),
+                    );
+                    return;
+                  }
                   const selected = key;
                   const height = list.current?.scrollHeight ?? 0;
                   const top = list.current?.scrollTop ?? 0;
@@ -640,6 +699,9 @@ export function Conversation({
                       (m) => !page.items.some((p) => p.id === m.id),
                     ),
                   ]);
+                  setWindowEnd(
+                    Math.min(200, page.items.length + messages.length),
+                  );
                   setOlder(page.before);
                   requestAnimationFrame(() => {
                     if (list.current)
@@ -651,6 +713,26 @@ export function Conversation({
             >
               Load earlier messages
             </Button>
+          ) : null}
+          {windowEnd !== null ? (
+            <div className="n-context-banner">
+              <span>
+                Showing {visibleStart + 1}–
+                {Math.min(visibleEnd, messages.length)} of {messages.length}{" "}
+                loaded messages. Search covers saved history.
+              </span>
+              <Button
+                onClick={() => {
+                  setWindowEnd(null);
+                  setNewMessages(0);
+                  requestAnimationFrame(() =>
+                    list.current?.scrollTo({ top: list.current.scrollHeight }),
+                  );
+                }}
+              >
+                Back to latest
+              </Button>
+            </div>
           ) : null}
           {!loading && !messages.length && !error ? (
             <div className="n-conversation-start">
@@ -675,7 +757,7 @@ export function Conversation({
           {feed === "inbox" ? decisions : null}
           {(() => {
             if (appliedSearch || feed !== "conversation")
-              return messages.map((m) => render(m));
+              return visibleMessages.map((m) => render(m));
             const grouped: ReactNode[] = [];
             let routine: MessageView[] = [];
             const flush = () => {
@@ -698,7 +780,7 @@ export function Conversation({
                 </Disclosure>,
               );
             };
-            for (const m of messages) {
+            for (const m of visibleMessages) {
               if (
                 m.kind === "governance" &&
                 m.text ===
@@ -805,7 +887,7 @@ export function Conversation({
           </>
         ) : null}
       </section>
-      {thread ? (
+      {thread && !detailsOpen ? (
         <Thread
           key={`${thread.audience}:${thread.id}`}
           mission={mission.id}

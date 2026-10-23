@@ -1,6 +1,7 @@
 use harakiri_node::{communication::MessageQuery, store::Store};
 use harakiri_protocol::{
     ArtifactFile, Event, Identity, MissionDefinition, Payload,
+    agents::{AgentIdentity, AgentRole},
     artifacts::*,
     lifecycle::ControlAction,
     policy::{Coordination, MissionBudget, MissionPolicy, Participation},
@@ -89,12 +90,185 @@ fn document(title: &str, inputs: Vec<String>) -> ArtifactDocument {
         limitations: "Offline fixture".into(),
         entrypoint: Some("index.html".into()),
         inputs,
+        references: vec![],
         files: vec![ArtifactFile {
             path: "index.html".into(),
             hash: blake3::hash(b"fixture").to_hex().to_string(),
             size: 7,
             media_type: "text/html".into(),
         }],
+    }
+}
+
+#[test]
+fn prepared_directions_authorize_exact_artifact_publication_and_review_after_start() {
+    for workstream in [false, true] {
+        let mut f = Fixture::new();
+        let builder = Identity::from_seed([61; 32]);
+        let reviewer = Identity::from_seed([62; 32]);
+        let excluded = Identity::from_seed([63; 32]);
+        let mut registrations = vec![];
+        let mut directions = vec![];
+        for (identity, label) in [
+            (&builder, "Builder"),
+            (&reviewer, "Reviewer"),
+            (&excluded, "Excluded"),
+        ] {
+            let offer =
+                f.s.offer_agent(
+                    &f.b,
+                    &f.m,
+                    &f.m,
+                    AgentIdentity {
+                        author: identity.public_key(),
+                        label: label.into(),
+                        runtime: "grok".into(),
+                        role: AgentRole::Agent,
+                        contributor_name: "Contributor".into(),
+                    },
+                )
+                .unwrap();
+            let direction = if workstream {
+                f.s.work(
+                    &f.a,
+                    &f.m,
+                    &f.m,
+                    harakiri_protocol::work::WorkAction::AssignWorkstream {
+                        registration: offer.id.clone(),
+                        workstream: None,
+                        goal_revision: None,
+                        direction: "Publish or independently review the exact lesson after Start"
+                            .into(),
+                    },
+                )
+                .unwrap()
+            } else {
+                f.s.direct_agent(
+                    &f.a,
+                    &f.m,
+                    &f.m,
+                    &offer.id,
+                    "Publish or independently review the exact lesson after Start".into(),
+                )
+                .unwrap()
+            };
+            registrations.push(offer.id);
+            directions.push(direction.id);
+        }
+        let publish = ArtifactAction::Publish {
+            artifact: None,
+            parents: vec![],
+            document: document("Lesson", vec![]),
+        };
+        assert!(
+            f.s.artifact_action(&builder, &f.m, &f.m, "main", publish.clone())
+                .is_err()
+        );
+        let mut participants = registrations[..2].to_vec();
+        participants.sort();
+        let started =
+            f.s.control(
+                &f.a,
+                &f.m,
+                &f.m,
+                ControlAction::Start {
+                    readiness: None,
+                    participants,
+                },
+            )
+            .unwrap();
+        let draft =
+            f.s.artifact_action(&builder, &f.m, &started.id, "main", publish.clone())
+                .unwrap();
+        assert!(
+            matches!(&draft.body.payload, Payload::ArtifactRecorded { authorization: Some(id), .. } if id == &directions[0])
+        );
+        let review =
+            f.s.artifact_action(
+                &reviewer,
+                &f.m,
+                &started.id,
+                "main",
+                ArtifactAction::Review {
+                    revision: draft.id.clone(),
+                    verdict: ReviewVerdict::ChangesRequested,
+                    summary: "Correct the narrow layout".into(),
+                    conditions: "Exact draft only".into(),
+                    evidence: vec![],
+                    checks: vec![ReviewCheck {
+                        method: ReviewMethod::VisualInspection,
+                        result: CheckResult::Failed,
+                        details: "The diagram is clipped".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let mut corrected = document("Corrected lesson", vec![]);
+        corrected.references.push(ArtifactReference {
+            revision: review.id.clone(),
+            relation: ArtifactRelation::Citation,
+        });
+        let revision =
+            f.s.artifact_action(
+                &builder,
+                &f.m,
+                &started.id,
+                "main",
+                ArtifactAction::Publish {
+                    artifact: Some(draft.id.clone()),
+                    parents: vec![draft.id.clone()],
+                    document: corrected,
+                },
+            )
+            .unwrap();
+        // Import uses the same authorization semantics as local creation, including
+        // when dependencies arrive out of order. Historical reviews stay exact.
+        let mut records = f.s.delta(&f.m, &[]).unwrap();
+        records.shuffle(&mut rand::rngs::StdRng::seed_from_u64(512));
+        let mut peer = Store::open(&f.dir.path().join("artifact-peer.sqlite")).unwrap();
+        peer.import(&records).unwrap();
+        let detail = peer
+            .artifact_detail(&f.m, &f.b.public_key(), &revision.id)
+            .unwrap();
+        assert_eq!(detail.artifact.id, draft.id);
+        assert_eq!(detail.history.len(), 2);
+        assert!(detail.reviews.is_empty());
+        assert_eq!(
+            peer.artifact_detail(&f.m, &f.b.public_key(), &draft.id)
+                .unwrap()
+                .reviews[0]
+                .id,
+            review.id
+        );
+        // A fabricated publication cannot reuse a preparing direction for an agent
+        // absent from the exact reviewed Start, even though peer mode permits later work.
+        assert!(
+            f.s.append(
+                &excluded,
+                &f.m,
+                Payload::ArtifactRecorded {
+                    control: started.id.clone(),
+                    authorization: Some(directions[2].clone()),
+                    conversation: "main".into(),
+                    action: publish.clone(),
+                }
+            )
+            .is_err()
+        );
+        let paused =
+            f.s.control(
+                &f.a,
+                &f.m,
+                &started.id,
+                ControlAction::Pause {
+                    reason: "Operator review".into(),
+                },
+            )
+            .unwrap();
+        assert!(
+            f.s.artifact_action(&builder, &f.m, &paused.id, "main", publish)
+                .is_err()
+        );
     }
 }
 #[test]
@@ -392,6 +566,46 @@ fn pagination_search_and_workstream_context_cover_saved_history() {
         )
         .unwrap();
     assert_eq!(search.items.len(), 1);
+    let reviewed = f.publish("Reviewed guide", None, vec![], vec![]);
+    f.s.artifact_action(
+        &f.b,
+        &f.m,
+        &f.m,
+        "main",
+        ArtifactAction::Review {
+            revision: reviewed.id.clone(),
+            verdict: ReviewVerdict::Verified,
+            summary: "Independently inspected".into(),
+            conditions: "Fixture only".into(),
+            evidence: vec![],
+            checks: vec![],
+        },
+    )
+    .unwrap();
+    let filtered =
+        f.s.artifacts(
+            &f.m,
+            &f.a.public_key(),
+            ArtifactQuery {
+                kind: Some(ArtifactKind::Application),
+                review_status: Some("reviewed".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(filtered.total, 1);
+    assert_eq!(filtered.items[0].revision, reviewed.id);
+    assert!(
+        f.s.artifacts(
+            &f.m,
+            &f.a.public_key(),
+            ArtifactQuery {
+                review_status: Some("anything".into()),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
     let ws =
         f.s.work(
             &f.a,
@@ -452,7 +666,7 @@ fn schema_eleven_rebuild_preserves_signed_bytes_and_rolls_back_corruption() {
     let reset = || {
         let db = rusqlite::Connection::open(&path).unwrap();
         db.execute_batch(
-            "DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; PRAGMA user_version=10;",
+            "DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; PRAGMA user_version=10;",
         )
         .unwrap();
     };
@@ -491,4 +705,173 @@ fn schema_eleven_rebuild_preserves_signed_bytes_and_rolls_back_corruption() {
         .unwrap(),
         0
     );
+}
+
+#[test]
+fn pinned_inputs_and_historical_reviews_do_not_create_a_live_stale_loop() {
+    let mut f = Fixture::new();
+    let input = f.publish("Pinned brief", None, vec![], vec![]);
+    let live = f.publish("Live output", None, vec![], vec![input.id.clone()]);
+    let mut doc = document("Pinned output", vec![]);
+    doc.references = vec![ArtifactReference {
+        revision: input.id.clone(),
+        relation: ArtifactRelation::Pinned,
+    }];
+    let pinned =
+        f.s.artifact_action(
+            &f.a,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Publish {
+                artifact: None,
+                parents: vec![],
+                document: doc,
+            },
+        )
+        .unwrap();
+    let review =
+        f.s.artifact_action(
+            &f.b,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Review {
+                revision: pinned.id.clone(),
+                verdict: ReviewVerdict::ChangesRequested,
+                summary: "Correct visible feedback".into(),
+                conditions: "Source scope only".into(),
+                evidence: vec![],
+                checks: vec![],
+            },
+        )
+        .unwrap();
+    f.publish("New input", Some(input.id.clone()), vec![input.id], vec![]);
+    assert!(f.detail(&live.id).stale);
+    assert!(!f.detail(&pinned.id).stale);
+    let mut corrected = f.detail(&pinned.id).document;
+    corrected.references.push(ArtifactReference {
+        revision: review.id,
+        relation: ArtifactRelation::Citation,
+    });
+    let updated =
+        f.s.artifact_action(
+            &f.a,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Publish {
+                artifact: Some(pinned.id.clone()),
+                parents: vec![pinned.id.clone()],
+                document: corrected,
+            },
+        )
+        .unwrap();
+    assert!(
+        !f.detail(&updated.id).stale,
+        "an old review remains history, not a freshness dependency"
+    );
+    assert!(!f.detail(&updated.id).artifact.accepted);
+    assert!(
+        f.detail(&updated.id).reviews.is_empty(),
+        "review must not silently transfer to changed bytes"
+    );
+    let invalid = ArtifactAction::Publish {
+        artifact: Some(pinned.id),
+        parents: vec![updated.id.clone()],
+        document: document("Wrong self dependency", vec![updated.id]),
+    };
+    assert!(
+        f.s.artifact_action(&f.a, &f.m, &f.m, "main", invalid)
+            .is_err()
+    );
+}
+
+#[test]
+fn delivery_candidate_is_exact_and_new_publication_requires_a_new_choice() {
+    let mut f = Fixture::new();
+    let original = f.publish("Application", None, vec![], vec![]);
+    let candidate =
+        f.s.artifact_action(
+            &f.a,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Candidate {
+                revision: original.id.clone(),
+                previous: vec![],
+            },
+        )
+        .unwrap();
+    assert!(
+        f.s.artifact_action(
+            &f.b,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Candidate {
+                revision: original.id.clone(),
+                previous: vec![candidate.id.clone()]
+            }
+        )
+        .is_err(),
+        "ordinary participant cannot select mission delivery"
+    );
+    let updated = f.publish(
+        "Corrected application",
+        Some(original.id.clone()),
+        vec![original.id.clone()],
+        vec![],
+    );
+    let page =
+        f.s.artifacts(&f.m, &f.a.public_key(), Default::default())
+            .unwrap();
+    assert_eq!(page.candidates[0].revision, original.id);
+    assert!(page.candidates[0].stale);
+    assert!(
+        f.s.artifact_action(
+            &f.a,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Accept {
+                revision: original.id,
+                accepted: true,
+                reason: "Old version".into()
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        f.s.artifact_action(
+            &f.a,
+            &f.m,
+            &f.m,
+            "main",
+            ArtifactAction::Candidate {
+                revision: updated.id.clone(),
+                previous: vec![]
+            }
+        )
+        .is_err(),
+        "stale selection must refresh"
+    );
+    f.s.artifact_action(
+        &f.a,
+        &f.m,
+        &f.m,
+        "main",
+        ArtifactAction::Candidate {
+            revision: updated.id.clone(),
+            previous: vec![candidate.id],
+        },
+    )
+    .unwrap();
+    let page =
+        f.s.artifacts(&f.m, &f.a.public_key(), Default::default())
+            .unwrap();
+    assert_eq!(page.candidates.len(), 1);
+    assert_eq!(page.candidates[0].revision, updated.id);
+    assert!(!page.candidates[0].stale);
+    assert!(!f.detail(&updated.id).artifact.accepted);
 }

@@ -1,3 +1,4 @@
+import { releaseMode, assertReleaseTree, signApp } from "./sign.mjs";
 import { packager } from "@electron/packager";
 import { flipFuses, FuseVersion, FuseV1Options } from "@electron/fuses";
 import { readFile, mkdtemp, cp, rm, mkdir } from "node:fs/promises";
@@ -9,7 +10,24 @@ if (process.platform !== "darwin")
   throw new Error(
     "The first desktop package targets macOS. Cross-platform release packaging is not configured yet.",
   );
+if (releaseMode) await assertReleaseTree(root);
 const directory = await buildDesktop();
+if (releaseMode) {
+  for (const inventory of [
+    join(directory, "node/manifest.json"),
+    join(directory, "licenses/bundled-dependencies.json"),
+  ]) {
+    const data = JSON.parse(await readFile(inventory, "utf8"));
+    if (data.missingLicenseTexts?.length)
+      throw new Error(
+        `Public release notice review is incomplete: ${data.missingLicenseTexts.join(", ")}`,
+      );
+    if (data.noticeReviewRequired?.length)
+      throw new Error(
+        `Public release notice interpretation still needs review: ${data.noticeReviewRequired.join(", ")}`,
+      );
+  }
+}
 const project = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const staging = await mkdtemp(join(tmpdir(), "harakiri-package-"));
 try {
@@ -74,7 +92,13 @@ try {
       [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
       [FuseV1Options.WasmTrapHandlers]: true,
     });
-    console.log(`Local development package (ad-hoc signed): ${path}`);
+    if (releaseMode) {
+      await signApp(
+        join(path, "Harakiri Desktop.app"),
+        project.devDependencies.electron,
+      );
+      console.log(`Developer ID signed and notarized package: ${path}`);
+    } else console.log(`Local development package (ad-hoc signed): ${path}`);
   }
 } finally {
   await rm(staging, { recursive: true, force: true });

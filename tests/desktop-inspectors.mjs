@@ -229,6 +229,18 @@ try {
       ),
       scene === "network-running",
     );
+    assert.equal(
+      await evaluate(
+        "document.querySelector('select[name=capabilityPack]').value",
+      ),
+      "general",
+    );
+    assert.equal(
+      await evaluate(
+        "document.querySelector('select[name=capabilityPack]').disabled",
+      ),
+      scene === "network-running",
+    );
     if (scene === "network-stopped") {
       await browser(
         "select",
@@ -257,6 +269,30 @@ try {
         false,
       );
     }
+    if (scene === "network-stopped") {
+      await browser("select", 'select[name="capabilityPack"]', "web-3d");
+      assert.equal((await evaluate("window.networkFixture.calls")).length, 1);
+      await click("Apply toolkit");
+      await browser("wait", "--text", "Toolkit applied.");
+      assert.equal(
+        await evaluate(
+          "document.body.innerText.includes('The toolkit changed since this review')",
+        ),
+        false,
+      );
+      assert.deepEqual((await evaluate("window.networkFixture.calls"))[1], {
+        type: "toolkit",
+        id: "fixture-local",
+        capabilityPack: "web-3d",
+        expectedRevision: null,
+      });
+      assert.equal(
+        await evaluate(
+          "document.querySelector('select[name=networkAccess]').value",
+        ),
+        "internet",
+      );
+    }
     await browser("screenshot", join(evidence, `${scene}.png`));
     results.push({ scene, passed: true });
   }
@@ -272,12 +308,23 @@ try {
     "restricted",
   );
   await browser("select", 'select[name="networkAccess"]', "internet");
+  assert.equal(
+    await evaluate(
+      "document.querySelector('select[name=capabilityPack]').value",
+    ),
+    "general",
+  );
+  await browser("select", 'select[name="capabilityPack"]', "web-3d");
   await browser("check", 'input[type="checkbox"][required]');
   await click("Prepare agents");
   await browser("wait", "--fn", "window.networkFixture.calls.length === 1");
   assert.equal(
     (await evaluate("window.networkFixture.calls"))[0].request.networkAccess,
     "internet",
+  );
+  assert.equal(
+    (await evaluate("window.networkFixture.calls"))[0].request.capabilityPack,
+    "web-3d",
   );
   results.push({ scene: "network-setup", passed: true });
 
@@ -408,6 +455,59 @@ try {
     false,
   );
   await browser("screenshot", join(evidence, "network-narrow.png"));
+  for (const width of [1100, 390]) {
+    await browser("set", "viewport", String(width), "900");
+    await browser("open", `${origin}/?scene=coordination-artifacts`);
+    await browser("wait", "--text", "Current delivery candidate");
+    assert.match(await browser("get", "text", "body"), /source, tests/);
+    await click("Open Circuit explorer");
+    assert.equal(
+      (
+        await evaluate(
+          "window.coordinationFixture.calls.filter(c=>c.type==='open')",
+        )
+      )[0].revision,
+      "e".repeat(64),
+    );
+    assert.equal(
+      await evaluate("document.documentElement.scrollWidth > innerWidth"),
+      false,
+    );
+    await browser("screenshot", join(evidence, `candidate-${width}.png`));
+    await browser("find", "text", "Filter artifacts", "click", "--exact");
+    await browser("select", 'select[name="artifactKind"]', "report");
+    await browser(
+      "wait",
+      "--fn",
+      "window.coordinationFixture.calls.some(c=>c.query?.kind==='report')",
+    );
+    await click("Review details");
+    await browser("wait", "--text", "Choose for delivery");
+    await click("Choose for delivery");
+    assert.deepEqual(
+      (
+        await evaluate(
+          "window.coordinationFixture.calls.filter(c=>c.type==='action')",
+        )
+      )[0].action,
+      {
+        type: "candidate",
+        revision: "e".repeat(64),
+        previous: ["3".repeat(64)],
+      },
+    );
+    await browser("open", `${origin}/?scene=coordination-peers`);
+    await browser("wait", "--text", "Sync stalled");
+    const peerText = await browser("get", "text", "body");
+    assert.match(peerText, /Riley/);
+    assert.match(peerText, /Current mission control not yet confirmed/);
+    assert.doesNotMatch(peerText, /Up to date/);
+    assert.equal(
+      await evaluate("document.documentElement.scrollWidth > innerWidth"),
+      false,
+    );
+    await browser("screenshot", join(evidence, `stalled-peer-${width}.png`));
+  }
   await writeFile(
     join(evidence, "result.json"),
     JSON.stringify(

@@ -1,5 +1,6 @@
 import { GrokConnection } from "../../bin/grok-acp.mjs";
 import { Session } from "./contract.mjs";
+import { guestTools } from "./tools.mjs";
 
 const requiredToolNames = [
   "board",
@@ -10,7 +11,7 @@ const requiredToolNames = [
 ];
 // Existing idle guests keep the original safe broker until explicitly prepared
 // again. A compositional convenience tool must not break their saved sessions.
-const toolNames = [...requiredToolNames, "import_artifact"];
+const toolNames = guestTools().map((tool) => tool.name);
 const scopedClaudeTool = (name) =>
   toolNames.some((t) => name === `mcp__harakiri__${t}`);
 const event = (type, value) => ({
@@ -334,6 +335,7 @@ export class CodexConnection extends JsonConnection {
 
 class GrokAdapter extends GrokConnection {
   async run({ session, prompt, seconds, onSession }) {
+    this.permissionDenied = false;
     await this.initialize();
     this.sessionId = session;
     const opened = await this.request(
@@ -366,6 +368,10 @@ class GrokAdapter extends GrokConnection {
       { sessionId: actual, prompt: [{ type: "text", text: prompt }] },
       seconds * 1000,
     );
+    if (result.stopReason === "cancelled" && this.permissionDenied)
+      throw new Error(
+        "Grok stopped after an unavailable tool request was blocked. Saved work is retained; resume using the scoped Blackboard tools.",
+      );
     if (result.stopReason !== "end_turn")
       throw new Error(`Grok stopped: ${result.stopReason || "unknown"}.`);
     return { session: actual, usage: result._meta?.usage || null };

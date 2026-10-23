@@ -1,3 +1,5 @@
+import { observations as sharedObservations } from "../application/observations";
+import { readRoster } from "../application/mission-queries";
 import { ActionPopover } from "../ui/ActionPopover";
 import { ViewTabs } from "../ui/ViewTabs";
 import { IconButton } from "../ui/Button";
@@ -32,6 +34,8 @@ import {
   Plus,
   Pause,
   Square,
+  ArrowLeft,
+  ArrowRight,
   X,
 } from "lucide-react";
 import {
@@ -46,6 +50,8 @@ export type { MissionSession } from "./Conversation";
 import { ArtifactPanel } from "./Artifacts";
 import { TaskPanel } from "./Tasks";
 import { WorkstreamPanel } from "./Workstream";
+import { CatchUp } from "./CatchUp";
+import { useWorkspaceHistory } from "./useWorkspaceHistory";
 import { AgentRoster } from "./Agents";
 import { PublishMission } from "./Discovery";
 import type {
@@ -248,6 +254,27 @@ function MissionWorkspace({
   initialSetup?: boolean;
 }) {
   const { missions: node, setup, execution } = useApplication();
+  useEffect(() => {
+    let active = true;
+    const key = `harakiri.catch-up.v1:${owner}:${mission.id}`;
+    try {
+      if (!localStorage.getItem(key))
+        void node
+          .catchUp(mission.id, null)
+          .then((page) => {
+            if (active && page.after && !localStorage.getItem(key))
+              localStorage.setItem(key, page.after);
+          })
+          .catch(() => {
+            /* Catch-up exposes retry errors when opened. */
+          });
+    } catch {
+      /* Reading the mission remains available without local storage. */
+    }
+    return () => {
+      active = false;
+    };
+  }, [node, mission.id, owner]);
   const [panel, setPanel] = useState<
     | "controls"
     | "setup"
@@ -257,6 +284,7 @@ function MissionWorkspace({
     | "workstream"
     | "budget"
     | "artifacts"
+    | "catchup"
     | null
   >(initialSetup ? "setup" : null);
   const executionStates = useExecutionStates();
@@ -289,44 +317,46 @@ function MissionWorkspace({
   const [streamId, setStreamId] = useState<string | null>(null);
   const [workError, setWorkError] = useState("");
   const [workLoaded, setWorkLoaded] = useState(false);
+  const [rosterError, setRosterError] = useState("");
+  const [rosterLoaded, setRosterLoaded] = useState(false);
+  const [peersError, setPeersError] = useState("");
+  const [peersLoaded, setPeersLoaded] = useState(false);
+  const observedError = workError || rosterError || peersError;
   const [startJobs, setStartJobs] = useState<StartJob[]>([]);
   const [requests, setRequests] = useState<JoinView[]>([]);
+  const [stalledPeers, setStalledPeers] = useState(0);
   const [criteria, setCriteria] = useState<CriterionView[]>([]);
   const [acceptedResult, setAcceptedResult] = useState<ArtifactSummary | null>(
     null,
   );
+  const [candidate, setCandidate] = useState<
+    import("../application/contracts/node").ArtifactCandidate | null
+  >(null);
   const loadWork = useCallback(async () => {
-    const [streams, tasks, artifacts, peers, governance, starts] =
-      await Promise.all([
-        node.workstreams(mission.id),
-        node.tasks(mission.id, {}),
-        node.artifacts(mission.id, {}),
-        node.peers(mission.id),
-        node.governance(mission.id),
-        setup.startState(mission.id),
-      ]);
-    const agents: AgentView[] = [];
-    let after: string | null = null;
-    do {
-      const page = await node.agents(mission.id, after);
-      agents.push(...page.items);
-      after = page.after;
-    } while (after && agents.length < 512);
-    return { streams, tasks, agents, artifacts, peers, governance, starts };
+    const [streams, tasks, artifacts, governance, starts] = await Promise.all([
+      node.workstreams(mission.id),
+      node.tasks(mission.id, {}),
+      node.artifacts(mission.id, {}),
+      node.governance(mission.id),
+      setup.startState(mission.id),
+    ]);
+    return { streams, tasks, artifacts, governance, starts };
   }, [mission.id, node, setup]);
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const data = await loadWork();
-        if (!cancelled) {
+  useEffect(
+    () =>
+      sharedObservations(node).subscribe(
+        `mission-work:${mission.id}`,
+        loadWork,
+        (data) => {
           setStreams(data.streams);
           setTaskCount(data.tasks.total);
           setArtifactCount(data.artifacts.total);
-          setWorkAgents(data.agents);
+          setCandidate(
+            data.artifacts.candidates?.length === 1
+              ? data.artifacts.candidates[0]
+              : null,
+          );
           setWorkError("");
-          setRequests(data.peers.requests);
           setStartJobs(data.starts);
           setCriteria(data.governance.criteria);
           setAcceptedResult(
@@ -339,30 +369,29 @@ function MissionWorkspace({
             ) ?? null,
           );
           setWorkLoaded(true);
-        }
-      } catch (e) {
-        if (!cancelled)
-          setWorkError(
-            e instanceof Error ? e.message : "Unable to load mission work.",
-          );
-      }
-      if (!cancelled) timer = setTimeout(() => void poll(), 3000);
-    };
-    void poll();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [loadWork]);
+        },
+        (e) => setWorkError(e.message),
+      ),
+    [loadWork, node, mission.id],
+  );
+  useEffect(
+    () =>
+      sharedObservations(node).subscribe(
+        `roster:${mission.id}`,
+        () => readRoster(node, mission.id),
+        (agents) => {
+          setWorkAgents(agents);
+          setRosterError("");
+          setRosterLoaded(true);
+        },
+        (error) => setRosterError(error.message),
+      ),
+    [node, mission.id],
+  );
+
   const changed = async () => {
-    const data = await loadWork();
-    setStreams(data.streams);
-    setWorkAgents(data.agents);
-    setTaskCount(data.tasks.total);
-    setArtifactCount(data.artifacts.total);
-    setRequests(data.peers.requests);
-    setStartJobs(data.starts);
-    setCriteria(data.governance.criteria);
+    for (const kind of ["mission-work", "roster", "peers"])
+      sharedObservations(node).invalidate(`${kind}:${mission.id}`);
     await updated();
   };
   const openWorkstream = (id: string) => {
@@ -387,27 +416,36 @@ function MissionWorkspace({
       : "agent",
   );
   const [revoked, setRevoked] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const roster = await node.peers(mission.id);
-        if (!cancelled)
-          setRevoked(
-            roster.members.some((m) => m.author === owner && m.revoked),
+  useEffect(
+    () =>
+      sharedObservations(node).subscribe(
+        `peers:${mission.id}`,
+        () => node.peers(mission.id),
+        (peers) => {
+          setRequests(peers.requests);
+          setStalledPeers(
+            peers.delivery.filter(
+              (d) =>
+                d.stalled_exchanges >= 3 &&
+                peers.members.some(
+                  (m) =>
+                    m.endpoint === d.endpoint &&
+                    m.author !== owner &&
+                    !m.revoked &&
+                    !m.withdrawn,
+                ),
+            ).length,
           );
-      } finally {
-        if (!cancelled)
-          timer = setTimeout(() => void poll().catch(() => {}), 2500);
-      }
-    };
-    void poll().catch(() => {});
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [mission.id, owner, node]);
+          setRevoked(
+            peers.members.some((m) => m.author === owner && m.revoked),
+          );
+          setPeersError("");
+          setPeersLoaded(true);
+        },
+        (error) => setPeersError(error.message),
+      ),
+    [mission.id, owner, node],
+  );
   const privateMessage = (author: string) =>
     void perform(async () => {
       const existing = (await node.audiences(mission.id)).find(
@@ -440,7 +478,7 @@ function MissionWorkspace({
     criteria,
     acceptedResult,
     startJobs,
-    loaded: workLoaded,
+    loaded: workLoaded && rosterLoaded && peersLoaded,
     blocked,
     access: withdrawal ? "withdrawn" : revoked ? "revoked" : null,
     now: clock,
@@ -473,9 +511,49 @@ function MissionWorkspace({
     } else if (action.destination === "technical") inspect("technical");
     else openControls(action.review);
   };
+  const history = useWorkspaceHistory(
+    {
+      audience: session.audience,
+      feed: session.feed ?? "conversation",
+      anchor: session.anchor ?? null,
+      thread: session.thread ?? null,
+      panel,
+      inspectorTab,
+      memberTab,
+      artifactId,
+      selectedAgent,
+      taskId,
+      streamId,
+      permissionAgent,
+      setupRole,
+    },
+    (target) => {
+      updateSession((s) => ({
+        ...s,
+        audience: target.audience,
+        feed: target.feed,
+        anchor: target.anchor,
+        thread: target.thread,
+      }));
+      setPanel(target.panel);
+      setInspectorTab(target.inspectorTab);
+      setMemberTab(target.memberTab);
+      setArtifactId(target.artifactId);
+      setSelectedAgent(target.selectedAgent);
+      setTaskId(target.taskId);
+      setStreamId(target.streamId);
+      setPermissionAgent(target.permissionAgent);
+      setSetupRole(target.setupRole);
+      setStartReviewRequest(0);
+    },
+  );
   const localAgents = contributions.filter(
     (c) =>
-      c.mission.missionId === mission.id && !!executionStates?.[c.id]?.record,
+      c.mission.missionId === mission.id &&
+      !!executionStates?.[c.id]?.record &&
+      !["ready", "stopped", "login_required", "failed"].includes(
+        executionStates![c.id]!.record!.status,
+      ),
   );
   const stopMine = () =>
     void perform(async () => {
@@ -495,6 +573,24 @@ function MissionWorkspace({
       aria-label={`Mission ${mission.definition.name}`}
     >
       <header className="n-room-header">
+        <nav className="n-workspace-history" aria-label="Workspace history">
+          <IconButton
+            aria-label="Back in workspace"
+            title="Back (Alt + Left)"
+            disabled={!history.canBack}
+            onClick={history.back}
+          >
+            <ArrowLeft size={16} />
+          </IconButton>
+          <IconButton
+            aria-label="Forward in workspace"
+            title="Forward (Alt + Right)"
+            disabled={!history.canForward}
+            onClick={history.forward}
+          >
+            <ArrowRight size={16} />
+          </IconButton>
+        </nav>
         <div>
           <h1>
             <button
@@ -508,6 +604,12 @@ function MissionWorkspace({
           </h1>
         </div>
         <div className="n-action-row">
+          <Button
+            aria-expanded={panel === "catchup"}
+            onClick={() => setPanel(panel === "catchup" ? null : "catchup")}
+          >
+            Catch up
+          </Button>
           <Button
             aria-expanded={people}
             onClick={() => {
@@ -587,6 +689,45 @@ function MissionWorkspace({
           </ActionPopover>
         </div>
       </header>
+      {stalledPeers > 0 ? (
+        <div className="d-alert" role="status">
+          {stalledPeers}{" "}
+          {stalledPeers === 1 ? "connection is" : "connections are"} not
+          synchronizing. New instructions may not have arrived.
+          <Button
+            onClick={() => {
+              setMemberTab("people");
+              setPanel("members");
+            }}
+          >
+            Inspect connections
+          </Button>
+        </div>
+      ) : null}
+      {panel === "catchup" ? (
+        <ContextPanel title="Catch up" close={closePanel}>
+          <CatchUp
+            mission={mission.id}
+            owner={owner}
+            openArtifact={(id) => {
+              setArtifactId(id);
+              setPanel("artifacts");
+            }}
+            openMessage={(message) => {
+              updateSession((s) => ({
+                ...s,
+                audience: message.audience,
+                feed: "conversation",
+                anchor: message.thread ?? message.id,
+                thread: message.thread
+                  ? { id: message.thread, audience: message.audience }
+                  : null,
+              }));
+              setPanel(null);
+            }}
+          />
+        </ContextPanel>
+      ) : null}
       {panel === "setup" ? (
         <ContextPanel
           title={
@@ -610,7 +751,7 @@ function MissionWorkspace({
         <ContextPanel
           title="Tasks"
           close={closePanel}
-          error={error || workError}
+          error={error || observedError}
         >
           <TaskPanel
             initialTask={taskId}
@@ -633,7 +774,7 @@ function MissionWorkspace({
         <ContextPanel
           title="Artifacts"
           close={closePanel}
-          error={error || workError}
+          error={error || observedError}
         >
           <ArtifactPanel
             key={artifactId ?? "list"}
@@ -658,7 +799,7 @@ function MissionWorkspace({
         <ContextPanel
           title={streamId ? "Workstream details" : "New workstream"}
           close={closePanel}
-          error={error || workError}
+          error={error || observedError}
         >
           <WorkstreamPanel
             key={streamId ?? "new"}
@@ -731,6 +872,7 @@ function MissionWorkspace({
           <div hidden={memberTab !== "people"}>
             <People
               mission={mission.id}
+              agents={workAgents}
               owner={mission.owner}
               localKey={owner}
               enabled={enabled}
@@ -893,7 +1035,7 @@ function MissionWorkspace({
         <ContextPanel
           title="Mission"
           close={closePanel}
-          error={error || workError}
+          error={error || observedError}
         >
           <ViewTabs
             label="Mission inspector views"
@@ -951,10 +1093,30 @@ function MissionWorkspace({
         act={act}
         inspect={inspect}
         inspectorOpen={panel !== null}
+        candidate={candidate}
+        openCandidate={() => {
+          if (candidate)
+            void perform(async () => {
+              const detail = await node.artifactDetail(
+                mission.id,
+                candidate.revision,
+              );
+              if (detail.document.entrypoint)
+                await node.artifactOpen(
+                  mission.id,
+                  candidate.revision,
+                  detail.document.entrypoint,
+                );
+              else {
+                setArtifactId(candidate.revision);
+                setPanel("artifacts");
+              }
+            });
+        }}
       />
-      {workError ? (
+      {observedError ? (
         <p className="d-alert" role="alert">
-          {workError}
+          {observedError}
         </p>
       ) : null}
       <Conversation

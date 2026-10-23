@@ -63,6 +63,20 @@ pub struct ReviewCheck {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactRelation {
+    Live,
+    Pinned,
+    Citation,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactReference {
+    pub revision: String,
+    pub relation: ArtifactRelation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactDocument {
     pub title: String,
@@ -72,6 +86,10 @@ pub struct ArtifactDocument {
     pub limitations: String,
     pub entrypoint: Option<String>,
     pub inputs: Vec<String>,
+    /// Legacy inputs keep live-following semantics. New references declare
+    /// their intent; empty defaults preserve the exact signed legacy bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<ArtifactReference>,
     pub files: Vec<ArtifactFile>,
 }
 
@@ -100,6 +118,10 @@ pub enum ArtifactAction {
     Highlight {
         revision: String,
         highlighted: bool,
+    },
+    Candidate {
+        revision: String,
+        previous: Vec<String>,
     },
 }
 pub fn text(s: &str, max: usize, empty: bool) -> bool {
@@ -132,8 +154,21 @@ impl ArtifactDocument {
             || !text(&self.summary, 2048, false)
             || !text(&self.limitations, 4096, true)
             || !ids(&self.inputs, 16)
+            || self.references.len() + self.inputs.len() > 16
+            || !ids(
+                &self
+                    .references
+                    .iter()
+                    .map(|r| r.revision.clone())
+                    .chain(self.inputs.iter().cloned())
+                    .collect::<Vec<_>>(),
+                16,
+            )
             || self.files.is_empty()
             || self.files.len() > limits::MAX_FILES
+            // A project is bounded by descriptor bytes as well as file count
+            // and content size. Leave room for authority and event signatures.
+            || serde_json::to_vec(&self.files).map_or(true, |v| v.len() > 48 * 1024)
             || self.files.iter().any(|f| !valid_file(f))
             || self
                 .files
@@ -190,6 +225,7 @@ impl ArtifactAction {
                 revision, reason, ..
             } => is_hash(revision) && text(reason, 2048, false),
             Self::Highlight { revision, .. } => is_hash(revision),
+            Self::Candidate { revision, previous } => is_hash(revision) && ids(previous, 32),
         };
         if !valid {
             return Err(Error::Invalid("artifact action"));
@@ -206,6 +242,7 @@ impl ArtifactAction {
                 .iter()
                 .chain(parents)
                 .chain(&document.inputs)
+                .chain(document.references.iter().map(|r| &r.revision))
                 .map(String::as_str)
                 .collect(),
             Self::Review {
@@ -215,6 +252,10 @@ impl ArtifactAction {
                 .map(String::as_str)
                 .collect(),
             Self::Accept { revision, .. } | Self::Highlight { revision, .. } => vec![revision],
+            Self::Candidate { revision, previous } => std::iter::once(revision)
+                .chain(previous)
+                .map(String::as_str)
+                .collect(),
         }
     }
 }
@@ -225,6 +266,8 @@ pub struct ArtifactQuery {
     pub after: Option<String>,
     pub conversation: Option<String>,
     pub search: Option<String>,
+    pub kind: Option<ArtifactKind>,
+    pub review_status: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ArtifactSummary {
@@ -243,6 +286,7 @@ pub struct ArtifactSummary {
     pub entrypoint: Option<String>,
     pub stale: bool,
     pub review_status: String,
+    pub review_methods: Vec<ReviewMethod>,
     pub accepted: bool,
     pub highlighted: bool,
 }
@@ -251,6 +295,14 @@ pub struct ArtifactPage {
     pub items: Vec<ArtifactSummary>,
     pub after: Option<String>,
     pub total: usize,
+    pub candidates: Vec<ArtifactCandidate>,
+}
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ArtifactCandidate {
+    pub id: String,
+    pub revision: String,
+    pub title: String,
+    pub stale: bool,
 }
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ArtifactRevisionSummary {
@@ -289,6 +341,7 @@ pub struct ArtifactDetail {
     pub parents: Vec<String>,
     pub stale: bool,
     pub history: Vec<ArtifactRevisionSummary>,
+    pub freshness_notes: Vec<String>,
     pub reviews: Vec<ArtifactReviewView>,
     pub acceptance: Option<ArtifactDecision>,
     pub highlighted: bool,
@@ -315,6 +368,9 @@ pub enum ArtifactTransfer {
         path: String,
         media_type: String,
         size: u64,
+        /// Caller-chosen content/request digest. It scopes a restartable upload,
+        /// never authenticates file bytes (BLAKE3 is computed after reception).
+        resume_key: Option<String>,
     },
     Chunk {
         upload: String,
@@ -329,7 +385,7 @@ pub enum ArtifactTransfer {
         conversation: String,
         artifact: Option<String>,
         parents: Vec<String>,
-        document: ArtifactDocument,
+        document: Box<ArtifactDocument>,
         uploads: Vec<String>,
         retain: Vec<ArtifactFileRef>,
     },

@@ -1,5 +1,64 @@
 # Blackboard desktop
 
+## Unreleased coordination improvements
+
+The current source uses **protocol 13 / schema 16**. Downloaded 0.4.9 remains
+protocol 11/schema 15. Back up profiles and upgrade all peers together when
+testing this source; the changes below are not in the existing DMG.
+
+### Dependable collaboration iteration
+
+- The Coordinator can revise its operational plan during Active. Clarification
+  preserves valid in-flight work and requests explicit acknowledgment; replacing
+  a direction still stops its old authorization.
+- **Catch up** shows saved changes since this computer's reading point, with links
+  to source conversations and exact revisions. It uses local arrival order, so a
+  delayed peer message is not lost because of an old timestamp. Saving your place
+  is not an agent acknowledgment or acceptance of a result.
+- Workspace **Back/Forward** (also Alt + Left/Right) follows conversations,
+  threads, people and inspectors without rewinding drafts or permissions. Message
+  timestamps copy a scoped Markdown link. Conversation rendering is bounded, older
+  history/search remains accessible, and the text-size preference is saved locally.
+- The current candidate is reachable throughout execution. Project manifests
+  support bounded multi-file work, exact retry-safe imports and optional source
+  integration. **Offline copy on this Mac** makes authorized final files available
+  without a reachable source peer.
+- Agent details expose saved source, operation progress/cancellation and honest
+  recovery. A recreated VM starts a new runtime session, retains its registration
+  and can restore selected source into a fresh folder.
+- **Device → Node identity → Protect this node** creates an encrypted portable
+  recovery file. Restore is available only on an empty node and opens offline.
+- Optional, replaceable endpoint lookup refreshes known routes under local network
+  policy. It does not make discovery a global directory or grant membership. Wire
+  compatibility failures are explained separately when both peers support the
+  stable compatibility handshake.
+
+These source changes use the existing designer system and typed application
+ports. Independent-device behavior, live model quality and public release
+approval remain separate evidence gates.
+
+- Concurrent histories advance through durable bounded pages, including after
+  restart or restoration of a peer backup. Members distinguishes **Catching up**,
+  **Sync stalled**, current-control acknowledgment and execution observations.
+  A stalled connection also has a shortcut from the channel.
+- Assignments given during Preparing remain eligible at Start within the same
+  reviewed terms. Resource contention queues work. New contribution reviews
+  expose separate session/offline limits; existing approvals keep their limits.
+- Artifacts lead with an explicitly selected **delivery candidate** and one-click
+  preview. Type/review/conversation filters cover saved accessible history.
+  Reviews show what was actually checked; details explain changed inputs.
+  Publication, candidate selection, verification and human acceptance remain
+  separate. See [artifact relationships](NODE-PROTOCOL.md#unreleased-protocol-v13--schema-16).
+- Intentional Pause is a calm state. Stop actions apply to running or uncertain
+  local execution. Contributor names precede technical keys where available.
+- Agents receive a fuller participation guide, coherent snapshots, explicit
+  dependency waiting, capability checks and an isolated artifact browser with
+  screenshot feedback. See [execution](EXECUTION.md#coordination-and-quality-tools-unreleased).
+
+Native, provider-contract and isolated UI checks cover these changes. They do
+not establish independent-Mac operation or premium educational output. The
+original experiment and its immutable evidence remain unchanged.
+
 The desktop on `pivot/renting-the-rent` creates local missions and connects people through **signed invitations or public discovery, followed by explicit owner approval**. Main and private conversations replicate between admitted nodes and remain available offline. Networking and discovery are opt-in; no web board, domain or Harakiri account is required. Contributors can prepare local runtime/workspace/allowance terms and withdraw. Missions begin in Preparing. Owner Start/Pause and instruction changes now replicate, with a separate Coordinator plan/readiness contract. The coordination controls are implemented. Grok Build, Claude Code and Codex can execute in dedicated Lima VMs on Apple Silicon with guest-native login, explicit consent, scoped tools and confirmed stop/recovery. See [isolated execution](EXECUTION.md) for setup and the enforcement boundary.
 
 ## UI development
@@ -379,7 +438,7 @@ Files are content-addressed, retrieved from authorized peers on demand and retai
 
 HTML runs in a separate sandboxed renderer with an ephemeral session, no preload/host bridge or board credentials, and blocked network, frames, popups, automatic downloads and permission grants. Relative files must be present in the exact saved manifest. Text/source files use an escaped IBM Plex reader; images use the same isolated window. Unknown binaries need an explicit **Save file** action and an OS destination. This preview boundary is independent of VM isolation for agent execution and still needs independent security review before public untrusted use. See Electron's [security guidance](https://www.electronjs.org/docs/latest/tutorial/security).
 
-Limits: 32 files per revision, 16 MiB per file, 32 MiB total; 512 artifacts per mission and 256 revisions per artifact. Search covers all accessible saved artifacts; lists are paginated. The desktop only accepts file bytes and logical manifest paths, never a renderer-supplied host path. A mission's unlimited compute setting does not remove these storage/protocol limits.
+Limits: 256 files per revision (48 KiB file descriptor limit), 16 MiB per file, 32 MiB total; 512 artifacts per mission and 256 revisions per artifact. Search covers all accessible saved artifacts; lists are paginated. The desktop only accepts file bytes and logical manifest paths, never a renderer-supplied host path. A mission's unlimited compute setting does not remove these storage/protocol limits.
 
 Plans/readiness and mission criterion reports can bind exact artifact revisions. The runtime adapters publish exact files through the scoped artifact capability; independent reviews and human acceptance remain separate.
 
@@ -387,7 +446,18 @@ Plans/readiness and mission criterion reports can bind exact artifact revisions.
 
 The native host stores the encrypted owner/endpoint keys in `node-v1/keys.v1.enc` under Electron's user-data directory. Signed records live in `node-v1/records/node.sqlite`; public identity metadata binds the records to those keys. Close the app before backing up the **whole profile**, and retain the original OS keychain. The encrypted keys are tied to that OS account's secure storage; copying this file is not a portable recovery method.
 
-A missing key, unreadable ciphertext, mismatched identity, concurrent writer or unsupported database version blocks opening the node and preserves its records. Restore the intact profile on its original device/OS account, with the app closed. Do not delete the identity to bypass an error or copy an active writer onto another computer: that can create conflicting signed histories. Cross-device recovery, owner-key rotation and new-writer enrollment remain later protocol work; a lost OS key cannot currently be recovered by the app.
+A missing key, unreadable ciphertext, mismatched identity, concurrent writer or unsupported database version blocks opening the node and preserves its records. Restore an intact OS-encrypted profile on its original OS account, with the app closed. Do not delete the identity to bypass an error or copy an active writer onto another computer: that can create conflicting signed histories.
+
+The unreleased **Protect this node** flow separately exports keys, signed history
+and downloaded artifacts using scrypt and authenticated AES-256-GCM encryption.
+Stop local execution/setup first; keep its passphrase separately. Restore requires
+an empty destination node and confirmation that the original writer stays stopped.
+The native service validates restored identity/history before promotion, rewraps
+keys in the destination OS secure storage and keeps networking/discovery off.
+Provider credentials, VMs, local execution approvals and runtime transcripts are
+excluded. Source checkpoints are separate. Reconcile missing later peer history
+before new decisions. No recovery file means the app cannot recover a lost OS key;
+this flow is not signing-key rotation or an automatic owner election.
 
 The first enrollment is deliberate. Legacy preparations and local UUIDs are never promoted to authenticated peer identities.
 

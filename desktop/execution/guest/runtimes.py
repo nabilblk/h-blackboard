@@ -21,11 +21,13 @@ def private_directory():
 
 def environment():
     return {"HOME": RUNTIME_HOME, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
-            "GROK_SUBAGENTS": "0", "CODEX_HOME": RUNTIME_HOME + "/.codex",
+            "GROK_SUBAGENTS": "0", "GROK_MEMORY": "0",
+            "CODEX_HOME": RUNTIME_HOME + "/.codex",
             "CLAUDE_CONFIG_DIR": RUNTIME_HOME + "/.claude",
             "DISABLE_AUTOUPDATER": "1", "DISABLE_TELEMETRY": "1",
             "DISABLE_ERROR_REPORTING": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-            "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ENABLE_TOOL_SEARCH": "false"}
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ENABLE_TOOL_SEARCH": "false",
+            "MCP_TOOL_TIMEOUT": "180000", "CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS": "0"}
 
 
 def command(session=None):

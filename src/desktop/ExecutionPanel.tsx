@@ -1,3 +1,6 @@
+import { observations } from "../application/observations";
+import { CapabilityPackSettings } from "./CapabilityPack";
+import { ExecutionRecovery } from "./ExecutionRecovery";
 import { ViewTabs } from "../ui/ViewTabs";
 import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
@@ -62,50 +65,40 @@ export function ExecutionPanel({
   const [historySearch, setHistorySearch] = useState("");
   useEffect(() => {
     if (!api) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const [execution, nodeState] = await Promise.all([
-          api.state(item.id),
-          node.state(),
-        ]);
-        if (!cancelled) {
-          setOwner(nodeState.identity?.owner ?? "");
-          setMission(
-            nodeState.missions.find((m) => m.id === item.mission.missionId),
-          );
+    const stopNode = observations(node).subscribe(
+      "state",
+      () => node.state(),
+      (nodeState) => {
+        setOwner(nodeState.identity?.owner ?? "");
+        setMission(
+          nodeState.missions.find((m) => m.id === item.mission.missionId),
+        );
+      },
+    );
+    const stopExecution = observations(api).subscribe(
+      `execution:${item.mission.missionId}`,
+      () => api.overview(item.mission.missionId),
+      (values) => {
+        const current = values[item.id];
+        if (current) {
+          setState(current);
+          setGrants(current.permissions);
         }
-        if (!cancelled) {
-          setState(execution);
-          setGrants(execution.permissions);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setState((previous) =>
-            previous
-              ? { ...previous, error: "Execution observation unavailable." }
-              : null,
-          );
-          setError(
-            e instanceof Error ? e.message : "Unable to inspect execution.",
-          );
-        }
-      }
-      if (!cancelled) timer = setTimeout(() => void poll(), 2500);
-    };
-    void poll();
+      },
+      (error) => {
+        setState((previous) =>
+          previous
+            ? { ...previous, error: "Execution observation unavailable." }
+            : null,
+        );
+        setError(error.message);
+      },
+    );
     return () => {
-      cancelled = true;
-      clearTimeout(timer);
+      stopNode();
+      stopExecution();
     };
-  }, [
-    api,
-    item.id,
-    item.mission.missionId,
-    item.sharedAgent?.registration,
-    node,
-  ]);
+  }, [api, node, item.id, item.mission.missionId]);
   const act = async (operation: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -151,6 +144,10 @@ export function ExecutionPanel({
     !!authentication?.expiresAt && authentication.expiresAt <= Date.now();
   const networkAccess =
     state?.networkAccess ?? item.networkAccess ?? "restricted";
+  const capabilityPack =
+    state?.capabilityPack ?? item.capabilityPack ?? "general";
+  const capabilityRevision =
+    state?.capabilityRevision ?? item.capabilityRevision ?? null;
   const networkRevision =
     state?.networkRevision ?? item.networkRevision ?? null;
   return (
@@ -180,6 +177,13 @@ export function ExecutionPanel({
           { value: "technical", label: "Technical" },
         ]}
       />
+      {tab === "activity" && state?.record?.reconstructedAt ? (
+        <p className="d-field-help" role="status">
+          This environment was recreated. The previous runtime conversation and
+          sign-in are unavailable. Continue from mission context and recovered
+          source; a new run still needs your approval.
+        </p>
+      ) : null}
       {tab === "activity" &&
       status === "stopped" &&
       state?.record?.interruption ? (
@@ -211,7 +215,7 @@ export function ExecutionPanel({
               const result = await api.exportDiagnostics(item.id);
               if (!result.cancelled)
                 setNotice(
-                  "Diagnostics exported: execution states and times only.",
+                  "Diagnostics exported: states, tool outcomes and reported usage.",
                 );
             })
           }
@@ -219,7 +223,8 @@ export function ExecutionPanel({
           Export diagnostics
         </Button>
         <p className="d-field-help">
-          Exports states and times. Provider output, prompts, credentials and
+          Exports states, tool outcomes and reported usage. Record IDs are
+          replaced with local labels. Provider output, prompts, credentials and
           paths stay on this Mac.
         </p>
         <p className="d-field-help">
@@ -283,29 +288,54 @@ export function ExecutionPanel({
         {supported &&
         item.status === "prepared" &&
         !item.sharedAgent?.withdrawn ? (
-          <NetworkAccessSettings
-            value={networkAccess}
-            revision={networkRevision}
-            disabled={
-              busy ||
-              !state ||
-              !!state.error ||
-              state.busy ||
-              active.has(status ?? "") ||
-              status === "preparing" ||
-              status === "recovery_required" ||
-              signInOpen
-            }
-            save={(value, revision) =>
-              void act(async () => {
-                await api.setNetwork(item.id, value, revision);
-                setReviewRun(false);
-                setNotice(
-                  "Internet setting applied. Review execution permission before continuing.",
-                );
-              })
-            }
-          />
+          <>
+            <CapabilityPackSettings
+              value={capabilityPack}
+              revision={capabilityRevision}
+              disabled={
+                busy ||
+                !state ||
+                !!state.error ||
+                state.busy ||
+                active.has(status ?? "") ||
+                status === "preparing" ||
+                status === "recovery_required" ||
+                signInOpen
+              }
+              save={(value, revision) =>
+                void act(async () => {
+                  await api.setCapabilityPack(item.id, value, revision);
+                  setReviewRun(false);
+                  setNotice(
+                    "Toolkit applied. Review execution permission before continuing.",
+                  );
+                })
+              }
+            />
+            <NetworkAccessSettings
+              value={networkAccess}
+              revision={networkRevision}
+              disabled={
+                busy ||
+                !state ||
+                !!state.error ||
+                state.busy ||
+                active.has(status ?? "") ||
+                status === "preparing" ||
+                status === "recovery_required" ||
+                signInOpen
+              }
+              save={(value, revision) =>
+                void act(async () => {
+                  await api.setNetwork(item.id, value, revision);
+                  setReviewRun(false);
+                  setNotice(
+                    "Internet setting applied. Review execution permission before continuing.",
+                  );
+                })
+              }
+            />
+          </>
         ) : null}
         <dl className="d-facts">
           <div>
@@ -562,7 +592,9 @@ export function ExecutionPanel({
               contribution={{
                 ...item,
                 networkAccess,
+                capabilityPack,
                 networkRevision: networkRevision ?? undefined,
+                capabilityRevision: capabilityRevision ?? undefined,
               }}
               isOwner={owner === mission.owner}
             />
@@ -689,6 +721,7 @@ export function ExecutionPanel({
                           permission.id,
                           item.id,
                           networkRevision,
+                          capabilityRevision,
                         );
                       await api.start(item.id, permission.id);
                     })
@@ -766,6 +799,20 @@ export function ExecutionPanel({
             onChange={(e) => setHistorySearch(e.target.value)}
           />
         </Field>
+      ) : null}
+      {tab === "activity" && state ? (
+        <ExecutionRecovery
+          id={item.id}
+          state={state}
+          api={api}
+          stopped={
+            !working &&
+            !!state.record &&
+            status !== "recovery_required" &&
+            status !== "preparing"
+          }
+          changed={() => void api.state(item.id).then(setState)}
+        />
       ) : null}
       {tab === "technical" && state?.record?.transitions?.length ? (
         <section aria-label="State history">

@@ -5,6 +5,7 @@ pub mod store;
 
 pub mod admission;
 pub mod agents;
+mod briefing;
 pub mod communication;
 pub mod contact;
 pub mod discovery;
@@ -22,5 +23,11 @@ mod artifact_views;
 pub mod artifacts;
 mod work_views;
 
+pub mod abuse;
+pub(crate) mod clarifications;
+pub mod compatibility;
+mod errors;
 pub mod governance;
 pub mod observations;
+pub mod replication;
+pub mod routes;

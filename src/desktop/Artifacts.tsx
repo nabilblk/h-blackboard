@@ -1,3 +1,5 @@
+import { observations } from "../application/observations";
+import { ArtifactOffline } from "./ArtifactOffline";
 import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
 import { Button } from "../ui/Button";
@@ -12,11 +14,14 @@ import {
   Star,
 } from "lucide-react";
 import { type ArtifactInspection } from "../application/contracts/workspace";
+import { agentContributorLabel } from "../../shared/agent-lifecycle.mjs";
 import { Text } from "../Markdown";
 import { ArtifactPublish } from "./ArtifactPublish";
 import { ReviewChecks, checksFromForm, reviewMethods } from "./ReviewChecks";
 import type {
   ArtifactAction,
+  ArtifactKind,
+  ArtifactCandidate,
   ArtifactDetail,
   ArtifactSummary,
   ReviewVerdict,
@@ -71,9 +76,12 @@ export function ArtifactPanel({
   const { missions: node } = useApplication();
   const [selected, setSelected] = useState(initial);
   const [items, setItems] = useState<ArtifactSummary[]>([]);
+  const [candidates, setCandidates] = useState<ArtifactCandidate[]>([]);
   const [detail, setDetail] = useState<ArtifactDetail | null>(null);
   const [search, setSearch] = useState("");
   const [channel, setChannel] = useState("");
+  const [kind, setKind] = useState<ArtifactKind | "">("");
+  const [reviewFilter, setReviewFilter] = useState("");
   const [limit, setLimit] = useState(32);
   const [more, setMore] = useState(false);
   const [total, setTotal] = useState(0);
@@ -97,9 +105,12 @@ export function ArtifactPanel({
     author === owner
       ? "You"
       : (agents.find((a) => a.identity.author === author)?.identity.label ??
-        (author === mission.owner
-          ? "Mission owner"
-          : `Participant ${author.slice(0, 8)}`));
+        agentContributorLabel(
+          agents.find((a) => a.contributor === author) ?? {
+            contributor: author,
+          },
+          mission,
+        ));
   const channelName = (id: string) =>
     id === "main"
       ? "Main"
@@ -108,53 +119,74 @@ export function ArtifactPanel({
         : (streams.find((s) => `workstream:${s.id}` === id)?.name ??
           "Workstream");
   useEffect(() => {
-    let gone = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const load = async () => {
-      try {
-        if (selected) {
-          const value = await node.artifactDetail(mission.id, selected);
-          if (!gone) setDetail(value);
-        } else {
-          let after: string | null = null;
-          const rows: ArtifactSummary[] = [];
-          let count = 0;
-          do {
-            const page = await node.artifacts(mission.id, {
-              after,
-              conversation: channel || null,
-              search: search || null,
-            });
-            rows.push(...page.items);
-            after = page.after;
-            count = page.total;
-          } while (after && rows.length < limit);
-          if (!gone) {
-            setItems(rows);
-            setMore(!!after);
-            setTotal(count);
-          }
-        }
-        if (!gone) setError("");
-      } catch (e) {
-        if (!gone)
-          setError(
-            e instanceof Error ? e.message : "Artifacts could not be loaded.",
-          );
-      } finally {
-        if (!gone) {
-          setLoading(false);
-          timer = setTimeout(load, 3000);
-        }
-      }
-    };
     setLoading(true);
-    timer = setTimeout(load, search ? 200 : 0);
-    return () => {
-      gone = true;
-      clearTimeout(timer);
-    };
-  }, [mission.id, selected, search, channel, limit, refresh, node]);
+    const key = `artifacts:${mission.id}:${JSON.stringify([selected, search, channel, kind, reviewFilter, limit, refresh])}`;
+    return observations(node).subscribe(
+      key,
+      async () => {
+        if (selected)
+          return {
+            detail: await node.artifactDetail(mission.id, selected),
+            rows: null,
+          };
+        let after: string | null = null,
+          count = 0;
+        const rows: ArtifactSummary[] = [],
+          seen = new Set<string>();
+        let candidates: ArtifactCandidate[] = [];
+        do {
+          const page = await node.artifacts(mission.id, {
+            after,
+            conversation: channel || null,
+            search: search || null,
+            kind: kind || null,
+            review_status: reviewFilter || null,
+          });
+          rows.push(...page.items);
+          candidates = page.candidates;
+          after = page.after;
+          count = page.total;
+          if (after && seen.has(after))
+            throw new Error(
+              "Artifact list did not advance. Refresh the mission.",
+            );
+          if (after) seen.add(after);
+        } while (after && rows.length < limit);
+        return { detail: null, rows, candidates, after, count };
+      },
+      (result) => {
+        if (result.detail) setDetail(result.detail);
+        if (result.rows) {
+          setItems(
+            [...result.rows].sort(
+              (a, b) =>
+                Number(b.highlighted) - Number(a.highlighted) ||
+                (b.updated_at_ms ?? 0) - (a.updated_at_ms ?? 0),
+            ),
+          );
+          setCandidates(result.candidates ?? []);
+          setMore(!!result.after);
+          setTotal(result.count ?? 0);
+        }
+        setLoading(false);
+        setError("");
+      },
+      (error) => {
+        setError(error.message);
+        setLoading(false);
+      },
+    );
+  }, [
+    mission.id,
+    selected,
+    search,
+    channel,
+    kind,
+    reviewFilter,
+    limit,
+    refresh,
+    node,
+  ]);
   const choose = (id: string | null) => {
     setDetail(null);
     setSelected(id);
@@ -221,6 +253,36 @@ export function ArtifactPanel({
                 {label(detail.author)} · Revision {detail.revision.slice(0, 10)}
               </p>
               <div className="n-action-row">
+                {detail.may_highlight &&
+                detail.artifact.conversation === "main" &&
+                !blocked ? (
+                  <Button
+                    disabled={
+                      busy ||
+                      detail.stale ||
+                      detail.artifact.heads.length !== 1 ||
+                      detail.artifact.revision !== detail.revision
+                    }
+                    onClick={() =>
+                      void perform(async () => {
+                        const page = await node.artifacts(mission.id, {});
+                        await node.artifactAction(
+                          mission.id,
+                          mission.lifecycle.revision,
+                          "main",
+                          {
+                            type: "candidate",
+                            revision: detail.revision,
+                            previous: page.candidates.map((c) => c.id),
+                          },
+                        );
+                        await saved();
+                      })
+                    }
+                  >
+                    Choose for delivery
+                  </Button>
+                ) : null}
                 <Button
                   variant="primary"
                   disabled={busy}
@@ -345,7 +407,8 @@ export function ArtifactPanel({
               ) : null}
               {detail.stale ? (
                 <p className="d-alert">
-                  Inputs, mission instructions or author availability changed.
+                  {detail.freshness_notes?.join(" ") ||
+                    "This revision needs a fresh review."}
                   Review this revision again.
                 </p>
               ) : null}
@@ -372,6 +435,10 @@ export function ArtifactPanel({
               ) : null}
               <section>
                 <h3>Files · {detail.document.files.length}</h3>
+                <ArtifactOffline
+                  mission={mission.id}
+                  revision={detail.revision}
+                />
                 <div className="n-artifact-files">
                   {detail.document.files.map((f) => (
                     <div key={f.path}>
@@ -743,27 +810,135 @@ export function ArtifactPanel({
               placeholder="Search all accessible artifacts"
             />
           </Field>
-          <Field>
-            Conversation
-            <select
-              value={channel}
-              onChange={(e) => {
-                setChannel(e.target.value);
-                setLimit(32);
-              }}
+          {candidates.length ? (
+            <section
+              className="d-panel n-artifact-candidate"
+              aria-label="Delivery candidate"
             >
-              <option value="">All accessible conversations</option>
-              <option value="main">Main</option>
-              {streams.map((s) => (
-                <option key={s.id} value={`workstream:${s.id}`}>
-                  # {s.name}
-                </option>
+              <h3>
+                {candidates.length === 1
+                  ? "Current delivery candidate"
+                  : "Delivery choices need reconciliation"}
+              </h3>
+              {candidates.map((candidate) => (
+                <div key={candidate.id}>
+                  <div className="n-action-row">
+                    <Button
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() =>
+                        void perform(async () => {
+                          const current = await node.artifactDetail(
+                            mission.id,
+                            candidate.revision,
+                          );
+                          if (current.document.entrypoint)
+                            await node.artifactOpen(
+                              mission.id,
+                              candidate.revision,
+                              current.document.entrypoint,
+                            );
+                          else choose(candidate.revision);
+                        })
+                      }
+                    >
+                      Open {candidate.title}
+                    </Button>
+                    <Button onClick={() => choose(candidate.revision)}>
+                      Review details
+                    </Button>
+                  </div>
+                  <p className={candidate.stale ? "d-alert" : "d-field-help"}>
+                    {candidate.stale
+                      ? "This selected revision needs review: newer work or changed inputs are available. Inspect its details before choosing a replacement."
+                      : "Exact revision selected for review and handoff. Acceptance remains separate."}
+                  </p>
+                </div>
               ))}
-              {conversation.startsWith("private:") ? (
-                <option value={conversation}>This private conversation</option>
-              ) : null}
-            </select>
-          </Field>
+            </section>
+          ) : null}
+          <Disclosure
+            title={
+              <>
+                Filter artifacts
+                {kind || reviewFilter || channel ? " · active" : ""}
+              </>
+            }
+          >
+            <Field>
+              Type
+              <select
+                name="artifactKind"
+                value={kind}
+                onChange={(e) => {
+                  setKind(e.target.value as ArtifactKind | "");
+                  setLimit(32);
+                }}
+              >
+                <option value="">All types</option>
+                {[
+                  "application",
+                  "plan",
+                  "report",
+                  "data",
+                  "code",
+                  "document",
+                ].map((value) => (
+                  <option key={value} value={value}>
+                    {value[0].toUpperCase() + value.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field>
+              Review
+              <select
+                name="artifactReviewStatus"
+                value={reviewFilter}
+                onChange={(e) => {
+                  setReviewFilter(e.target.value);
+                  setLimit(32);
+                }}
+              >
+                <option value="">All review states</option>
+                {[
+                  "unreviewed",
+                  "reviewed",
+                  "self_reviewed",
+                  "changes_requested",
+                  "needs_review",
+                  "conflict",
+                ].map((value) => (
+                  <option key={value} value={value}>
+                    {status(value)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field>
+              Conversation
+              <select
+                value={channel}
+                onChange={(e) => {
+                  setChannel(e.target.value);
+                  setLimit(32);
+                }}
+              >
+                <option value="">All accessible conversations</option>
+                <option value="main">Main</option>
+                {streams.map((s) => (
+                  <option key={s.id} value={`workstream:${s.id}`}>
+                    # {s.name}
+                  </option>
+                ))}
+                {conversation.startsWith("private:") ? (
+                  <option value={conversation}>
+                    This private conversation
+                  </option>
+                ) : null}
+              </select>
+            </Field>
+          </Disclosure>
           {loading ? <p role="status">Loading artifacts…</p> : null}
           <div className="n-artifact-list">
             {items.map((a) => (
@@ -809,9 +984,21 @@ export function ArtifactPanel({
                   <span className={`n-artifact-status ${a.review_status}`}>
                     {status(a.review_status)}
                     {a.accepted ? " · Accepted" : ""}
+                    {a.review_methods?.length
+                      ? ` · ${a.review_methods.map((m) => ({ source_inspection: "source", executed_tests: "tests", browser_check: "browser", visual_inspection: "visual" })[m]).join(", ")}`
+                      : a.review_status === "reviewed"
+                        ? " · scope unspecified"
+                        : ""}
                   </span>
                   <Button onClick={() => choose(a.revision)}>Details</Button>
                 </div>
+                {a.kind === "application" &&
+                a.review_status === "reviewed" &&
+                !a.review_methods?.includes("visual_inspection") ? (
+                  <small className="d-field-help">
+                    No independent visual review recorded for this revision.
+                  </small>
+                ) : null}
               </article>
             ))}
           </div>

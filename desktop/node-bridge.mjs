@@ -1,4 +1,13 @@
 import { spawn } from "node:child_process";
+import errors from "../shared/node-errors.json" with { type: "json" };
+
+export function nodeError(code) {
+  const key = Object.hasOwn(errors, code) ? code : "operation_rejected";
+  return Object.assign(new Error(errors[key].message), {
+    code: key,
+    retryable: errors[key].retryable,
+  });
+}
 
 const MAX_FRAME = 6 * 1024 * 1024;
 const MAX_PENDING = 32;
@@ -72,12 +81,7 @@ export class NodeBridge {
           clearTimeout(pending.timer);
           this.pending.delete(result.id);
           if (result.ok) pending.resolve(result.value);
-          else
-            pending.reject(
-              new Error(
-                "The node rejected this change. Check the mission fields and current state.",
-              ),
-            );
+          else pending.reject(nodeError(result.error));
         }
       }
       if (this.buffer.length > MAX_FRAME + 4) throw new Error("buffer");

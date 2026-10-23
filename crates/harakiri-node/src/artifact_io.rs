@@ -9,25 +9,33 @@ use crate::{
 use anyhow::{Result, anyhow, ensure};
 use harakiri_protocol::{ArtifactFile, Identity, artifacts::*, limits};
 use iroh_blobs::{Hash, store::fs::FsStore};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
+    fs::{self, OpenOptions},
+    io::{Read, Write},
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Upload {
     actor: String,
     mission: String,
     control: String,
     conversation: String,
     file: ArtifactFile,
+    #[serde(skip)]
     bytes: Vec<u8>,
-    created: Instant,
+    created: u64,
 }
 pub struct ArtifactIo {
     root: PathBuf,
     uploads: BTreeMap<String, Upload>,
+    staging_loaded: bool,
     downloads: BTreeMap<String, (Instant, Vec<u8>)>,
 }
 impl ArtifactIo {
@@ -35,6 +43,7 @@ impl ArtifactIo {
         Self {
             root: root.to_path_buf(),
             uploads: BTreeMap::new(),
+            staging_loaded: false,
             downloads: BTreeMap::new(),
         }
     }
@@ -46,8 +55,16 @@ impl ArtifactIo {
         mission: &str,
         input: ArtifactTransfer,
     ) -> Result<Value> {
-        self.uploads
-            .retain(|_, u| u.created.elapsed() < Duration::from_secs(600));
+        self.load_staging()?;
+        let expired: Vec<_> = self
+            .uploads
+            .iter()
+            .filter(|(_, u)| crate::contact::now().saturating_sub(u.created) > 24 * 60 * 60 * 1000)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in expired {
+            self.remove_upload(&id)?;
+        }
         self.downloads
             .retain(|_, (t, _)| t.elapsed() < Duration::from_secs(60));
         let actor = identity.public_key();
@@ -58,6 +75,7 @@ impl ArtifactIo {
                 path,
                 media_type,
                 size,
+                resume_key,
             } => {
                 with_store(store, |s| {
                     s.artifact_write_context(&actor, mission, &control, &conversation)
@@ -69,14 +87,34 @@ impl ArtifactIo {
                     hash: "0".repeat(64),
                 };
                 ensure!(valid_file(&file), "invalid file metadata");
+                if let Some(key) = &resume_key {
+                    ensure!(harakiri_protocol::event::is_hash(key), "invalid upload key");
+                }
+                let id = if let Some(key) = resume_key {
+                    blake3::hash(&serde_json::to_vec(&(
+                        &actor,
+                        mission,
+                        &control,
+                        &conversation,
+                        &file,
+                        key,
+                    ))?)
+                    .to_hex()
+                    .to_string()
+                } else {
+                    hex::encode(rand::random::<[u8; 32]>())
+                };
+                if let Some(existing) = self.uploads.get(&id) {
+                    return Ok(json!({"upload":id,"offset":existing.bytes.len(),"resumed":true}));
+                }
                 ensure!(
-                    self.uploads.len() < 64
-                        && self.uploads.values().filter(|u| u.actor == actor).count() < 32
+                    self.uploads.len() < limits::MAX_FILES
+                        && self.uploads.values().filter(|u| u.actor == actor).count()
+                            < limits::MAX_FILES
                         && self.uploads.values().map(|u| u.file.size).sum::<u64>() + size
                             <= MAX_UPLOAD_BYTES as u64,
                     "upload capacity reached; cancel unused uploads"
                 );
-                let id = hex::encode(rand::random::<[u8; 32]>());
                 self.uploads.insert(
                     id.clone(),
                     Upload {
@@ -86,10 +124,14 @@ impl ArtifactIo {
                         conversation,
                         file,
                         bytes: Vec::new(),
-                        created: Instant::now(),
+                        created: crate::contact::now(),
                     },
                 );
-                Ok(json!({"upload":id}))
+                if let Err(error) = self.save_upload(&id) {
+                    self.remove_upload(&id)?;
+                    return Err(error);
+                }
+                Ok(json!({"upload":id,"offset":0,"resumed":false}))
             }
             ArtifactTransfer::Chunk {
                 upload,
@@ -100,6 +142,7 @@ impl ArtifactIo {
                     encoded.len() <= 96 * 1024 && encoded.len().is_multiple_of(2),
                     "chunk too large"
                 );
+                let data_path = self.staging().join(format!("{upload}.data"));
                 let u = self
                     .uploads
                     .get_mut(&upload)
@@ -113,10 +156,21 @@ impl ArtifactIo {
                 })?;
                 let bytes = hex::decode(encoded)?;
                 ensure!(
-                    offset == u.bytes.len() as u64 && offset + bytes.len() as u64 <= u.file.size,
+                    offset <= u.bytes.len() as u64 && offset + bytes.len() as u64 <= u.file.size,
                     "upload offset or size mismatch"
                 );
-                u.bytes.extend_from_slice(&bytes);
+                let start = usize::try_from(offset)?;
+                if start < u.bytes.len() {
+                    ensure!(
+                        u.bytes.get(start..start + bytes.len()) == Some(bytes.as_slice()),
+                        "replayed chunk differs from received bytes"
+                    );
+                } else {
+                    let mut out = OpenOptions::new().append(true).open(data_path)?;
+                    out.write_all(&bytes)?;
+                    out.sync_data()?;
+                    u.bytes.extend_from_slice(&bytes);
+                }
                 Ok(json!({"offset":u.bytes.len(),"complete":u.bytes.len() as u64==u.file.size}))
             }
             ArtifactTransfer::Cancel { upload } => {
@@ -125,7 +179,7 @@ impl ArtifactIo {
                         u.actor == actor && u.mission == mission,
                         "upload unavailable"
                     );
-                    self.uploads.remove(&upload);
+                    self.remove_upload(&upload)?;
                 }
                 Ok(Value::Null)
             }
@@ -143,7 +197,8 @@ impl ArtifactIo {
                     "file manifests are supplied by verified transfers"
                 );
                 ensure!(
-                    ids(&uploads, 32) && uploads.len() + retain.len() <= limits::MAX_FILES,
+                    ids(&uploads, limits::MAX_FILES)
+                        && uploads.len() + retain.len() <= limits::MAX_FILES,
                     "file limit"
                 );
                 with_store(store, |s| {
@@ -198,7 +253,7 @@ impl ArtifactIo {
                         ArtifactAction::Publish {
                             artifact,
                             parents,
-                            document: document.clone(),
+                            document: (*document).clone(),
                         },
                     )?;
                     for f in &document.files {
@@ -207,7 +262,7 @@ impl ArtifactIo {
                     Ok(e)
                 })?;
                 for id in uploads {
-                    self.uploads.remove(&id);
+                    self.remove_upload(&id)?;
                 }
                 Ok(json!({"event":e.id}))
             }
@@ -230,6 +285,116 @@ impl ArtifactIo {
                 )
             }
         }
+    }
+    fn staging(&self) -> PathBuf {
+        self.root.join("artifact-staging")
+    }
+    fn remove_upload(&mut self, id: &str) -> Result<()> {
+        self.uploads.remove(id);
+        for extension in ["json", "data"] {
+            match fs::remove_file(self.staging().join(format!("{id}.{extension}"))) {
+                Ok(()) => (),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
+    }
+    fn save_upload(&self, id: &str) -> Result<()> {
+        let dir = self.staging();
+        fs::create_dir_all(&dir)?;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
+        let data = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(dir.join(format!("{id}.data")))?;
+        data.sync_all()?;
+        let mut meta = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(dir.join(format!("{id}.json")))?;
+        meta.write_all(&serde_json::to_vec(&self.uploads[id])?)?;
+        meta.sync_all()?;
+        fs::File::open(dir)?.sync_all()?;
+        Ok(())
+    }
+    fn load_staging(&mut self) -> Result<()> {
+        if self.staging_loaded {
+            return Ok(());
+        }
+        let dir = self.staging();
+        fs::create_dir_all(&dir)?;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
+        let mut total = 0u64;
+        for entry in fs::read_dir(&dir)?.take(1025) {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            let Some(id) = name
+                .strip_suffix(".json")
+                .filter(|id| harakiri_protocol::event::is_hash(id))
+            else {
+                continue;
+            };
+            let load = || -> Result<Upload> {
+                ensure!(
+                    entry.file_type()?.is_file() && entry.metadata()?.len() <= 16384,
+                    "invalid staging metadata"
+                );
+                let mut meta = Vec::new();
+                fs::File::open(entry.path())?
+                    .take(16385)
+                    .read_to_end(&mut meta)?;
+                let mut u: Upload = serde_json::from_slice(&meta)?;
+                ensure!(
+                    valid_file(&u.file)
+                        && crate::contact::now().saturating_sub(u.created) <= 24 * 60 * 60 * 1000,
+                    "expired upload"
+                );
+                let data = dir.join(format!("{id}.data"));
+                let info = fs::symlink_metadata(&data)?;
+                ensure!(
+                    info.is_file() && info.len() <= u.file.size,
+                    "invalid staging bytes"
+                );
+                ensure!(
+                    total + u.file.size <= MAX_UPLOAD_BYTES as u64
+                        && self.uploads.len() < limits::MAX_FILES,
+                    "staging quota"
+                );
+                fs::File::open(data)?
+                    .take(u.file.size + 1)
+                    .read_to_end(&mut u.bytes)?;
+                ensure!(u.bytes.len() as u64 <= u.file.size, "staging bytes changed");
+                Ok(u)
+            };
+            match load() {
+                Ok(u) => {
+                    total += u.file.size;
+                    self.uploads.insert(id.into(), u);
+                }
+                Err(_) => {
+                    self.remove_upload(id)?;
+                }
+            }
+        }
+        // A crash can leave a data inode without its metadata. Keep only
+        // resumable records accounted for above; never accumulate orphan bytes.
+        for entry in fs::read_dir(&dir)?.take(1025) {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(id) = name
+                .strip_suffix(".data")
+                .filter(|id| harakiri_protocol::event::is_hash(id))
+                && !self.uploads.contains_key(id)
+            {
+                fs::remove_file(entry.path())?;
+            }
+        }
+        fs::File::open(dir)?.sync_all()?;
+        self.staging_loaded = true;
+        Ok(())
     }
     async fn put(&self, network: &Network, bytes: &[u8]) -> Result<()> {
         let (blobs, owned) = match &network.peer {
@@ -301,7 +466,9 @@ impl ArtifactIo {
                 );
                 Ok(())
             })?;
-            let contacts = with_store(store, |s| s.contacts(mission))?;
+            let contacts = with_store(store, |s| {
+                s.recovery_contacts(mission, network.config().route_directory.is_some())
+            })?;
             let result = tokio::time::timeout(Duration::from_secs(8), async {
                 for signed in contacts.iter().take(16) {
                     let Ok((_, contact)) = crate::contact::Contact::verify(signed) else {
@@ -310,7 +477,7 @@ impl ArtifactIo {
                     if contact.endpoint == peer.endpoint.id().to_string() {
                         continue;
                     }
-                    let Ok(addr) = contact.address(network.config()) else {
+                    let Ok(addr) = peer.resolve_contact(&contact, network.config()).await else {
                         continue;
                     };
                     if let Ok(Ok(b)) = tokio::time::timeout(

@@ -16,6 +16,34 @@ use std::{
 };
 
 pub type Records = BTreeMap<String, Event>;
+pub fn candidate_heads(records: &Records) -> Vec<&Event> {
+    let choices: Vec<_> = records
+        .values()
+        .filter(|e| {
+            matches!(
+                e.body.payload,
+                Payload::ArtifactRecorded {
+                    action: ArtifactAction::Candidate { .. },
+                    ..
+                }
+            )
+        })
+        .collect();
+    let replaced: BTreeSet<_> = choices
+        .iter()
+        .flat_map(|e| match &e.body.payload {
+            Payload::ArtifactRecorded {
+                action: ArtifactAction::Candidate { previous, .. },
+                ..
+            } => previous.iter(),
+            _ => unreachable!(),
+        })
+        .collect();
+    choices
+        .into_iter()
+        .filter(|e| !replaced.contains(&e.id))
+        .collect()
+}
 pub fn is_record(p: &Payload) -> bool {
     matches!(
         p,
@@ -47,6 +75,7 @@ pub fn revision(e: &Event) -> Option<(String, ArtifactDocument, Vec<String>)> {
                 limitations: "Legacy publication: no input or review metadata.".into(),
                 entrypoint: files.first().map(|f| f.path.clone()),
                 inputs: vec![],
+                references: vec![],
                 files: files.clone(),
             },
             vec![],
@@ -173,6 +202,44 @@ impl Store {
         let authorization =
             self.artifact_write_context(&identity.public_key(), mission, current, channel)?;
         action.validate()?;
+        // Reconcile a lost publication response before testing its now-stale
+        // parents. Only the same writer, authority, audience and exact content
+        // can replay a receipt; this never revives revoked publishing access.
+        if matches!(action, ArtifactAction::Publish { .. }) {
+            let records = self.artifact_records(mission)?;
+            if let Some(existing) = records.values().find(|e| {
+                e.body.author == identity.public_key()
+                    && matches!(&e.body.payload, Payload::ArtifactRecorded {
+                        control, authorization: bound, conversation, action: saved,
+                    } if control == current && bound == &authorization
+                        && conversation == channel && saved == &action)
+            }) {
+                return Ok(existing.clone());
+            }
+        }
+        if let ArtifactAction::Candidate { revision, previous } = &action {
+            let records = self.artifact_records(mission)?;
+            ensure!(
+                previous.iter().collect::<BTreeSet<_>>()
+                    == candidate_heads(&records).iter().map(|e| &e.id).collect(),
+                "candidate changed; read current candidates before choosing"
+            );
+            ensure!(
+                !self.artifact_evidence_stale(mission, revision)?,
+                "candidate must be a current nonconflicting revision"
+            );
+        }
+        if let ArtifactAction::Accept {
+            revision,
+            accepted: true,
+            ..
+        } = &action
+        {
+            ensure!(
+                !self.artifact_evidence_stale(mission, revision)?,
+                "acceptance requires a current nonconflicting revision"
+            );
+        }
         if let ArtifactAction::Publish {
             artifact: Some(id),
             parents,
@@ -278,11 +345,9 @@ impl Store {
                     "invalid artifact direction"
                 );
                 let valid = match &d.body.payload {
-                    Payload::AgentDirected {
-                        registration,
-                        control,
-                        ..
-                    } => registration == reg && control == current,
+                    Payload::AgentDirected { registration, .. } => {
+                        registration == reg && self.assignment_applies_at(mission, current, &d)?
+                    }
                     Payload::MissionControlled {
                         action: ControlAction::Start { participants, .. },
                         ..
@@ -296,17 +361,12 @@ impl Store {
                                     .is_some_and(|p| p.coordination == Coordination::Peer))
                     }
                     Payload::WorkRecorded {
-                        control,
                         action:
                             harakiri_protocol::work::WorkAction::AssignWorkstream {
                                 registration, ..
                             },
                         ..
-                    } => {
-                        registration == reg
-                            && history.at(control)?.lifecycle.terms_revision
-                                == state.lifecycle.terms_revision
-                    }
+                    } => registration == reg && self.assignment_applies_at(mission, current, &d)?,
                     _ => false,
                 };
                 ensure!(valid, "artifact requires assigned direction");
@@ -412,6 +472,27 @@ impl Store {
                         "inputs must reference exact revisions of another artifact"
                     );
                 }
+                for reference in &document.references {
+                    let source = &dependencies[&reference.revision];
+                    ensure!(
+                        match reference.relation {
+                            ArtifactRelation::Citation =>
+                                revision(source).is_some()
+                                    || matches!(
+                                        source.body.payload,
+                                        Payload::ArtifactRecorded {
+                                            action: ArtifactAction::Review { .. },
+                                            ..
+                                        } | Payload::MessageSent { .. }
+                                            | Payload::MessagePosted { .. }
+                                            | Payload::WorkstreamMessage { .. }
+                                    ),
+                            ArtifactRelation::Live | ArtifactRelation::Pinned =>
+                                revision(source).is_some_and(|(r, _, _)| r != id),
+                        },
+                        "invalid typed artifact reference"
+                    );
+                }
             }
             ArtifactAction::Review {
                 revision: id,
@@ -455,6 +536,30 @@ impl Store {
                         && conversation(&dependencies[id]) == channel,
                     "highlight revision mismatch"
                 );
+            }
+            ArtifactAction::Candidate {
+                revision: id,
+                previous,
+            } => {
+                ensure!(owner || co, "owner or Coordinator candidate required");
+                ensure!(
+                    channel == "main"
+                        && revision(&dependencies[id]).is_some()
+                        && conversation(&dependencies[id]) == "main",
+                    "candidate must be a Main artifact revision"
+                );
+                for prior in previous {
+                    ensure!(
+                        matches!(
+                            dependencies[prior].body.payload,
+                            Payload::ArtifactRecorded {
+                                action: ArtifactAction::Candidate { .. },
+                                ..
+                            }
+                        ),
+                        "candidate predecessor required"
+                    );
+                }
             }
         }
         Ok(true)

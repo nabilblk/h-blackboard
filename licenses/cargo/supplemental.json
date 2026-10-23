@@ -1,0 +1,287 @@
+{
+  "version": 1,
+  "source": "Pinned .cargo_vcs_info.json commits from Cargo.lock packages. These upstream texts supplement notices omitted from crates.io archives.",
+  "packages": [
+    {
+      "name": "asn1-rs-impl",
+      "version": "0.2.0",
+      "license": "MIT/Apache-2.0",
+      "vcs": "a20e5f7319c896737ad0f2557037817b91ad854f",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-APACHE",
+          "path": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-MIT",
+          "path": "a5c61b93b6ee1d104af9920cf020ff3c7efe818e31fe562c72261847a728f513.txt",
+          "sha256": "a5c61b93b6ee1d104af9920cf020ff3c7efe818e31fe562c72261847a728f513"
+        }
+      ]
+    },
+    {
+      "name": "block2",
+      "version": "0.6.2",
+      "license": "MIT",
+      "vcs": "b4167b582b2f75f9a1be75495c41b765344fd03c",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "dispatch2",
+      "version": "0.3.1",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs": "8852b424193ca41602281b3d7540d7c8ed51e49a",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "iroh-base",
+      "version": "1.3.0",
+      "license": "MIT OR Apache-2.0",
+      "vcs": "0072d7d84b233f9e7185eb676f049beaf557ac03",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh/0072d7d84b233f9e7185eb676f049beaf557ac03/LICENSE-APACHE",
+          "path": "903131e2786f073a942fbf8fae122d9e576e4dad758c6da7f9f2ba58fd8611ab.txt",
+          "sha256": "903131e2786f073a942fbf8fae122d9e576e4dad758c6da7f9f2ba58fd8611ab"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh/0072d7d84b233f9e7185eb676f049beaf557ac03/LICENSE-MIT",
+          "path": "f169adb8124d3b005416d8485d00777c9a7bdd9099982c52a4493f9732e6d050.txt",
+          "sha256": "f169adb8124d3b005416d8485d00777c9a7bdd9099982c52a4493f9732e6d050"
+        }
+      ]
+    },
+    {
+      "name": "iroh-dns",
+      "version": "1.3.0",
+      "license": "MIT OR Apache-2.0",
+      "vcs": "17c0612f80f78f5288e97b818b1360ae6ea0a51a",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh/17c0612f80f78f5288e97b818b1360ae6ea0a51a/LICENSE-APACHE",
+          "path": "903131e2786f073a942fbf8fae122d9e576e4dad758c6da7f9f2ba58fd8611ab.txt",
+          "sha256": "903131e2786f073a942fbf8fae122d9e576e4dad758c6da7f9f2ba58fd8611ab"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh/17c0612f80f78f5288e97b818b1360ae6ea0a51a/LICENSE-MIT",
+          "path": "f169adb8124d3b005416d8485d00777c9a7bdd9099982c52a4493f9732e6d050.txt",
+          "sha256": "f169adb8124d3b005416d8485d00777c9a7bdd9099982c52a4493f9732e6d050"
+        }
+      ]
+    },
+    {
+      "name": "iroh-mdns-address-lookup",
+      "version": "0.6.0",
+      "license": "MIT OR Apache-2.0",
+      "vcs": "c64aec6e2afb0d0b3563858a58e70a00b8bfa94e",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh-address-lookups/c64aec6e2afb0d0b3563858a58e70a00b8bfa94e/LICENSE-APACHE",
+          "path": "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888.txt",
+          "sha256": "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh-address-lookups/c64aec6e2afb0d0b3563858a58e70a00b8bfa94e/LICENSE-MIT",
+          "path": "33616ec4c88b6e00de66e6c06f1a55d80bb32a9d7939f3aa83d28e673a1adcae.txt",
+          "sha256": "33616ec4c88b6e00de66e6c06f1a55d80bb32a9d7939f3aa83d28e673a1adcae"
+        }
+      ]
+    },
+    {
+      "name": "iroh-metrics-derive",
+      "version": "1.0.1",
+      "license": "MIT OR Apache-2.0",
+      "vcs": "a9afb7cd49bb3804fffefec61647993851f9b8c8",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh-metrics/a9afb7cd49bb3804fffefec61647993851f9b8c8/LICENSE-APACHE",
+          "path": "7953ad8cebf4e01199521a5faa221ef59bec5cee0a9856b179590613a8560cbc.txt",
+          "sha256": "7953ad8cebf4e01199521a5faa221ef59bec5cee0a9856b179590613a8560cbc"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/iroh-metrics/a9afb7cd49bb3804fffefec61647993851f9b8c8/LICENSE-MIT",
+          "path": "339060c99d5c80c2742cae417f765980afe6b0149a78f959bbf2a79f19ab3af5.txt",
+          "sha256": "339060c99d5c80c2742cae417f765980afe6b0149a78f959bbf2a79f19ab3af5"
+        }
+      ]
+    },
+    {
+      "name": "irpc-derive",
+      "version": "0.17.0",
+      "license": "Apache-2.0/MIT",
+      "vcs": "0ed2b235d5c797b54d8263ecb3b0247272d055f9",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/irpc/0ed2b235d5c797b54d8263ecb3b0247272d055f9/LICENSE-APACHE",
+          "path": "7953ad8cebf4e01199521a5faa221ef59bec5cee0a9856b179590613a8560cbc.txt",
+          "sha256": "7953ad8cebf4e01199521a5faa221ef59bec5cee0a9856b179590613a8560cbc"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/irpc/0ed2b235d5c797b54d8263ecb3b0247272d055f9/LICENSE-MIT",
+          "path": "339060c99d5c80c2742cae417f765980afe6b0149a78f959bbf2a79f19ab3af5.txt",
+          "sha256": "339060c99d5c80c2742cae417f765980afe6b0149a78f959bbf2a79f19ab3af5"
+        }
+      ]
+    },
+    {
+      "name": "n0-error-macros",
+      "version": "1.0.1",
+      "license": "MIT OR Apache-2.0",
+      "vcs": "596f4113918712d545cbb25b7fa12c7153706f54",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/n0-error/596f4113918712d545cbb25b7fa12c7153706f54/LICENSE-APACHE",
+          "path": "7953ad8cebf4e01199521a5faa221ef59bec5cee0a9856b179590613a8560cbc.txt",
+          "sha256": "7953ad8cebf4e01199521a5faa221ef59bec5cee0a9856b179590613a8560cbc"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/n0-error/596f4113918712d545cbb25b7fa12c7153706f54/LICENSE-MIT",
+          "path": "339060c99d5c80c2742cae417f765980afe6b0149a78f959bbf2a79f19ab3af5.txt",
+          "sha256": "339060c99d5c80c2742cae417f765980afe6b0149a78f959bbf2a79f19ab3af5"
+        }
+      ]
+    },
+    {
+      "name": "netwatch",
+      "version": "0.19.3",
+      "license": "MIT OR Apache-2.0",
+      "vcs": "0030e57fc70981895bb86212ff0f059cc41c8a4e",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/net-tools/0030e57fc70981895bb86212ff0f059cc41c8a4e/LICENSE-APACHE",
+          "path": "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888.txt",
+          "sha256": "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/n0-computer/net-tools/0030e57fc70981895bb86212ff0f059cc41c8a4e/LICENSE-MIT",
+          "path": "33616ec4c88b6e00de66e6c06f1a55d80bb32a9d7939f3aa83d28e673a1adcae.txt",
+          "sha256": "33616ec4c88b6e00de66e6c06f1a55d80bb32a9d7939f3aa83d28e673a1adcae"
+        }
+      ]
+    },
+    {
+      "name": "objc2",
+      "version": "0.6.4",
+      "license": "MIT",
+      "vcs": "8852b424193ca41602281b3d7540d7c8ed51e49a",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "objc2-core-foundation",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "objc2-encode",
+      "version": "4.1.0",
+      "license": "MIT",
+      "vcs": "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "objc2-security",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "objc2-system-configuration",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "path": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        }
+      ],
+      "reviewRequired": "Upstream notice links to license terms and describes Apple SDK-derived code; a distribution review is still required."
+    },
+    {
+      "name": "plist",
+      "version": "1.10.1",
+      "license": "MIT",
+      "vcs": "10ba3e3b44adb6246f3f5cc8e66134e03498f634",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/ebarnard/rust-plist/10ba3e3b44adb6246f3f5cc8e66134e03498f634/LICENCE",
+          "path": "5b0ae40d1a35f7ae6591a28e44771240e6a88cb03a66c9189a45b9681639b466.txt",
+          "sha256": "5b0ae40d1a35f7ae6591a28e44771240e6a88cb03a66c9189a45b9681639b466"
+        }
+      ]
+    },
+    {
+      "name": "ts-rs",
+      "version": "12.0.1",
+      "license": "MIT",
+      "vcs": "7182ad8289596097235406b715fa04506443b4ad",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/Aleph-Alpha/ts-rs/7182ad8289596097235406b715fa04506443b4ad/LICENSE",
+          "path": "db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1.txt",
+          "sha256": "db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1"
+        }
+      ]
+    },
+    {
+      "name": "ts-rs-macros",
+      "version": "12.0.1",
+      "license": "MIT",
+      "vcs": "7182ad8289596097235406b715fa04506443b4ad",
+      "files": [
+        {
+          "source": "https://raw.githubusercontent.com/Aleph-Alpha/ts-rs/7182ad8289596097235406b715fa04506443b4ad/LICENSE",
+          "path": "db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1.txt",
+          "sha256": "db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1"
+        }
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 //! carry mission history. A listing's signer is not proven to own the mission
 //! until live inspection verifies its signed genesis.
 use crate::{
-    contact::{Contact, now},
+    contact::{CONTACT_TTL_MS, Contact, NetworkConfig, now},
     store::Store,
 };
 use anyhow::{Result, anyhow, ensure};
@@ -126,6 +126,49 @@ pub struct FeedPage {
 }
 
 impl Store {
+    /// A newly supplied, signed community address may refresh an already
+    /// admitted member's route. It never creates membership or imports history.
+    /// Expired routes are deliberately absent from `contacts`; without this
+    /// bridge, two returning members can discover each other but never resume
+    /// mission replication after both cached contacts expire.
+    pub fn refresh_known_peer_routes(
+        &mut self,
+        local_endpoint: &str,
+        network: &NetworkConfig,
+    ) -> Result<()> {
+        let config = self.discovery_config()?;
+        if !config.enabled {
+            return Ok(());
+        }
+        let missions = self.missions()?;
+        for ticket in &config.bootstrap {
+            let (author, contact) = parse_peer(ticket)?;
+            if config.blocked.contains(&author)
+                || contact.endpoint == local_endpoint
+                || contact.expires_ms > now() + CONTACT_TTL_MS
+                || contact.address(network).is_err()
+            {
+                continue;
+            }
+            let signed = ticket
+                .strip_prefix(PEER_PREFIX)
+                .ok_or_else(|| anyhow!("invalid peer ticket"))?;
+            for mission in &missions {
+                if self.can_read(&mission.id, local_endpoint)?
+                    && self.can_read(&mission.id, &contact.endpoint)?
+                    && self.members(&mission.id)?.iter().any(|member| {
+                        member.author == author && member.endpoint == contact.endpoint
+                    })
+                {
+                    // Recheck signed identity, membership and expiry; preserve
+                    // a newer contact if an older ticket is replayed.
+                    self.save_contact(&mission.id, signed)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn discovery_config(&self) -> Result<DiscoveryConfig> {
         let value: Option<String> = self
             .connection

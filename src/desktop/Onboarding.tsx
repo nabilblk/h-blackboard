@@ -1,3 +1,4 @@
+import { CapabilityPackField } from "./CapabilityPack";
 import { Button } from "../ui/Button";
 import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
@@ -7,6 +8,7 @@ import {
   type Contribution,
   type Runtime,
   type NetworkAccess,
+  type CapabilityPack,
 } from "../application/contracts/workspace";
 import type { MissionView } from "../application/contracts/node";
 import { ExecutionPanel } from "./ExecutionPanel";
@@ -23,6 +25,7 @@ import type {
 type AgentDraft = {
   runtime: Runtime;
   networkAccess?: NetworkAccess;
+  capabilityPack?: CapabilityPack;
   name: string;
   count: number;
   mode: "bounded" | "unlimited";
@@ -36,6 +39,8 @@ const validDraft = (v: unknown): v is AgentDraft => {
     ["grok", "claude", "codex"].includes(x.runtime) &&
     (x.networkAccess === undefined ||
       ["restricted", "internet"].includes(x.networkAccess)) &&
+    (x.capabilityPack === undefined ||
+      ["general", "web-3d"].includes(x.capabilityPack)) &&
     typeof x.name === "string" &&
     x.name.length <= 90 &&
     Number.isInteger(x.count) &&
@@ -71,6 +76,7 @@ export function AgentSetup({
     {
       runtime: "grok",
       networkAccess: "restricted",
+      capabilityPack: "general",
       name: role === "coordinator" ? "Coordinator" : "Agent",
       count: 1,
       mode: "bounded",
@@ -193,6 +199,7 @@ export function AgentSetup({
             role,
             runtime: draft.runtime,
             networkAccess: draft.networkAccess ?? "restricted",
+            capabilityPack: draft.capabilityPack ?? "general",
             label: draft.name.trim(),
             count: role === "coordinator" ? 1 : draft.count,
             limits:
@@ -254,6 +261,10 @@ export function AgentSetup({
             />
           </Field>
         ) : null}
+        <CapabilityPackField
+          value={draft.capabilityPack ?? "general"}
+          onChange={(capabilityPack) => save({ ...draft, capabilityPack })}
+        />
         <NetworkAccessField
           value={draft.networkAccess ?? "restricted"}
           onChange={(networkAccess) => save({ ...draft, networkAccess })}

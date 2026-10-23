@@ -1,5 +1,12 @@
-import type { Limits, Runtime, NetworkAccess } from "./workspace";
+import type {
+  Limits,
+  Runtime,
+  NetworkAccess,
+  CapabilityPack,
+} from "./workspace";
 export type ContributionApproval = {
+  leaseMinutes?: number;
+  offlineMinutes?: number;
   id: string;
   mission: string;
   terms: string;
@@ -8,6 +15,7 @@ export type ContributionApproval = {
   registration: string;
   contributionId: string | null;
   networkRevision?: string | null;
+  capabilityRevision?: string | null;
   ownerPermission: boolean;
   minutes: number;
   turns: number;
@@ -68,6 +76,7 @@ export type SetupRequest = {
   role: "agent" | "coordinator";
   runtime: Runtime;
   networkAccess?: NetworkAccess;
+  capabilityPack?: CapabilityPack;
   label: string;
   count: number;
   limits: Limits;
@@ -77,6 +86,7 @@ export type PermissionRequest = {
   id: string;
   contributionId: string;
   networkRevision?: string | null;
+  capabilityRevision?: string | null;
   control: string;
   direction: string;
   turns: number;

@@ -185,6 +185,37 @@ test("sign-in cancellation during guest boot waits for and stops that login, wit
   assert.equal(f.flags.launches, 0);
 });
 
+test("recreating a missing environment preserves identity but never claims the old runtime session survived", async (t) => {
+  const f = fixture(t);
+  f.store.update(f.id, {
+    status: "stopped",
+    session: "old-session",
+    grant: f.grant.id,
+    wake: { fingerprint: "e".repeat(64), seen: [], messages: 1 },
+  });
+  f.provider.prepare = async () => ({
+    authenticated: false,
+    created: true,
+    stopped: true,
+  });
+  await f.manager.prepare(f.id);
+  const record = f.store.read(f.id);
+  assert.equal(record.session, null);
+  assert.equal(record.wake, undefined);
+  assert.equal(
+    record.grant,
+    f.grant.id,
+    "a previous grant cannot be reused after recreation",
+  );
+  assert.equal(record.status, "login_required");
+  assert.ok(record.reconstructedAt);
+  assert.equal(f.flags.launches, 0);
+  assert.equal(
+    f.manager.contribution(f.id).sharedAgent.registration,
+    "a".repeat(64),
+  );
+});
+
 test("successful guest sign-in frees capacity and does not grant or start work", async (t) => {
   const f = fixture(t);
   const login = deferred();
@@ -346,6 +377,12 @@ test("peer messages arriving during a turn wake saved work; own messages do not 
   f.node.openAgentChannel = () => ({
     close() {},
     request: async (op) => {
+      if (op.type === "snapshot")
+        return {
+          context: { agent: { identity: { author: "own" } } },
+          main: { items: messages },
+          inbox: { items: [] },
+        };
       if (op.type === "context")
         return { agent: { identity: { author: "own" } } };
       if (op.type === "messages") return { items: messages };
@@ -390,6 +427,17 @@ test("a real-shaped receipt feed stays idle until a human criterion report chang
   f.node.openAgentChannel = () => ({
     close() {},
     request: async (op) => {
+      if (op.type === "snapshot")
+        return {
+          context: {
+            agent: { identity: { author: "own" } },
+            conversations: [{ id: "main", unread, writable: true }],
+          },
+          main: { items: messages },
+          inbox: { items: [] },
+          workstreams: [{ id: "stream", unread }],
+          criteria,
+        };
       if (op.type === "context")
         return {
           agent: { identity: { author: "own" } },
@@ -440,6 +488,106 @@ test("a real-shaped receipt feed stays idle until a human criterion report chang
   await f.manager.stop(f.id);
   assert.equal(f.grant.charged, 2);
   assert.equal(f.flags.running, false);
+});
+
+test("a snapshot consumes delivered updates without swallowing later arrivals or forgetting dependency watches", async (t) => {
+  const f = fixture(t);
+  f.grant.purpose = "work";
+  const messages = [];
+  const artifact = "e".repeat(64);
+  let head = artifact;
+  let tools;
+  const completions = [];
+  f.node.openAgentChannel = () => ({
+    close() {},
+    request: async (op) => ({
+      context: { agent: { identity: { author: "own" } } },
+      owner: "human",
+      main: { items: structuredClone(messages) },
+      inbox: { items: [] },
+      watched: (op.watch ?? []).map((revision) => ({
+        revision,
+        artifact: { heads: [head] },
+        reviews: [],
+        stale: false,
+      })),
+    }),
+  });
+  f.provider.launch = async ({ onSession, onTool }) => {
+    f.flags.running = true;
+    f.flags.launches++;
+    tools = onTool;
+    await onSession("saved-session");
+    const completed = deferred();
+    completions.push(completed);
+    return { done: completed.promise };
+  };
+  t.after(() => f.manager.close());
+  await f.manager.start(f.id, f.grant.id);
+  await waitFor(() => !!tools);
+  messages.push({ id: "delivered", author: "human", text: "Already read" });
+  const firstRead = await tools("board", {
+    operation: { type: "snapshot", watch: [] },
+  });
+  // The runtime transport confirms delivery only after emitting the full
+  // result. Merely computing a snapshot must not consume pending messages.
+  await tools("record_delivery", {
+    token: firstRead._delivery.token,
+    paths: [""],
+  });
+  const waited = await tools("wait_for_work", {
+    reason: "Waiting for an input",
+    artifacts: [artifact],
+    reviews: [],
+  });
+  assert.deepEqual(waited.dependencies[0].heads, [artifact]);
+  await tools("record_delivery", {
+    token: waited._delivery.token,
+    paths: [""],
+  });
+  const refreshed = await tools("board", {
+    operation: { type: "snapshot", watch: [] },
+  });
+  assert.equal(refreshed.watched[0].revision, artifact);
+  await tools("record_delivery", {
+    token: refreshed._delivery.token,
+    paths: [""],
+  });
+  completions[0].resolve({});
+  await waitFor(() => f.store.read(f.id).status === "waiting");
+  await delay(80);
+  assert.equal(
+    f.flags.launches,
+    1,
+    "consumed updates cannot spend another turn",
+  );
+  head = "f".repeat(64);
+  await waitFor(() => completions.length === 2);
+  messages.push({
+    id: "unseen",
+    author: "human",
+    text: "Arrived during this turn",
+  });
+  completions[1].resolve({});
+  await waitFor(() => completions.length === 3);
+  completions[2].resolve({});
+  await waitFor(() => f.store.read(f.id).status === "stopped");
+  assert.equal(f.grant.charged, 3);
+});
+
+test("normal model completion cannot settle capacity without positive VM termination proof", async (t) => {
+  const f = fixture(t);
+  f.provider.launch = async ({ onSession }) => {
+    f.flags.running = true;
+    await onSession("saved-session");
+    return { done: Promise.resolve({}) };
+  };
+  f.provider.terminate = async () => ({ stopped: false });
+  await f.manager.start(f.id, f.grant.id);
+  await waitFor(() => f.store.read(f.id).status === "recovery_required");
+  assert.equal(f.reservations[0].receipt, null);
+  assert.equal(f.grant.reserved, 1);
+  assert.equal(f.grant.charged, 0);
 });
 
 test("quit stops an idle prepared VM and preserves environment readiness separately", async (t) => {
@@ -537,4 +685,62 @@ test("direction interruption survives shutdown and resumes only with a fresh con
   await resumed.stop(f.id);
   assert.equal(f.reservations.length, 2);
   assert.ok(f.reservations.every((r) => r.stopped && r.used === 1));
+});
+
+test("a mid-turn checkpoint announces a changed instruction without consuming it", async (t) => {
+  const f = fixture(t);
+  f.grant.purpose = "work";
+  const messages = [];
+  let tools;
+  const completion = deferred();
+  f.node.openAgentChannel = () => ({
+    close() {},
+    request: async () => ({
+      owner: "human",
+      context: {
+        agent: {
+          id: "coordinator",
+          identity: { author: "own", role: "coordinator" },
+        },
+      },
+      main: { items: structuredClone(messages) },
+      updates: {
+        start_after: null,
+        items: structuredClone(messages),
+        after: messages.at(-1)?.id ?? null,
+        has_more: false,
+      },
+    }),
+  });
+  f.provider.launch = async ({ onSession, onTool }) => {
+    f.flags.running = true;
+    f.flags.launches++;
+    tools = onTool;
+    await onSession("saved-session");
+    return { done: completion.promise };
+  };
+  t.after(() => f.manager.close());
+  await f.manager.start(f.id, f.grant.id);
+  await waitFor(() => !!tools);
+  messages.push({
+    id: "e".repeat(64),
+    author: "human",
+    kind: "message",
+    text: "The venue changed; reassess the plan.",
+  });
+  const notice = await tools("checkpoint", {});
+  assert.equal(notice.coordination_update.pending, true);
+  assert.equal(notice.coordination_update.pending_messages, 1);
+  assert.ok(
+    !notice._delivery,
+    "a notification is not delivery of its underlying content",
+  );
+  const read = await tools("read_briefing", { section: "overview" });
+  assert.equal(read.updates.items[0].text, messages[0].text);
+  await tools("record_delivery", { token: read._delivery.token, paths: [""] });
+  completion.resolve({});
+  await waitFor(() => f.store.read(f.id).status === "waiting");
+  await delay(50);
+  assert.equal(f.flags.launches, 1, "the emitted instruction is consumed once");
+  await f.manager.stop(f.id);
 });

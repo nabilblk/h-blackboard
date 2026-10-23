@@ -1,3 +1,5 @@
+import { NodeRecovery } from "./NodeRecovery";
+import { observations } from "../application/observations";
 import { Field } from "../ui/Field";
 import { Button } from "../ui/Button";
 import { Disclosure } from "../ui/Disclosure";
@@ -117,65 +119,80 @@ export default function Desktop() {
       setError("Open this page in the Harakiri desktop application.");
       return;
     }
-    desktop
-      .state()
-      .then((value) => {
-        if (!cancelled) setState(value);
-      })
-      .catch((failure: Error) => {
-        if (!cancelled) setError(failure.message);
-      });
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
+    const failure = (error: Error) => setError(error.message);
+    const stopNode = observations(node).subscribe(
+      "state",
+      () => node.state(),
+      setNodeState,
+      failure,
+    );
+    const stopWorkspace = observations(desktop).subscribe(
+      "state",
+      () => desktop.state(),
+      setState,
+      failure,
+    );
+    const stopSignals = observations(setup).subscribe(
+      "desktop-signals",
+      async () => {
         const invitation = await setup.takeInvitation();
+        const target = await setup.takeNotification();
+        return {
+          invitation,
+          target,
+          delivery: invitation || target ? crypto.randomUUID() : null,
+        };
+      },
+      ({ invitation, target }) => {
         if (invitation && !cancelled) {
           setIncomingInvitation(invitation);
           setView("join");
           setNotice("Invitation received. Review it before joining.");
         }
-        const value = await node.state();
-        const local = await desktop.state();
-        const target = await setup.takeNotification();
-        if (!cancelled) {
-          setNodeState(value);
-          setState(local);
-          if (
-            target &&
-            value.identity &&
-            value.missions.some((m) => m.id === target.mission)
-          ) {
-            const prior = currentView.current;
-            if (
-              typeof prior === "object" &&
-              "missionId" in prior &&
-              main.current
-            )
-              missionScroll.current[prior.missionId] = main.current.scrollTop;
-            const key = `${value.identity.owner}:${target.mission}`;
-            const saved =
-              latestSessions.current[key] ??
-              readDrafts(localStorage, value.identity.owner, target.mission);
-            const next = { ...saved, feed: "inbox" as const };
-            latestSessions.current[key] = next;
-            setMissionSessions((all) => ({ ...all, [key]: next }));
-            setView({ missionId: target.mission });
-          }
-        }
-      } catch (failure) {
-        if (!cancelled)
-          setError(
-            failure instanceof Error
-              ? failure.message
-              : "The local node is unavailable.",
-          );
-      }
-      if (!cancelled) timer = setTimeout(() => void poll(), 2500);
+        if (target && !cancelled)
+          void node
+            .state()
+            .then((value) => {
+              if (
+                cancelled ||
+                !value.identity ||
+                !value.missions.some((m) => m.id === target.mission)
+              )
+                return;
+              const prior = currentView.current;
+              if (
+                typeof prior === "object" &&
+                "missionId" in prior &&
+                main.current
+              )
+                missionScroll.current[prior.missionId] = main.current.scrollTop;
+              const key = `${value.identity.owner}:${target.mission}`;
+              const saved =
+                latestSessions.current[key] ??
+                readDrafts(localStorage, value.identity.owner, target.mission);
+              const next = { ...saved, feed: "inbox" as const };
+              latestSessions.current[key] = next;
+              setMissionSessions((all) => ({ ...all, [key]: next }));
+              setView({ missionId: target.mission });
+            })
+            .catch(failure);
+      },
+      failure,
+    );
+    const reconcile = () => {
+      observations(node).invalidate();
+      observations(desktop).invalidate();
+      observations(setup).invalidate();
     };
-    void poll();
+    window.addEventListener("focus", reconcile);
+    window.addEventListener("online", reconcile);
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      stopNode();
+      stopWorkspace();
+      stopSignals();
+      window.removeEventListener("focus", reconcile);
+      window.removeEventListener("online", reconcile);
     };
   }, [desktop, setup, node]);
   const perform: Perform = async (operation) => {
@@ -184,6 +201,8 @@ export default function Desktop() {
     setNotice("");
     try {
       await operation();
+      observations(node).invalidate();
+      observations(desktop).invalidate();
       return true;
     } catch (failure) {
       setError(
@@ -816,12 +835,6 @@ export default function Desktop() {
                       These public keys identify this node and its signed
                       records. Private keys stay in protected local storage.
                     </p>
-                    <p className="d-field-help">
-                      Back up the complete closed-app profile and retain its
-                      original OS keychain. Restore on this device only.
-                      Cross-device recovery is not available yet; copying an
-                      active identity can create conflicting histories.
-                    </p>
                   </>
                 ) : (
                   <p>
@@ -829,6 +842,11 @@ export default function Desktop() {
                     Existing contribution preparations remain separate.
                   </p>
                 )}
+                <NodeRecovery
+                  enrolled={!!nodeState?.identity}
+                  perform={perform}
+                  updated={refreshNode}
+                />
               </section>
               <div className="d-explainer">
                 <LockKeyhole size={17} />

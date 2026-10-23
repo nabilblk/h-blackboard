@@ -1,6 +1,6 @@
 import type { AgentView, GrantView } from "./node";
 import type { ContributionAgreement } from "./setup";
-import type { NetworkAccess } from "./workspace";
+import type { NetworkAccess, CapabilityPack } from "./workspace";
 export type RemoteObservation = {
   contributor: string;
   remaining_ms: number;
@@ -26,8 +26,33 @@ export type AuthenticationState = {
   failure?: "expired" | "denied" | "connection" | null;
 };
 export type ExecutionState = {
+  checkpoints?: Array<{
+    id: string;
+    at: number;
+    files: number;
+    bytes: number;
+    exclusions: Array<{ path: string; reason: string }>;
+  }>;
+  operations?: Array<{
+    id: string;
+    kind: string;
+    label: string;
+    state:
+      | "running"
+      | "complete"
+      | "failed"
+      | "cancel_requested"
+      | "cancelled"
+      | "uncertain";
+    updatedAt: number;
+    error: string | null;
+    resultAvailable: boolean;
+    progress: { completed: number; total: number; detail: string } | null;
+  }>;
   networkAccess?: NetworkAccess;
+  capabilityPack?: CapabilityPack;
   networkRevision?: string | null;
+  capabilityRevision?: string | null;
   observedAt: number;
   error?: string;
   agent?: AgentView | null;
@@ -35,8 +60,17 @@ export type ExecutionState = {
     status: string;
     reason: string;
     session: string | null;
+    reconstructedAt?: number;
+    recoveredSource?: { directory: string; checkpoint: string; at: number };
     generation: number | null;
     expiresAt: number | null;
+    wake?: {
+      waiting?: {
+        reason: string;
+        artifacts: string[];
+        reviews: string[];
+      } | null;
+    } | null;
     interruption?: {
       code: "direction_changed";
       previous: string;
@@ -54,12 +88,22 @@ export type ExecutionState = {
   events: { at: number; type: string; message: string }[];
 };
 export type ExecutionAPI = {
+  restoreCheckpoint(
+    id: string,
+    checkpoint: string,
+  ): Promise<{ destination: string; imported: number }>;
+  cancelOperation(id: string, operation: string): Promise<unknown>;
   state(id: string): Promise<ExecutionState>;
   overview(mission: string): Promise<Record<string, ExecutionState>>;
   prepare(id: string): Promise<void>;
   setNetwork(
     id: string,
     networkAccess: NetworkAccess,
+    expectedRevision: string | null,
+  ): Promise<void>;
+  setCapabilityPack(
+    id: string,
+    capabilityPack: CapabilityPack,
     expectedRevision: string | null,
   ): Promise<void>;
   cancelSetup(id: string): Promise<void>;

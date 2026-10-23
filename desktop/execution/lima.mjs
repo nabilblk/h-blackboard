@@ -1,3 +1,4 @@
+import { authoringPack } from "../../shared/authoring-packs.mjs";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
@@ -28,6 +29,7 @@ import {
 import { runtimeConnection } from "./runtime-connection.mjs";
 import { runtimeSpec, RUNTIME_LABELS } from "./runtime-specs.mjs";
 import { guestTools } from "./tools.mjs";
+import nodeErrors from "../../shared/node-errors.json" with { type: "json" };
 
 const exec = promisify(execFile);
 const sourceGuest = join(dirname(fileURLToPath(import.meta.url)), "guest");
@@ -214,7 +216,14 @@ export class LimaProvider {
     }
     try {
       signal?.throwIfAborted();
-      if (!(await this.vm(id)).running) {
+      const state = await this.vm(id);
+      // `limactl start NAME` creates a default, host-mounted VM when NAME is
+      // missing. Only explicit prepare() may create our pinned isolated VM.
+      if (!state.exists)
+        throw new Error(
+          "Prepare this isolated environment before starting it or accessing its files.",
+        );
+      if (!state.running) {
         while (true) {
           signal?.throwIfAborted();
           const current = (await this.run(["list", "--json"]))
@@ -237,6 +246,9 @@ export class LimaProvider {
           }
           break;
         }
+        // Capacity waits can outlive an environment removed by the human.
+        if (!(await this.vm(id)).exists)
+          throw new Error("The environment was removed. Prepare it again.");
         await this.run(["start", "--tty=false", this.instance(id)], {
           timeout: 180000,
           signal,
@@ -245,6 +257,82 @@ export class LimaProvider {
     } finally {
       release();
     }
+  }
+  async syncTools(contribution) {
+    const files = await Promise.all(
+      [
+        "agent.md",
+        "bridge.py",
+        "artifact_io.py",
+        "operations.py",
+        "checkpoint.py",
+        "project.py",
+        "mcp.py",
+        "mcp_results.py",
+        "files.py",
+        "control.py",
+        "command.py",
+        "buildkit.py",
+        "install-runtime.py",
+        "runtimes.py",
+      ].map(async (file) => [file, await readFile(join(this.resources, file))]),
+    );
+    files.push([
+      "tools.json",
+      Buffer.from(
+        JSON.stringify(
+          guestTools(contribution.networkAccess, contribution.role),
+        ),
+      ),
+    ]);
+    files.push([
+      "capabilities.json",
+      Buffer.from(JSON.stringify(authoringPack(contribution.capabilityPack))),
+    ]);
+    const digest = createHash("sha256");
+    for (const [name, data] of files)
+      digest.update(name).update("\0").update(data);
+    const expected = digest.digest("hex");
+    const prior = await this.guest(contribution.id, [
+      "cat",
+      "/opt/harakiri/tools.digest",
+    ]).catch(() => "");
+    if (prior.trim() === expected) return;
+    for (const [name, data] of files) {
+      await this.guest(contribution.id, ["tee", `/opt/harakiri/${name}`], {
+        input: data,
+        maxBuffer: 256 * 1024,
+      });
+      await this.guest(contribution.id, [
+        "chmod",
+        "0644",
+        `/opt/harakiri/${name}`,
+      ]);
+    }
+    for (const name of ["files", "command", "project"]) {
+      await this.guest(contribution.id, [
+        "install",
+        "-m",
+        "0644",
+        `/opt/harakiri/${name}.py`,
+        `/usr/local/lib/harakiri-${name}.py`,
+      ]);
+    }
+    await this.guest(
+      contribution.id,
+      ["python3", "/opt/harakiri/buildkit.py"],
+      { timeout: 420000 },
+    );
+    // Revalidate the pinned runtime and refresh only the guest's restricted
+    // configuration, including explicit Codex approval for the scoped tools.
+    // Provider credential files and workspace contents are never copied.
+    await this.guest(contribution.id, [
+      "python3",
+      "/opt/harakiri/install-runtime.py",
+    ]);
+    await this.guest(contribution.id, ["tee", "/opt/harakiri/tools.digest"], {
+      input: expected,
+    });
   }
   async prepare({ contribution, signal, onProgress = () => {} }) {
     const id = contribution.id;
@@ -278,7 +366,8 @@ export class LimaProvider {
       throw new Error("VM policy changed; explicit migration is required.");
     if (!existing)
       await writeFile(marker, STORAGE_MARKER, { mode: 0o600, flag: "wx" });
-    if (!(await this.vm(id)).exists) {
+    const created = !(await this.vm(id)).exists;
+    if (created) {
       const disk = await statfs(this.directory);
       if (disk.bavail * disk.bsize < 4 * 1024 ** 3)
         throw new Error(
@@ -346,9 +435,15 @@ export class LimaProvider {
       "agent.md",
       "bridge.py",
       "artifact_io.py",
+      "operations.py",
+      "checkpoint.py",
+      "project.py",
       "mcp.py",
+      "mcp_results.py",
       "control.py",
       "files.py",
+      "command.py",
+      "buildkit.py",
       "proxy.py",
       "worker-network.py",
       "setup.sh",
@@ -362,11 +457,16 @@ export class LimaProvider {
       await this.guest(id, ["chmod", "0644", `/opt/harakiri/${file}`]);
     }
     await this.guest(id, ["tee", "/opt/harakiri/tools.json"], {
-      input: JSON.stringify(guestTools(contribution.networkAccess)),
+      input: JSON.stringify(
+        guestTools(contribution.networkAccess, contribution.role),
+      ),
       maxBuffer: 256 * 1024,
     });
     await this.guest(id, ["tee", "/opt/harakiri/runtime.json"], {
       input: JSON.stringify(spec),
+    });
+    await this.guest(id, ["tee", "/opt/harakiri/capabilities.json"], {
+      input: JSON.stringify(authoringPack(contribution.capabilityPack)),
     });
     onProgress(
       `Downloading and verifying ${RUNTIME_LABELS[contribution.runtime]}; applying isolation policy.`,
@@ -377,7 +477,7 @@ export class LimaProvider {
     });
     signal?.throwIfAborted();
     onProgress("Verifying isolation and checking guest sign-in.");
-    return this.inspect({ contribution });
+    return { ...(await this.inspect({ contribution })), created };
   }
   async inspect({
     contribution,
@@ -566,6 +666,10 @@ export class LimaProvider {
       throw new Error(
         "VM workspace ownership changed. Prepare the environment again before running.",
       );
+    // Prepared guests survive app upgrades. Update the scoped protocol bundle
+    // only after proving that the previous guest process is stopped. Provider
+    // login, workspace files and isolation policy stay intact.
+    await this.syncTools(contribution);
     if (remaining) seconds = Math.floor(remaining() / 1000) - 2;
     if (seconds < 1) throw new Error("Permission expired during VM startup.");
     const sessionId =
@@ -645,7 +749,12 @@ export class LimaProvider {
           ) {
             Promise.resolve()
               .then(() => onTool(message.tool, message.arguments))
-              .catch((e) => ({ error: e.message }))
+              .catch((e) => ({
+                error: e.message,
+                code: Object.hasOwn(nodeErrors, e.code)
+                  ? e.code
+                  : "operation_rejected",
+              }))
               .then((result) => {
                 if (!child.stdin.destroyed)
                   child.stdin.write(
@@ -729,7 +838,16 @@ export class LimaProvider {
     return { session: session ? Session.parse(session) : null };
   }
   usage(result) {
-    return { turns: 1, tokens: result?.usage?.totalTokens ?? null, cost: null };
+    const number = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
+    const usage = result?.usage;
+    return {
+      turns: 1,
+      tokens: number(usage?.totalTokens),
+      inputTokens: number(usage?.inputTokens),
+      outputTokens: number(usage?.outputTokens),
+      cachedInputTokens: number(usage?.cachedInputTokens),
+      cost: null,
+    };
   }
   async exportFiles({ contribution }) {
     await this.boot(contribution.id);
@@ -737,17 +855,17 @@ export class LimaProvider {
       await this.guest(
         contribution.id,
         ["python3", "/opt/harakiri/control.py", "export"],
-        { maxBuffer: 24 * 1024 * 1024, timeout: 60000 },
+        { maxBuffer: 64 * 1024 * 1024, timeout: 60000 },
       ),
     );
   }
-  async importFiles({ contribution, files }) {
+  async importFiles({ contribution, files, destination }) {
     await this.boot(contribution.id);
     return JSON.parse(
       await this.guest(
         contribution.id,
         ["python3", "/opt/harakiri/control.py", "import"],
-        { input: JSON.stringify({ files }), timeout: 60000 },
+        { input: JSON.stringify({ files, destination }), timeout: 60000 },
       ),
     );
   }

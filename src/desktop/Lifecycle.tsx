@@ -87,6 +87,7 @@ export function MissionControl({
 }: Props) {
   const { setup, missions: node } = useApplication();
   const { lifecycle: l, definition } = mission;
+  const currentPlan = l.operational_plan ?? l.plan;
   const [edit, setEdit] = useState<Edit | null>(null);
   const [choice, setChoice] = useState("");
   const [startReview, setStartReview] = useState<string | null>(
@@ -344,7 +345,9 @@ export function MissionControl({
               <strong>{l.coordinator.identity.label}</strong>
               <span className="d-field-help">
                 {l.readiness
-                  ? "Current plan acknowledged"
+                  ? l.operational_plan
+                    ? "Initial plan acknowledged; execution plan updated"
+                    : "Current plan acknowledged"
                   : (presentation.rows.find(
                       (r) =>
                         r.agent.identity.author ===
@@ -353,20 +356,29 @@ export function MissionControl({
               </span>
             </div>
           ) : null}
-          {l.plan && !startReview && !planReview ? (
+          {currentPlan && !startReview && !planReview ? (
             <Disclosure
               className="n-control-plan"
               open
               title={
                 <>
-                  Shared plan ·{" "}
-                  {l.plan.author === mission.owner
+                  {l.operational_plan
+                    ? "Current execution plan"
+                    : "Shared plan"}{" "}
+                  ·{" "}
+                  {currentPlan.author === mission.owner
                     ? "set by mission owner"
                     : "Coordinator"}
                 </>
               }
             >
-              <p className="n-preserve">{l.plan.text}</p>
+              <p className="n-preserve">{currentPlan.text}</p>
+              {l.operational_plan ? (
+                <p className="d-field-help">
+                  Updated within the approved mission. The original Start and
+                  local permissions remain unchanged.
+                </p>
+              ) : null}
             </Disclosure>
           ) : null}
           {children}

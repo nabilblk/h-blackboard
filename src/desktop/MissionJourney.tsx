@@ -1,5 +1,8 @@
 import { Button } from "../ui/Button";
-import type { MissionView } from "../application/contracts/node";
+import type {
+  MissionView,
+  ArtifactCandidate,
+} from "../application/contracts/node";
 import type {
   Decision,
   MissionPresentation,
@@ -18,9 +21,13 @@ export function MissionJourney({
   act,
   inspect,
   inspectorOpen,
+  candidate,
+  openCandidate,
 }: Props & {
   inspect: (tab?: "overview" | "decisions" | "technical") => void;
   inspectorOpen: boolean;
+  candidate?: ArtifactCandidate | null;
+  openCandidate?: () => void;
 }) {
   return (
     <section
@@ -29,12 +36,17 @@ export function MissionJourney({
     >
       <button
         className="n-summary-inspect"
-        onClick={() => inspect("technical")}
+        onClick={() => inspect("overview")}
         aria-label={`Inspect status: ${value.summary}`}
       >
         <span className="d-label">{value.phaseLabel}</span>
         <span role="status">{value.summary}</span>
       </button>
+      {candidate && openCandidate ? (
+        <Button onClick={openCandidate} title={candidate.title}>
+          {candidate.stale ? "Review changed draft" : "Open current result"}
+        </Button>
+      ) : null}
       {!inspectorOpen && value.next ? (
         <Button
           variant="primary"
@@ -66,7 +78,7 @@ export function MissionJourney({
       ) : (
         <Button
           onClick={() =>
-            inspect(value.decisions.length ? "decisions" : "technical")
+            inspect(value.decisions.length ? "decisions" : "overview")
           }
         >
           {value.decisions.length
@@ -180,7 +192,9 @@ export function MissionActivity({
               {["closed", "archived"].includes(mission.lifecycle.phase)
                 ? "Not applicable — mission ended"
                 : mission.lifecycle.readiness
-                  ? "Current plan acknowledged"
+                  ? mission.lifecycle.phase === "preparing"
+                    ? "Ready to start"
+                    : "Initial plan acknowledged at Start"
                   : mission.lifecycle.plan
                     ? "Current plan not yet acknowledged"
                     : "Planning not complete"}

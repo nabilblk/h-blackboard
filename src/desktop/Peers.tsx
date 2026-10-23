@@ -10,9 +10,11 @@ import {
 } from "../application/contracts/workspace";
 import type {
   InvitationReview,
+  AgentView,
   NetworkMode,
 } from "../application/contracts/node";
 import { Heading, Status, date, type Perform } from "./ui";
+import { agentContributorLabel } from "../../shared/agent-lifecycle.mjs";
 
 export function NetworkSettings({
   state,
@@ -29,12 +31,21 @@ export function NetworkSettings({
   const config = state?.connection?.config;
   const [mode, setMode] = useState<NetworkMode>(config?.mode ?? "offline");
   const [lan, setLan] = useState(config?.allow_lan ?? false);
+  const [routeDirectory, setRouteDirectory] = useState(
+    config?.route_directory ?? "",
+  );
   const [relays, setRelays] = useState(config?.relays.join("\n") ?? "");
   useEffect(() => {
     setMode(config?.mode ?? "offline");
     setLan(config?.allow_lan ?? false);
+    setRouteDirectory(config?.route_directory ?? "");
     setRelays(config?.relays.join("\n") ?? "");
-  }, [config?.mode, config?.allow_lan, config?.relays.join("\n")]);
+  }, [
+    config?.mode,
+    config?.allow_lan,
+    config?.route_directory,
+    config?.relays.join("\n"),
+  ]);
   return (
     <section className="d-panel n-network" aria-label="Peer network">
       <header>
@@ -56,6 +67,9 @@ export function NetworkSettings({
             await node.configureNetwork({
               mode,
               allow_lan: lan,
+              route_directory: ["public_relays", "custom"].includes(mode)
+                ? routeDirectory || null
+                : null,
               relays:
                 mode === "custom"
                   ? relays
@@ -116,6 +130,46 @@ export function NetworkSettings({
               Allow local IP addresses in peer invitations and contacts
             </label>
           ) : null}
+          {["public_relays", "custom"].includes(mode) ? (
+            <Disclosure title="Recover connections after addresses change">
+              <label className="n-check">
+                <input
+                  type="checkbox"
+                  checked={!!routeDirectory}
+                  onChange={(e) =>
+                    setRouteDirectory(
+                      e.target.checked ? "https://dns.iroh.link/pkarr" : "",
+                    )
+                  }
+                />
+                Use an endpoint route directory
+              </label>
+              <p className="d-field-help">
+                Optional. Publishes this node’s identity and chosen relay route
+                so existing participants can reconnect after a saved address
+                expires. The service sees connection metadata. It receives no
+                mission content and grants no access. Both computers should
+                enable it.
+              </p>
+              {routeDirectory ? (
+                <Field>
+                  Directory URL
+                  <input
+                    type="url"
+                    value={routeDirectory}
+                    onChange={(e) => setRouteDirectory(e.target.value)}
+                    required
+                    maxLength={512}
+                  />
+                  <span className="d-field-help">
+                    Iroh’s directory is the default. You can use another
+                    compatible HTTPS pkarr directory without changing mission
+                    identity.
+                  </span>
+                </Field>
+              ) : null}
+            </Disclosure>
+          ) : null}
           <p className="d-field-help">
             The app remembers this choice. Going offline stops peer connections;
             your saved history stays available.
@@ -168,6 +222,7 @@ export function JoinMission({
       await node.configureNetwork({
         mode: "public_relays",
         allow_lan: false,
+        route_directory: null,
         relays: [],
       });
       await updated();
@@ -211,6 +266,7 @@ export function JoinMission({
                   await node.configureNetwork({
                     mode: "public_relays",
                     allow_lan: false,
+                    route_directory: null,
                     relays: [],
                   });
                   await updated();
@@ -441,6 +497,7 @@ export function JoinMission({
 
 export function People({
   mission,
+  agents = [],
   owner,
   localKey,
   enabled,
@@ -450,6 +507,7 @@ export function People({
   privateMessage,
 }: {
   mission: string;
+  agents?: AgentView[];
   owner: string;
   localKey: string;
   enabled: boolean;
@@ -521,6 +579,7 @@ export function People({
                   await node.configureNetwork({
                     mode: "public_relays",
                     allow_lan: false,
+                    route_directory: null,
                     relays: [],
                   });
                   await refresh();
@@ -646,7 +705,14 @@ export function People({
             <article key={member.author} className="n-peer-row">
               <div>
                 <strong>
-                  {self ? "You" : `Participant ${member.author.slice(0, 8)}`}
+                  {self
+                    ? "You"
+                    : agentContributorLabel(
+                        agents.find((a) => a.contributor === member.author) ?? {
+                          contributor: member.author,
+                        },
+                        { owner },
+                      )}
                   {member.author === owner ? " · Mission owner" : ""}
                 </strong>
                 <Disclosure
@@ -678,10 +744,25 @@ export function People({
                       ? "Revoked"
                       : self
                         ? "Local"
-                        : recent
-                          ? "Reached recently"
-                          : "Not reached recently"}
+                        : delivery?.stalled_exchanges &&
+                            delivery.stalled_exchanges >= 3
+                          ? "Sync stalled"
+                          : recent && delivery?.pending
+                            ? "Catching up"
+                            : recent
+                              ? "Up to date"
+                              : "Not reached recently"}
                 </Status>
+                {!self && delivery ? (
+                  <span className="d-field-help">
+                    {delivery.control_acknowledged
+                      ? "Current mission control received"
+                      : "Current mission control not yet confirmed"}
+                    {delivery.stalled_exchanges >= 3
+                      ? ". Reconnect this peer; saved history remains available."
+                      : ""}
+                  </span>
+                ) : null}
                 {!self && !member.revoked ? (
                   <Button
                     disabled={busy}

@@ -162,6 +162,64 @@ export function BriefEditor({
         placeholder="What should you receive?"
         highlighted={changed.includes("deliverables")}
       />
+      <Disclosure title="Delivery agreement and starting strategy">
+        <p className="d-field-help">
+          Optional details that help the team deliver something useful.
+          Completion criteria remain the conditions for acceptance.
+        </p>
+        {(
+          [
+            "audience",
+            "deliveryFormat",
+            "evidence",
+            "qualityBar",
+            "aspirations",
+          ] as const
+        ).map((field) => (
+          <Field key={field}>
+            <span>{briefLabels[field]}</span>
+            <GrowingTextarea
+              rows={2}
+              value={brief[field] ?? ""}
+              maxLength={field === "audience" ? 512 : 1024}
+              onChange={(e) => edit({ [field]: e.target.value })}
+            />
+          </Field>
+        ))}
+        <Field>
+          <span>Try a starting strategy</span>
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) edit({ approach: e.target.value });
+            }}
+          >
+            <option value="">Choose optional guidance…</option>
+            <option value="Investigate distinct questions in parallel. Share evidence early, challenge assumptions, then synthesize one recommendation with uncertainty and sources.">
+              Parallel investigation
+            </option>
+            <option value="Build a small usable slice early. Assign independent review of exact revisions. Reserve integration responsibility, address defects, and verify one final candidate before asking for human acceptance.">
+              Build and review
+            </option>
+            <option value="Explore deliberately different approaches to the same outcome. Declare each direction and a comparison rubric. Time-box exploration, compare evidence, choose an approach and converge on one delivery.">
+              Compare and converge
+            </option>
+          </select>
+        </Field>
+        <Field>
+          <span>{briefLabels.approach}</span>
+          <GrowingTextarea
+            rows={3}
+            maxLength={1024}
+            value={brief.approach ?? ""}
+            onChange={(e) => edit({ approach: e.target.value })}
+          />
+        </Field>
+        <p className="d-field-help">
+          Guidance, not a fixed workflow. Tasks and extra workstreams remain
+          optional.
+        </p>
+      </Disclosure>
       <BriefList
         field="criteria"
         addition={listInputs.criteria}

@@ -108,6 +108,7 @@ fn config() -> NetworkConfig {
         mode: NetworkMode::Direct,
         relays: vec![],
         allow_lan: true,
+        route_directory: None,
     }
 }
 fn definition() -> MissionDefinition {
@@ -300,6 +301,7 @@ fn contact_routes_require_local_consent_and_never_adopt_peer_relay_urls() -> Res
         mode: NetworkMode::Direct,
         relays: vec![],
         allow_lan: false,
+        route_directory: None,
     };
     assert!(c.address(&strict).is_err());
     assert_eq!(c.address(&config())?.relay_urls().count(), 0);

@@ -1,0 +1,107 @@
+{
+  "operation_rejected": {
+    "message": "The change was rejected. Refresh the mission and review the current state.",
+    "retryable": false,
+    "internal": []
+  },
+  "capacity_busy": {
+    "message": "All execution slots are occupied. Work is queued until a slot is free.",
+    "retryable": true,
+    "internal": ["execution capacity busy", "local concurrency exhausted"]
+  },
+  "resources_allocated": {
+    "message": "Mission capacity is allocated. Waiting for an allocation to be released.",
+    "retryable": true,
+    "internal": ["mission concurrency allocated"]
+  },
+  "direction_changed": {
+    "message": "The assignment changed. Read the current direction and request a matching permission.",
+    "retryable": true,
+    "internal": [
+      "current agent direction required",
+      "exact current direction required",
+      "artifact requires assigned direction",
+      "work requires assigned direction",
+      "acknowledgment must name the assigned direction"
+    ]
+  },
+  "stale_terms": {
+    "message": "Mission instructions changed. Read the current brief and renew consent.",
+    "retryable": false,
+    "internal": ["stale contribution terms"]
+  },
+  "authority_changed": {
+    "message": "This permission does not match the current mission phase. Refresh the mission.",
+    "retryable": false,
+    "internal": ["owner permission for current mission phase"]
+  },
+  "allowance_exhausted": {
+    "message": "The approved turn allowance is exhausted. Review the remaining mission budget.",
+    "retryable": false,
+    "internal": ["allowance exhausted", "mission turn allowance exhausted"]
+  },
+  "history_incomplete": {
+    "message": "Required history has not arrived. Wait for synchronization and retry.",
+    "retryable": true,
+    "internal": ["missing causal history; fetch predecessors before retrying"]
+  },
+  "recipient_registration": {
+    "message": "For post.to, use the recipient's identity.author from the agent roster, not its registration id. Refresh the roster and retry with that public identity.",
+    "retryable": false,
+    "internal": [
+      "message recipient is an agent registration; use identity.author"
+    ]
+  },
+  "artifact_changed": {
+    "message": "This artifact has changed. Read its current revisions before publishing again.",
+    "retryable": true,
+    "internal": [
+      "artifact changed; review all current revisions before editing"
+    ]
+  },
+  "invalid_artifact_inputs": {
+    "message": "Inputs must name exact revisions of a different artifact. Use parents for revisions of this artifact.",
+    "retryable": false,
+    "internal": ["inputs must reference exact revisions of another artifact"]
+  },
+  "unresolved_execution": {
+    "message": "The previous execution has not been settled. Confirm it stopped before resuming.",
+    "retryable": false,
+    "internal": ["duplicate or unresolved execution reservation"]
+  },
+  "candidate_changed": {
+    "message": "The delivery choice changed. Read current candidates and select the exact revision again.",
+    "retryable": true,
+    "internal": ["candidate changed; read current candidates before choosing"]
+  },
+  "stale_artifact": {
+    "message": "Use a current nonconflicting artifact revision. Review changed inputs before choosing or accepting it.",
+    "retryable": false,
+    "internal": [
+      "candidate must be a current nonconflicting revision",
+      "acceptance requires a current nonconflicting revision"
+    ]
+  },
+  "artifact_reference_invalid": {
+    "message": "Check artifact relationships: parents belong to this artifact; live and pinned inputs must belong to another artifact; citations may name a historical review.",
+    "retryable": false,
+    "internal": [
+      "invalid typed artifact reference",
+      "parent belongs to another artifact"
+    ]
+  },
+  "peer_incompatible": {
+    "message": "This peer uses an incompatible Blackboard protocol. Update both computers to the same version; local history is preserved.",
+    "retryable": false,
+    "internal": ["peer protocol incompatible"]
+  },
+  "route_unavailable": {
+    "message": "The saved route expired or could not be refreshed. Enable an approved route directory on both computers, or ask the peer for a fresh invitation/address.",
+    "retryable": true,
+    "internal": [
+      "contact expired; route lookup is off",
+      "route unavailable",
+      "route identity mismatch"
+    ]
+  }
+}

@@ -29,6 +29,12 @@ pub enum ObservedState {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
+pub struct ResourceHint {
+    pub free_slots: u16,
+    pub permission_until_ms: Option<u64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, ts_rs::TS)]
+#[serde(deny_unknown_fields)]
 pub struct Observation {
     pub mission: String,
     pub registration: String,
@@ -36,6 +42,8 @@ pub struct Observation {
     pub grant: Option<String>,
     pub state: ObservedState,
     pub issued_ms: u64,
+    #[serde(default)]
+    pub resources: Option<ResourceHint>,
 }
 #[derive(Clone, Serialize, ts_rs::TS)]
 pub struct ObservationView {
@@ -60,6 +68,15 @@ impl Store {
             report.issued_ms <= now + 5_000 && now < report.issued_ms.saturating_add(TTL),
             "observation expired"
         );
+        if let Some(resources) = &report.resources {
+            ensure!(
+                resources.free_slots <= 512
+                    && resources
+                        .permission_until_ms
+                        .is_none_or(|until| until <= 9_007_199_254_740_991),
+                "invalid resource observation"
+            );
+        }
         let offer = self
             .event(&report.registration)?
             .ok_or_else(|| anyhow::anyhow!("unknown agent"))?;

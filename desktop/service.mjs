@@ -313,6 +313,7 @@ export class ContributorService {
             ...(nodeBinding ? { nodeBinding } : {}),
             runtime: input.runtime,
             networkAccess: input.networkAccess,
+            capabilityPack: input.capabilityPack,
             limits: input.limits,
             workspace,
             workspaceIdentity: identity(workspace),

@@ -74,6 +74,15 @@ fn stopping_remote_permission_keeps_unconfirmed_usage_reserved() {
 
 #[test]
 fn planning_is_bounded_to_the_appointed_coordinator_and_does_not_start_workers() {
+    planning_permission_flow(false);
+}
+
+#[test]
+fn direct_preparation_direction_requires_start_and_a_separate_work_permission() {
+    planning_permission_flow(true);
+}
+
+fn planning_permission_flow(direct: bool) {
     use harakiri_protocol::{governance::GrantPurpose, lifecycle::CoordinatorIdentity};
     let mut f = F::new(true);
     f.control =
@@ -205,18 +214,42 @@ fn planning_is_bounded_to_the_appointed_coordinator_and_does_not_start_workers()
             },
         )
         .unwrap();
+    let assignment = if direct {
+        f.s.direct_agent(
+            &coordinator,
+            &f.m,
+            &f.control,
+            &worker,
+            "Build and review the first useful slice after Start".into(),
+        )
+        .unwrap()
+    } else {
+        f.s.work(
+            &coordinator,
+            &f.m,
+            &f.control,
+            harakiri_protocol::work::WorkAction::AssignWorkstream {
+                registration: worker.clone(),
+                workstream: None,
+                goal_revision: None,
+                direction: "Build and review the first useful slice after Start".into(),
+            },
+        )
+        .unwrap()
+    };
     assert_eq!(
         f.s.control_state(&f.m).unwrap().lifecycle.phase,
         MissionPhase::Preparing
     );
-    assert!(
+    assert_eq!(
         f.s.agent_views(&f.m)
             .unwrap()
             .iter()
             .find(|a| a.id == worker)
             .unwrap()
             .direction
-            .is_none()
+            .is_some(),
+        direct
     );
     f.peer(G::Receipt {
         reservation: reserved.id,
@@ -231,7 +264,7 @@ fn planning_is_bounded_to_the_appointed_coordinator_and_does_not_start_workers()
             &f.control,
             C::Start {
                 readiness: Some(ready.id),
-                participants: vec![f.reg.clone(), worker]
+                participants: vec![f.reg.clone(), worker.clone()]
                     .into_iter()
                     .collect::<std::collections::BTreeSet<_>>()
                     .into_iter()
@@ -259,6 +292,39 @@ fn planning_is_bounded_to_the_appointed_coordinator_and_does_not_start_workers()
     assert_eq!(g.purpose, GrantPurpose::Planning);
     assert_eq!(g.issued_ms, permission.body.created_at_ms.unwrap());
     assert_eq!(g.consent_binding.as_deref(), Some("cd".repeat(32).as_str()));
+    assert_eq!(
+        f.s.agent_views(&f.m)
+            .unwrap()
+            .iter()
+            .find(|a| a.id == worker)
+            .unwrap()
+            .direction
+            .as_ref()
+            .unwrap()
+            .id,
+        assignment.id
+    );
+    let allocation = f.owner(G::Allocate {
+        node: f.b.public_key(),
+        turns: Some(5),
+        slots: 1,
+    });
+    let work = f.owner(G::Grant {
+        purpose: GrantPurpose::Work,
+        previous: None,
+        allocation: allocation.id,
+        registration: worker,
+        direction: assignment.id,
+        execution: "cc".repeat(32),
+        generation: 1,
+        turns: 1,
+        expires_ms,
+        offline_ms: 300_000,
+    });
+    assert!(
+        f.s.event(&work.id).unwrap().is_some(),
+        "the same preparation direction accepted by the roster must receive a working permission"
+    );
 }
 impl F {
     fn new(unlimited: bool) -> Self {
@@ -678,6 +744,7 @@ fn artifact_plan_and_criterion_keep_exact_revisions_and_human_authority() {
         limitations: "Fixture".into(),
         entrypoint: None,
         inputs: vec![],
+        references: vec![],
         files: vec![harakiri_protocol::ArtifactFile {
             path: "plan.md".into(),
             hash: "ad".repeat(32),
@@ -843,7 +910,7 @@ fn schema_twelve_rebuilds_without_modifying_signed_history_and_rolls_back_corrup
     drop(f.s);
     {
         let db = rusqlite::Connection::open(&path).unwrap();
-        db.execute_batch("DROP TABLE governance_records; PRAGMA user_version=11;")
+        db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; PRAGMA user_version=11;")
             .unwrap();
     }
     let s = Store::open(&path).unwrap();
@@ -855,7 +922,7 @@ fn schema_twelve_rebuilds_without_modifying_signed_history_and_rolls_back_corrup
     drop(s);
     {
         let db = rusqlite::Connection::open(&path).unwrap();
-        db.execute_batch("DROP TABLE governance_records; PRAGMA user_version=11; UPDATE events SET bytes=x'ff' WHERE rowid=(SELECT max(rowid) FROM events);").unwrap();
+        db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; PRAGMA user_version=11; UPDATE events SET bytes=x'ff' WHERE rowid=(SELECT max(rowid) FROM events);").unwrap();
     }
     assert!(Store::open(&path).is_err());
     let db = rusqlite::Connection::open(&path).unwrap();

@@ -1,10 +1,11 @@
 import { IconButton } from "../ui/Button";
 import { Button } from "../ui/Button";
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { ArrowUp, MessageSquare, X } from "lucide-react";
 import { Text } from "../Markdown";
 import { date } from "./ui";
 import type { MessageView } from "../application/contracts/node";
+import { Disclosure } from "../ui/Disclosure";
 
 export function Message({
   message: m,
@@ -15,6 +16,9 @@ export function Message({
   context,
   location,
   openWork,
+  role,
+  runtime,
+  copyLink,
 }: {
   message: MessageView;
   label: (id: string) => string;
@@ -24,23 +28,60 @@ export function Message({
   context?: () => void;
   location?: string;
   openWork: (kind: string, id: string) => void;
+  role?: "coordinator" | "agent";
+  runtime?: string;
+  copyLink?: () => Promise<boolean>;
 }) {
+  const [copied, setCopied] = useState(false);
   return (
     <article
       className={`n-message${m.unread ? " n-unread" : ""}`}
       id={`message-${m.id}`}
     >
       <span className="n-avatar">
-        {m.author === owner ? "YOU" : m.author_agent ? "A" : "H"}
+        {m.author_agent
+          ? runtime === "claude"
+            ? "CC"
+            : runtime === "codex"
+              ? "CX"
+              : runtime === "grok"
+                ? "GR"
+                : "A"
+          : "H"}
       </span>
       <div>
         <header>
           <strong>{m.author_label ?? label(m.author)}</strong>
+          {role === "coordinator" ? (
+            <span className="n-message-role">Coordinator</span>
+          ) : null}
+          {m.author === owner ? (
+            <span className="n-activity-kind">Mission owner</span>
+          ) : null}
           {m.kind !== "message" ? (
             <span className="n-activity-kind">{m.kind}</span>
           ) : null}
           {m.to ? <span className="n-addressed">to {label(m.to)}</span> : null}
-          {m.created_at_ms ? (
+          {m.created_at_ms && copyLink ? (
+            <button
+              className="n-message-link"
+              title="Copy message link"
+              aria-label={
+                copied
+                  ? "Message link copied"
+                  : `Copy link to message at ${date(new Date(m.created_at_ms).toISOString())}`
+              }
+              onClick={() => {
+                void copyLink().then(setCopied);
+              }}
+            >
+              <time dateTime={new Date(m.created_at_ms).toISOString()}>
+                {copied
+                  ? "Link copied"
+                  : date(new Date(m.created_at_ms).toISOString())}
+              </time>
+            </button>
+          ) : m.created_at_ms ? (
             <time dateTime={new Date(m.created_at_ms).toISOString()}>
               {date(new Date(m.created_at_ms).toISOString())}
             </time>
@@ -60,8 +101,19 @@ export function Message({
           </span>
         ) : null}
         <div className="n-message-text">
-          <Text value={m.text} links="text" />
+          <Text
+            value={m.text}
+            links="text"
+            onReference={(kind, id) =>
+              kind === "agent" ? profile(id) : openWork(kind, id)
+            }
+          />
         </div>
+        {/[a-f0-9]{64}/.test(m.text) ? (
+          <Disclosure variant="inline" title="Message source">
+            <pre className="n-message-source">{m.text}</pre>
+          </Disclosure>
+        ) : null}
         <div className="n-message-actions">
           {context ? (
             <Button size="compact" onClick={context}>

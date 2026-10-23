@@ -115,3 +115,45 @@ test("saved wake context survives permission renewal without spending a turn on 
   assert.notEqual(restored(state), before);
   assert.ok(restored.snapshot().seen.every((v) => /^[a-f0-9]{64}$/.test(v)));
 });
+
+test("dependency waits ignore unrelated chatter but retain addressed work, human control and exact review changes", () => {
+  const state = initial();
+  state.owner = "human";
+  state.watched = [
+    {
+      revision: "artifact",
+      artifact: { heads: ["first"] },
+      reviews: [],
+      stale: false,
+    },
+  ];
+  const track = createWakeTracker();
+  track.wait({
+    reason: "Await independent review",
+    artifacts: [],
+    reviews: ["artifact"],
+  });
+  let prior = track(state);
+  state.main.items.push({
+    id: "unrelated",
+    author: "peer",
+    text: "Updated another lesson",
+  });
+  state.tasks.items.push({ id: "other-task" });
+  assert.equal(track(state), prior);
+  state.watched[0].reviews.push({ id: "review", verdict: "changes_requested" });
+  assert.notEqual(track(state), prior);
+  prior = track(state);
+  state.main.items.push({ id: "addressed", author: "peer", to: "agent" });
+  assert.notEqual(track(state), prior);
+  prior = track(state);
+  state.context.lifecycle.phase = "paused";
+  assert.notEqual(track(state), prior);
+  prior = track(state);
+  state.main.items.push({
+    id: "human-directive",
+    author: "human",
+    text: "Stop",
+  });
+  assert.notEqual(track(state), prior);
+});

@@ -6,6 +6,12 @@ import { resolve } from "node:path";
 import { randomUUID, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { secureStorage } from "../helpers/secure-storage.mjs";
+import {
+  ExperimentManifest,
+  fingerprintFiles,
+  sourceSnapshot,
+} from "../../experiments/evidence-manifest.mjs";
+import { POLICY_DIGEST } from "../../desktop/execution/contract.mjs";
 import { AgentOperation, NodeRequests } from "../../desktop/node-service.mjs";
 import { applyDisruption } from "../../experiments/community-day/check.mjs";
 import {
@@ -54,19 +60,87 @@ const report = {
     "Direct local networking; NAT, alternate relays and independent human consent remain untested.",
   ],
 };
-evidence.save("manifest.json", {
-  ...report,
-  at: new Date().toISOString(),
-  node: process.version,
-  commit: execFileSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).trim(),
-  working_tree_diff_sha256: sha256(execFileSync("git", ["diff"])),
-  input_sha256: sha256(bytes),
-  budget: { mode: "unlimited" },
-});
-console.log(`Evidence: ${root}`);
 try {
+  evidence.save("manifest.json", {
+    ...report,
+    at: new Date().toISOString(),
+    node: process.version,
+    commit: execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim(),
+    working_tree_diff_sha256: sha256(execFileSync("git", ["diff"])),
+    input_sha256: sha256(bytes),
+    budget: { mode: "unlimited" },
+  });
+  console.log(`Evidence: ${root}`);
+  evidence.save(
+    "protocol-manifest.json",
+    ExperimentManifest.parse({
+      schema: 1,
+      run: randomUUID(),
+      startedAt: new Date().toISOString(),
+      kind: "protocol_rehearsal",
+      code: sourceSnapshot(),
+      versions: {
+        app: JSON.parse(readFileSync("package.json")).version,
+        protocol: Number(
+          readFileSync("crates/harakiri-protocol/src/limits.rs", "utf8").match(
+            /VERSION: u16 = (\d+)/,
+          )[1],
+        ),
+        schema: Number(
+          readFileSync("crates/harakiri-node/src/store.rs", "utf8").match(
+            /version <= (\d+)/,
+          )[1],
+        ),
+        host: process.version,
+        toolsSha256: fingerprintFiles(process.cwd(), [
+          "desktop/execution/tools.mjs",
+          "desktop/execution/guest/agent.md",
+          "desktop/execution/prompt.mjs",
+          "desktop/execution/guest/mcp.py",
+          "desktop/execution/guest/bridge.py",
+        ]),
+      },
+      topology: {
+        computers: 1,
+        operators: 1,
+        nodes: 3,
+        agents: ["A", "B", "C"].map((alias) => ({
+          alias,
+          node: alias,
+          role: alias === "A" ? "coordinator" : "agent",
+          harness: null,
+          model: null,
+        })),
+      },
+      policies: {
+        transport: "direct",
+        workspace: "restricted",
+        permissionSha256: POLICY_DIGEST,
+        budget: "unlimited",
+      },
+      inputs: ["brief.md", "baseline.json", "disruption.json", "check.mjs"].map(
+        (name) => ({
+          name,
+          sha256: sha256(readFileSync(`experiments/community-day/${name}`)),
+        }),
+      ),
+      acceptance: [
+        "Scoped discovery/admission and exact human Start",
+        "Exact revision changes invalidate dependent evidence",
+        "Peers exchange history while the creator is offline",
+        "Uncertain resource receipts remain visible",
+        "Explicit handover and exact acceptance",
+      ],
+      evidence: {
+        timeline: "timeline.jsonl",
+        artifactIds: "exact-revision",
+        interventions: "record-every-operator-action",
+        usage: "native-counters-or-unknown",
+      },
+    }),
+  );
   await evidence.check(
     "advertise, discover, review and explicitly admit three profiles",
     async () => {

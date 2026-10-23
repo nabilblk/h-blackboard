@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { authoringPack } from "../../shared/authoring-packs.mjs";
 import { policyDigest } from "./contract.mjs";
 
 export function executionBinding(contribution) {
@@ -11,6 +12,17 @@ export function executionBinding(contribution) {
         limits: contribution.limits,
         terms: contribution.nodeBinding,
         policy: policyDigest(contribution.runtime, contribution.networkAccess),
+        ...((contribution.capabilityPack ?? "general") !== "general"
+          ? {
+              authoring: {
+                pack: contribution.capabilityPack,
+                buildkit: authoringPack(contribution.capabilityPack).buildkit,
+              },
+            }
+          : {}),
+        ...(contribution.capabilityRevision
+          ? { capabilityRevision: contribution.capabilityRevision }
+          : {}),
         ...(contribution.networkRevision
           ? { networkRevision: contribution.networkRevision }
           : {}),

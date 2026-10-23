@@ -10,6 +10,7 @@ use std::{
 };
 
 pub const CONTACT_DOMAIN: &[u8] = b"harakiri/contact/1";
+pub const CONTACT_TTL_MS: u64 = 24 * 60 * 60 * 1000;
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct Contact {
@@ -24,6 +25,8 @@ pub struct NetworkConfig {
     pub mode: NetworkMode,
     pub relays: Vec<String>,
     pub allow_lan: bool,
+    #[serde(default)]
+    pub route_directory: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +42,7 @@ impl Default for NetworkConfig {
             mode: NetworkMode::Offline,
             relays: vec![],
             allow_lan: false,
+            route_directory: None,
         }
     }
 }
@@ -49,6 +53,18 @@ pub fn now() -> u64 {
 }
 impl NetworkConfig {
     pub fn relay_mode(&self) -> Result<RelayMode> {
+        if let Some(value) = &self.route_directory {
+            let url: iroh::RelayUrl = value.parse()?;
+            ensure!(
+                value.len() <= 512
+                    && url.scheme() == "https"
+                    && url.username().is_empty()
+                    && url.password().is_none()
+                    && url.query().is_none()
+                    && url.fragment().is_none(),
+                "invalid route directory"
+            );
+        }
         ensure!(self.relays.len() <= 4, "too many relays");
         match self.mode {
             NetworkMode::Offline | NetworkMode::Direct => {
@@ -98,7 +114,7 @@ impl Contact {
             endpoint: addr.id.to_string(),
             addresses: addr.ip_addrs().take(8).map(ToString::to_string).collect(),
             relays: addr.relay_urls().take(4).map(ToString::to_string).collect(),
-            expires_ms: now() + 24 * 60 * 60 * 1000,
+            expires_ms: now() + CONTACT_TTL_MS,
         }
     }
     pub fn validate(&self) -> Result<()> {
@@ -150,7 +166,7 @@ impl Contact {
         Ok((author, c))
     }
 }
-fn permitted_ip(addr: SocketAddr, lan: bool) -> bool {
+pub(crate) fn permitted_ip(addr: SocketAddr, lan: bool) -> bool {
     if addr.port() == 0 {
         return false;
     }

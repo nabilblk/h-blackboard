@@ -42,7 +42,6 @@ import { DraftRuntimeService } from "./drafting/runtime.mjs";
 import { DraftRequests } from "./drafting/contract.mjs";
 import { LimaProvider } from "./execution/lima.mjs";
 import { exportWorkspace, readImportFiles } from "./execution/files.mjs";
-import { executionDiagnostics } from "./execution/diagnostics.mjs";
 import {
   APP_URL,
   CONTENT_SECURITY_POLICY,
@@ -256,6 +255,7 @@ else {
         ),
         provider,
         node: nodeService,
+        browseArtifact: artifacts.browse,
         exportWorkspace,
         importWorkspace: async () => {
           const result = await dialog.showOpenDialog(window, {
@@ -567,11 +567,24 @@ else {
             const actions = {
               executionOverview: () => executions.overview(request.mission),
               executionState: () => executions.state(id),
+              executionCancelOperation: () => {
+                executions.contribution(id);
+                return executions.operationJournal.cancel(
+                  id,
+                  request.operation,
+                );
+              },
               executionPrepare: () => executions.prepare(id),
               executionNetwork: () =>
                 executions.setNetwork(
                   id,
                   request.networkAccess,
+                  request.expectedRevision,
+                ),
+              executionCapabilities: () =>
+                executions.setCapabilityPack(
+                  id,
+                  request.capabilityPack,
                   request.expectedRevision,
                 ),
               executionLogin: () => executions.login(id),
@@ -590,10 +603,10 @@ else {
                 return executions.stop(id);
               },
               executionExport: () => executions.transfer(id, "export"),
+              executionRestoreCheckpoint: () =>
+                executions.restoreCheckpoint(id, request.checkpoint),
               executionDiagnostics: async () => {
-                const diagnostic = executionDiagnostics(
-                  await executions.state(id),
-                );
+                const diagnostic = await executions.diagnostics(id);
                 const picked = await dialog.showSaveDialog(window, {
                   title: "Export execution diagnostics",
                   defaultPath: "harakiri-agent-diagnostics.json",
@@ -673,7 +686,7 @@ else {
             return {
               ok: false,
               error:
-                error.code || error.name === "ZodError"
+                error.name === "ZodError"
                   ? "The operation could not be completed. Check your folder access or invitation and try again."
                   : error.message || "The operation could not be completed.",
             };
@@ -688,12 +701,41 @@ else {
               error: "This page cannot access node controls.",
             };
           try {
-            return { ok: true, value: await nodeService.handle(method, input) };
+            return {
+              ok: true,
+              value: await nodeService.handle(method, input, {
+                recoveryBusy: () =>
+                  !!onboarding?.active.size || !!installer.pending,
+                recoveryFile: async (operation) => {
+                  if (operation === "backupNode") {
+                    const picked = await dialog.showSaveDialog(window, {
+                      title: "Save protected node recovery",
+                      defaultPath: "harakiri-node.hbrecovery",
+                      filters: [
+                        {
+                          name: "Harakiri recovery",
+                          extensions: ["hbrecovery"],
+                        },
+                      ],
+                    });
+                    return picked.canceled ? null : picked.filePath;
+                  }
+                  const picked = await dialog.showOpenDialog(window, {
+                    title: "Restore protected node recovery",
+                    properties: ["openFile"],
+                    filters: [
+                      { name: "Harakiri recovery", extensions: ["hbrecovery"] },
+                    ],
+                  });
+                  return picked.canceled ? null : picked.filePaths[0];
+                },
+              }),
+            };
           } catch (error) {
             return {
               ok: false,
               error:
-                error.code || error.name === "ZodError"
+                error.name === "ZodError"
                   ? "The node request could not be validated. Check the mission fields and local profile access."
                   : error.message || "The local node is unavailable.",
             };

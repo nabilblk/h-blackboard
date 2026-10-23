@@ -19,7 +19,7 @@ pub struct Store {
         std::cell::RefCell<BTreeMap<String, std::sync::Arc<crate::agents::Records>>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Head {
     pub author: String,
@@ -94,7 +94,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(2))?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(
-            version <= 15,
+            version <= 16,
             "unsupported node database version; preserve this profile"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -342,6 +342,16 @@ impl Store {
         if version < 15 {
             connection.pragma_update(None, "user_version", 15)?;
         }
+        if version < 16 {
+            let tx = connection.transaction()?;
+            tx.execute_batch("CREATE TABLE sync_progress(mission TEXT NOT NULL,audience TEXT NOT NULL,endpoint TEXT NOT NULL,pull_cursor TEXT,push_cursor TEXT,PRIMARY KEY(mission,audience,endpoint));
+                CREATE INDEX replication_history ON events(mission,audience);
+                ALTER TABLE delivery ADD COLUMN last_progress_ms INTEGER;
+                ALTER TABLE delivery ADD COLUMN last_converged_ms INTEGER;
+                ALTER TABLE delivery ADD COLUMN stalled_exchanges INTEGER NOT NULL DEFAULT 0;
+                PRAGMA user_version=16;")?;
+            tx.commit()?;
+        }
         Ok(Self {
             observations: Default::default(),
             artifact_cache: Default::default(),
@@ -439,7 +449,9 @@ impl Store {
             Payload::CoordinatorPlanArtifact { control, .. }
             | Payload::CoordinatorPlanned { control, .. }
             | Payload::CoordinatorReadied { control, .. } => Some(control),
-            Payload::AgentDirected { control, .. } if self.owner(mission)? != author => {
+            Payload::AgentDirected { control, .. } | Payload::AgentClarified { control, .. }
+                if self.owner(mission)? != author =>
+            {
                 Some(control)
             }
             _ => None,
@@ -603,6 +615,7 @@ impl Store {
                             body.payload,
                             Payload::MessageSent { .. }
                                 | Payload::AgentAcknowledged { .. }
+                                | Payload::AgentClarificationAcknowledged { .. }
                                 | Payload::GovernanceRecorded { .. }
                                 | Payload::WorkRecorded { .. }
                                 | Payload::WorkstreamMessage { .. }
@@ -648,6 +661,7 @@ impl Store {
                                 | Payload::CoordinatorPlanArtifact { .. }
                                 | Payload::CoordinatorReadied { .. }
                                 | Payload::AgentDirected { .. }
+                                | Payload::AgentClarified { .. }
                         )
                 }
                 Payload::MissionControlled {
@@ -668,6 +682,7 @@ impl Store {
                                 | Payload::CoordinatorPlanned { .. }
                                 | Payload::CoordinatorReadied { .. }
                                 | Payload::AgentDirected { .. }
+                                | Payload::AgentClarified { .. }
                         )
                 }
                 _ => false,
@@ -856,6 +871,40 @@ impl Store {
         self.delta_in(mission, "main", heads)
     }
     pub fn delta_in(&self, mission: &str, audience: &str, heads: &[Head]) -> Result<Vec<Vec<u8>>> {
+        let known = self.verified_heads(mission, audience, heads)?;
+        let mut stmt = self.connection.prepare(
+            "SELECT author,sequence,id,bytes,fork FROM events WHERE mission=?1 AND audience=?2 ORDER BY rowid",
+        )?;
+        let mut rows = stmt.query(params![mission, audience])?;
+        let mut output = Vec::new();
+        let mut size = 0;
+        while let Some(row) = rows.next()? {
+            let author: String = row.get(0)?;
+            let sequence = positive_integer(row, 1)?;
+            let id: String = row.get(2)?;
+            let fork: bool = row.get(4)?;
+            if !fork
+                && let Some(head) = known.get(&author)
+                && (sequence < head.sequence || (sequence == head.sequence && id == head.id))
+            {
+                continue;
+            }
+            let bytes: Vec<u8> = row.get(3)?;
+            size += bytes.len() * 2 + 4;
+            if size > limits::MAX_FRAME_BYTES / 2 || output.len() == limits::MAX_BATCH_EVENTS {
+                break;
+            }
+            output.push(bytes);
+        }
+        Ok(output)
+    }
+
+    pub(crate) fn verified_heads(
+        &self,
+        mission: &str,
+        audience: &str,
+        heads: &[Head],
+    ) -> Result<BTreeMap<String, Head>> {
         ensure!(heads.len() <= 1024, "too many writer heads");
         let mut known = BTreeMap::new();
         let mut authors = std::collections::BTreeSet::new();
@@ -875,35 +924,10 @@ impl Store {
                 && event.body.author == head.author
                 && event.body.sequence == head.sequence
             {
-                known.insert(&head.author, head);
+                known.insert(head.author.clone(), head.clone());
             }
         }
-        let mut stmt = self.connection.prepare(
-            "SELECT author,sequence,id,bytes,fork FROM events WHERE mission=?1 AND audience=?2 ORDER BY rowid",
-        )?;
-        let mut rows = stmt.query(params![mission, audience])?;
-        let mut output = Vec::new();
-        let mut size = 0;
-        while let Some(row) = rows.next()? {
-            let author: String = row.get(0)?;
-            let sequence = positive_integer(row, 1)?;
-            let id: String = row.get(2)?;
-            let fork: bool = row.get(4)?;
-            // Unknown/mismatching heads cause a replay, never skipped history.
-            if !fork
-                && let Some(head) = known.get(&author)
-                && (sequence < head.sequence || (sequence == head.sequence && id == head.id))
-            {
-                continue;
-            }
-            let bytes: Vec<u8> = row.get(3)?;
-            size += bytes.len() * 2 + 4; // JSON hex wire envelope
-            if size > limits::MAX_FRAME_BYTES / 2 || output.len() == limits::MAX_BATCH_EVENTS {
-                break;
-            }
-            output.push(bytes);
-        }
-        Ok(output)
+        Ok(known)
     }
 
     pub fn can_read(&self, mission: &str, endpoint: &str) -> Result<bool> {

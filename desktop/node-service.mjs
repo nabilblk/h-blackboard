@@ -10,8 +10,19 @@ import {
   ArtifactRequests,
   ArtifactAgentOperations,
 } from "./artifact-contract.mjs";
+import {
+  exportRecovery,
+  importRecovery,
+  RecoveryRequest,
+} from "./recovery.mjs";
 import { NodeIdentity } from "./node-identity.mjs";
-import { Limits, Runtime, Id, NetworkAccess } from "./model.mjs";
+import {
+  Limits,
+  Runtime,
+  Id,
+  NetworkAccess,
+  CapabilityPack,
+} from "./model.mjs";
 import {
   executionBinding,
   DirectionChanged,
@@ -71,6 +82,7 @@ const network = z
     mode: z.enum(["offline", "direct", "public_relays", "custom"]),
     relays: z.array(z.string().max(512)).max(4),
     allow_lan: z.boolean(),
+    route_directory: z.string().max(512).url().nullable().optional(),
   })
   .strict();
 const missionDefinition = z
@@ -204,12 +216,33 @@ const taskQuery = z
   .strict();
 // This contract deliberately has no identity, mission, path or execution field.
 export const AgentOperation = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("agent"), registration: id }).strict(),
+  z.object({ type: z.literal("clarifications") }).strict(),
   z
     .object({ type: z.literal("agents"), after: id.nullable().optional() })
     .strict(),
   ...ArtifactAgentOperations,
   ...GovernanceAgentOperations,
   z.object({ type: z.literal("context") }).strict(),
+  z
+    .object({
+      type: z.literal("snapshot"),
+      watch: z.array(id).max(16).default([]),
+      after: id.nullable().optional(),
+      priority_after: id.nullable().optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("message"), id }).strict(),
+  z
+    .object({ type: z.literal("updates"), after: id.nullable().optional() })
+    .strict(),
+  z.object({ type: z.literal("observations") }).strict(),
+  z
+    .object({
+      type: z.literal("priority_updates"),
+      after: id.nullable().optional(),
+    })
+    .strict(),
   z.object({ type: z.literal("workstreams") }).strict(),
   z.object({ type: z.literal("tasks"), query: taskQuery }).strict(),
   z
@@ -221,12 +254,33 @@ export const AgentOperation = z.discriminatedUnion("type", [
       type: z.literal("post"),
       audience,
       text: text(16384),
-      to: id.nullable().default(null),
+      to: id
+        .nullable()
+        .default(null)
+        .describe(
+          "Recipient public identity: use agent.identity.author from the roster, not agent.id (registration). Null addresses the conversation.",
+        ),
       thread: id.nullable().default(null),
     })
     .strict(),
   z
     .object({ type: z.literal("acknowledge"), control: id, direction: id })
+    .strict(),
+  z
+    .object({
+      type: z.literal("acknowledge_update"),
+      control: id,
+      clarification: id,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("clarify"),
+      control: id,
+      registration: id,
+      direction: id,
+      text: text(2048),
+    })
     .strict(),
   z
     .object({ type: z.literal("plan"), control: id, text: text(16384) })
@@ -236,7 +290,9 @@ export const AgentOperation = z.discriminatedUnion("type", [
     .object({
       type: z.literal("direct"),
       control: id,
-      registration: id,
+      registration: id.describe(
+        "Agent registration: use agent.id from the roster. Available to the owner/current Coordinator during Preparing or Active; assignment does not start execution.",
+      ),
       text: text(2048),
     })
     .strict(),
@@ -249,6 +305,10 @@ export const NodeRequests = {
   workstreams: z.object({ mission: id }).strict(),
   tasks: z.object({ mission: id, query: taskQuery }).strict(),
   work: z.object({ mission: id, revision: id, action: workAction }).strict(),
+  backupNode: RecoveryRequest,
+  restoreNode: RecoveryRequest.extend({
+    previousNodeStopped: z.literal(true),
+  }).strict(),
   state: z.object({}).strict(),
   enroll: z.object({}).strict(),
   createMission: z.object({ definition: missionDefinition }).strict(),
@@ -271,7 +331,12 @@ export const NodeRequests = {
     .strict(),
   withdrawAgent: z.object({ mission: id, contributionId: Id }).strict(),
   directAgent: z
-    .object({ ...control, registration: id, text: text(2048) })
+    .object({
+      ...control,
+      registration: id,
+      text: text(2048),
+      clarification: id.optional(),
+    })
     .strict(),
   networkState: z.object({}).strict(),
   configureNetwork: z.object({ config: network }).strict(),
@@ -296,6 +361,7 @@ export const NodeRequests = {
       workspaceChoiceId: Id,
       runtime: Runtime,
       networkAccess: NetworkAccess.default("restricted"),
+      capabilityPack: CapabilityPack.default("general"),
       limits: Limits,
     })
     .strict(),
@@ -318,6 +384,9 @@ export const NodeRequests = {
   audiences: z.object({ mission: id }).strict(),
   openAgentConversation: z.object({ mission: id, registration: id }).strict(),
   queryMessages: z.object({ mission: id, query: messageQuery }).strict(),
+  readMessage: z.object({ mission: id, id }).strict(),
+  copyMessageReference: z.object({ mission: id, id }).strict(),
+  catchUp: z.object({ mission: id, after: id.nullable() }).strict(),
   markMessagesRead: z
     .object({ mission: id, ids: z.array(id).max(200) })
     .strict(),
@@ -340,6 +409,7 @@ export class NodeService {
     this.directory = directory;
     this.writeClipboard = writeClipboard;
     this.issuedInvitations = new Map();
+    this.artifactCaches = new Map();
     this.binary = binary;
     this.keys = new NodeIdentity(directory, secureStorage);
     this.bridge = null;
@@ -350,6 +420,10 @@ export class NodeService {
 
   async start(keys) {
     if (this.closed) throw new Error("The local node is closing.");
+    if (this.maintenance)
+      throw new Error(
+        "Node recovery is in progress. Local records will reopen when it finishes.",
+      );
     if (this.bridge) return this.bridge;
     if (this.starting) return this.starting;
     this.starting = (async () => {
@@ -439,6 +513,80 @@ export class NodeService {
     const schema = NodeRequests[method];
     if (!schema) throw new Error("Unknown node operation.");
     const request = schema.parse(input);
+    if (method === "backupNode" || method === "restoreNode") {
+      if (this.maintenance)
+        throw new Error("Another recovery operation is in progress.");
+      const file = await native.recoveryFile?.(method);
+      if (!file) return { cancelled: true };
+      const unsettled =
+        this.executions &&
+        this.contributors?.store
+          .read()
+          .contributions.some((c) =>
+            [
+              "reserving",
+              "launching",
+              "running",
+              "waiting",
+              "stopping",
+              "recovery_required",
+            ].includes(this.executions.store.read(c.id)?.status),
+          );
+      if (
+        [...this.artifactCaches.values()].some((j) => j.state === "saving") ||
+        unsettled ||
+        this.executions?.jobs.size ||
+        this.executions?.busy.size ||
+        [...(this.executions?.authentications.values() ?? [])].some(
+          (a) => a.handle || a.view.status === "starting",
+        ) ||
+        native.recoveryBusy?.()
+      )
+        throw new Error(
+          "Stop local agents and finish setup or sign-in before recovering the node.",
+        );
+      this.maintenance = true;
+      try {
+        if (this.starting) await this.starting;
+        await this.bridge?.close();
+        this.bridge = null;
+        if (method === "backupNode") {
+          const keys = await this.keys.load();
+          return {
+            cancelled: false,
+            ...(await exportRecovery({
+              records: join(this.directory, "records"),
+              keys,
+              passphrase: request.passphrase,
+              file,
+            })),
+          };
+        }
+        const result = await importRecovery({
+          file,
+          passphrase: request.passphrase,
+          directory: this.directory,
+          secureStorage: this.keys.secureStorage,
+          validate: async (keys, profile) => {
+            const bridge = new NodeBridge(this.binary, {
+              ...keys,
+              profile,
+              recovery: true,
+            });
+            try {
+              await bridge.ready;
+              await bridge.request({ type: "network_state" });
+            } finally {
+              await bridge.close();
+            }
+          },
+        });
+        this.identity = null;
+        return { cancelled: false, ...result };
+      } finally {
+        this.maintenance = false;
+      }
+    }
     if (method === "state") return this.state();
     if (method === "enroll") {
       await this.start(await this.keys.enroll());
@@ -447,6 +595,82 @@ export class NodeService {
     if (!this.keys.enrolled())
       throw new Error("Create your local node before creating a mission.");
     const bridge = await this.start(await this.keys.load());
+    if (method === "artifactCache") {
+      const detail = await bridge.request({
+        type: "artifact_detail",
+        mission: request.mission,
+        revision: request.revision,
+      });
+      const key = `${request.mission}:${request.revision}`;
+      let job = this.artifactCaches.get(key);
+      const summary = () =>
+        job
+          ? {
+              state: job.state,
+              completed: job.completed,
+              total: job.total,
+              bytes: job.bytes,
+              error: job.error,
+            }
+          : {
+              state:
+                detail.available_files.length === detail.document.files.length
+                  ? "saved"
+                  : "partial",
+              completed: detail.available_files.length,
+              total: detail.document.files.length,
+              bytes: detail.document.files.reduce((n, f) => n + f.size, 0),
+              error: null,
+            };
+      if (request.action === "cancel") {
+        if (job?.state === "saving") job.cancel = true;
+        return summary();
+      }
+      if (request.action === "status" || job?.state === "saving")
+        return summary();
+      if (
+        [...this.artifactCaches.values()].some(
+          (value) => value.state === "saving",
+        )
+      )
+        throw new Error(
+          "One offline save is already in progress. Wait or cancel it first.",
+        );
+      while (this.artifactCaches.size >= 32)
+        this.artifactCaches.delete(this.artifactCaches.keys().next().value);
+      job = {
+        state: "saving",
+        completed: 0,
+        total: detail.document.files.length,
+        bytes: detail.document.files.reduce((n, f) => n + f.size, 0),
+        error: null,
+        cancel: false,
+      };
+      this.artifactCaches.set(key, job);
+      // Each file still passes native scope and digest validation. Progress is
+      // local; received bytes persist even if the app exits before its reply.
+      job.pending = (async () => {
+        try {
+          for (const file of detail.document.files) {
+            if (job.cancel || this.closed) {
+              job.state = "cancelled";
+              return;
+            }
+            await this.readArtifactFile({
+              mission: request.mission,
+              revision: request.revision,
+              path: file.path,
+            });
+            job.completed++;
+          }
+          job.state = "saved";
+        } catch (error) {
+          job.state = "unavailable";
+          job.error = error.message;
+        }
+      })();
+      return summary();
+    }
     if (method === "copyPeerTicket") {
       const value = await bridge.request({ type: "discovery_state" });
       if (!value.peer_ticket || !this.writeClipboard)
@@ -639,6 +863,12 @@ export class NodeService {
       this.writeClipboard(request.revision);
       return null;
     }
+    if (method === "copyMessageReference") {
+      await bridge.request({ type: "read_message", ...request });
+      if (!this.writeClipboard) throw new Error("Clipboard unavailable.");
+      this.writeClipboard(`[Message](harakiri://message/${request.id})`);
+      return null;
+    }
     if (["artifactOpen", "artifactSave", "artifactInspect"].includes(method)) {
       const detail = await bridge.request({
         type: "artifact_detail",
@@ -667,6 +897,12 @@ export class NodeService {
       );
       if (!contribution?.sharedAgent || contribution.sharedAgent.withdrawn)
         throw new Error("Review and share this local contribution first.");
+      if (
+        (contribution.capabilityRevision ?? null) !== request.capabilityRevision
+      )
+        throw new Error(
+          "Authoring tools changed. Review this agent’s current toolkit before approving.",
+        );
       if ((contribution.networkRevision ?? null) !== request.networkRevision)
         throw new Error(
           "Internet access changed. Review this agent's current access before approving.",
@@ -718,6 +954,8 @@ export class NodeService {
       postMessage: "post_message",
       openAgentConversation: "open_agent_conversation",
       queryMessages: "query_messages",
+      readMessage: "read_message",
+      catchUp: "catch_up",
       markMessagesRead: "mark_messages_read",
       messages: "messages",
       networkState: "network_state",
@@ -969,6 +1207,7 @@ export class NodeService {
             grant: record?.grant ?? null,
             state: reported,
             issued_ms: 0,
+            resources: this.executions.resourceHint?.(c.id) ?? null,
           },
         })
         .catch(() => {});

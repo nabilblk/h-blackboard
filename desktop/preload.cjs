@@ -35,12 +35,25 @@ contextBridge.exposeInMainWorld(
     overview: (mission) => executionCall("executionOverview", { mission }),
     state: (contributionId) =>
       executionCall("executionState", { contributionId }),
+    cancelOperation: (contributionId, operation) =>
+      executionCall("executionCancelOperation", { contributionId, operation }),
+    restoreCheckpoint: (contributionId, checkpoint) =>
+      executionCall("executionRestoreCheckpoint", {
+        contributionId,
+        checkpoint,
+      }),
     prepare: (contributionId) =>
       executionCall("executionPrepare", { contributionId }),
     setNetwork: (contributionId, networkAccess, expectedRevision) =>
       executionCall("executionNetwork", {
         contributionId,
         networkAccess,
+        expectedRevision,
+      }),
+    setCapabilityPack: (contributionId, capabilityPack, expectedRevision) =>
+      executionCall("executionCapabilities", {
+        contributionId,
+        capabilityPack,
         expectedRevision,
       }),
     login: (contributionId) =>
@@ -133,18 +146,30 @@ contextBridge.exposeInMainWorld(
   "blackboardNode",
   Object.freeze({
     state: () => nodeCall("state"),
+    artifactCache: (mission, revision, action) =>
+      nodeCall("artifactCache", { mission, revision, action }),
     enroll: () => nodeCall("enroll"),
+    backupNode: (passphrase) => nodeCall("backupNode", { passphrase }),
+    restoreNode: (passphrase, previousNodeStopped) =>
+      nodeCall("restoreNode", { passphrase, previousNodeStopped }),
     createMission: (definition) => nodeCall("createMission", { definition }),
     updateInstructions: (mission, revision, definition) =>
       nodeCall("updateInstructions", { mission, revision, definition }),
     setCoordination: (mission, revision, mode) =>
       nodeCall("setCoordination", { mission, revision, mode }),
-    consentGrant: (mission, grant, contributionId, networkRevision = null) =>
+    consentGrant: (
+      mission,
+      grant,
+      contributionId,
+      networkRevision = null,
+      capabilityRevision = null,
+    ) =>
       nodeCall("consentGrant", {
         mission,
         grant,
         contributionId,
         networkRevision,
+        capabilityRevision,
       }),
     governance: (mission) => nodeCall("governance", { mission }),
     govern: (mission, control, action) =>
@@ -197,8 +222,14 @@ contextBridge.exposeInMainWorld(
       nodeCall("shareAgent", { mission, contributionId, label }),
     withdrawAgent: (mission, contributionId) =>
       nodeCall("withdrawAgent", { mission, contributionId }),
-    directAgent: (mission, revision, registration, text) =>
-      nodeCall("directAgent", { mission, revision, registration, text }),
+    directAgent: (mission, revision, registration, text, clarification) =>
+      nodeCall("directAgent", {
+        mission,
+        revision,
+        registration,
+        text,
+        clarification,
+      }),
     networkState: () => nodeCall("networkState"),
     configureNetwork: (config) => nodeCall("configureNetwork", { config }),
     discoveryState: () => nodeCall("discoveryState"),
@@ -228,6 +259,10 @@ contextBridge.exposeInMainWorld(
       nodeCall("openAgentConversation", { mission, registration }),
     queryMessages: (mission, query) =>
       nodeCall("queryMessages", { mission, query }),
+    readMessage: (mission, id) => nodeCall("readMessage", { mission, id }),
+    copyMessageReference: (mission, id) =>
+      nodeCall("copyMessageReference", { mission, id }),
+    catchUp: (mission, after) => nodeCall("catchUp", { mission, after }),
     markMessagesRead: (mission, ids) =>
       nodeCall("markMessagesRead", { mission, ids }),
     postMessage: (mission, text, audience = "main", to = null, thread = null) =>

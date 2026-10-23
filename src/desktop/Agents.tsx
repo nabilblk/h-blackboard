@@ -1,3 +1,5 @@
+import { observations } from "../application/observations";
+import { readRoster } from "../application/mission-queries";
 import { Field } from "../ui/Field";
 import { Disclosure } from "../ui/Disclosure";
 import { Button } from "../ui/Button";
@@ -73,45 +75,24 @@ export function AgentRoster({
     id: string;
     revision: string;
     text: string;
+    clarification?: string;
   } | null>(null);
   const [withdraw, setWithdraw] = useState<string | null>(null);
-  const read = async () => {
-    const all: AgentView[] = [];
-    let after: string | null = null;
-    do {
-      const page = await node.agents(mission.id, after);
-      all.push(...page.items);
-      after = page.after;
-    } while (after);
-    return all;
-  };
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const all = await read();
-        if (!cancelled) {
+  const read = () => readRoster(node, mission.id);
+  useEffect(
+    () =>
+      observations(node).subscribe(
+        `roster:${mission.id}`,
+        read,
+        (all) => {
           setAgents(all);
           setLoaded(true);
           setError("");
-        }
-      } catch (e) {
-        if (!cancelled)
-          setError(
-            e instanceof Error ? e.message : "Unable to read mission agents.",
-          );
-      }
-      if (!cancelled) timer = setTimeout(() => void poll(), 2500);
-    };
-    void poll();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-    // Each poll reads a bounded roster for this mission, with no overlapping requests.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mission.id]);
+        },
+        (error) => setError(error.message),
+      ),
+    [mission.id, node],
+  );
   const refresh = async () => {
     setAgents(await read());
     await updated();
@@ -373,14 +354,15 @@ export function AgentRoster({
                           setDirection({
                             id: a.id,
                             revision: mission.lifecycle.revision,
-                            text:
-                              a.direction?.source === "individual"
-                                ? a.direction.text
-                                : "",
+                            text: "",
+                            clarification:
+                              mission.lifecycle.phase === "active"
+                                ? a.direction?.id
+                                : undefined,
                           })
                         }
                       >
-                        Give direction
+                        {a.direction ? "Update guidance" : "Give direction"}
                       </Button>
                     ) : null}
                     {direction?.id === a.id ? (
@@ -394,6 +376,7 @@ export function AgentRoster({
                               direction.revision,
                               a.id,
                               direction.text,
+                              direction.clarification,
                             );
                             setDirection(null);
                             await refresh();
@@ -401,7 +384,9 @@ export function AgentRoster({
                         }}
                       >
                         <Field>
-                          Direction in Main
+                          {direction.clarification
+                            ? "Clarification in Main"
+                            : "Direction in Main"}
                           <textarea
                             required
                             rows={4}
@@ -415,9 +400,36 @@ export function AgentRoster({
                             }
                           />
                         </Field>
+                        {mission.lifecycle.phase === "active" && a.direction ? (
+                          <Field>
+                            Change type
+                            <select
+                              value={
+                                direction.clarification ? "clarify" : "replace"
+                              }
+                              onChange={(event) =>
+                                setDirection({
+                                  ...direction,
+                                  clarification:
+                                    event.target.value === "clarify"
+                                      ? a.direction!.id
+                                      : undefined,
+                                })
+                              }
+                            >
+                              <option value="clarify">
+                                Clarify the current direction
+                              </option>
+                              <option value="replace">
+                                Replace direction and stop current work
+                              </option>
+                            </select>
+                          </Field>
+                        ) : null}
                         <p className="d-field-help">
-                          Visible to the mission. Your instruction takes
-                          precedence over Coordinator direction.
+                          {direction.clarification
+                            ? "The agent finishes its current operation, then reads and acknowledges this update. Keep it within the approved scope."
+                            : "A replacement stops the old execution. Its contributor must review and approve the new direction. Visible to the mission."}
                         </p>
                         {direction.revision !== mission.lifecycle.revision ? (
                           <p role="status">
@@ -442,7 +454,9 @@ export function AgentRoster({
                               direction.revision !== mission.lifecycle.revision
                             }
                           >
-                            Assign direction
+                            {direction.clarification
+                              ? "Send clarification"
+                              : "Assign direction"}
                           </Button>
                         </div>
                       </form>

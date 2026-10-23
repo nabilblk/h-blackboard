@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Science contract regression fixture</title>
+  <style>
+    body {
+      font:
+        18px/1.5 system-ui,
+        sans-serif;
+      color: #172b36;
+      background: #f7faf9;
+      margin: 0;
+      padding: 24px;
+    }
+    main {
+      max-width: 640px;
+      margin: auto;
+    }
+    label {
+      display: block;
+      margin: 12px 0;
+    }
+    input,
+    button {
+      font: inherit;
+      padding: 8px;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    input {
+      display: block;
+      width: 100%;
+    }
+    output {
+      display: block;
+      font-size: 22px;
+      font-weight: 700;
+      margin: 16px 0;
+    }
+    svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+    text {
+      font: 14px system-ui;
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid #086c91;
+      outline-offset: 3px;
+    }
+    #feedback[data-status="invalid"] {
+      color: #9d2107;
+    }
+    small {
+      display: block;
+    }
+  </style>
+  <main>
+    <small>Executable contract fixture · not a finished lesson</small>
+    <h1>Distance and time</h1>
+    <p>
+      Average speed compares the total distance travelled with the time taken.
+      It does not tell us how the speed changed during a journey.
+    </p>
+    <p>
+      The baseline diagram and reading stay visible. No prediction gate, hidden
+      reading or WebGL requirement.
+    </p>
+    <form id="trial" novalidate>
+      <label for="distance"
+        >Distance travelled (m)<input
+          id="distance"
+          type="number"
+          min="0"
+          max="1000"
+          step="any"
+          value="10"
+      /></label>
+      <label for="time"
+        >Time taken (s)<input
+          id="time"
+          type="number"
+          min="0"
+          max="3600"
+          step="any"
+          value="2"
+      /></label>
+      <button type="submit">Compare trial</button>
+    </form>
+    <output id="reading" for="distance time" aria-live="polite"></output>
+    <p id="feedback" role="status"></p>
+    <svg
+      id="diagram"
+      viewBox="0 0 420 240"
+      role="img"
+      aria-labelledby="graph-title graph-note"
+    >
+      <title id="graph-title">Distance and time for the last valid trial</title>
+      <desc id="graph-note">
+        The endpoint shows the total distance and time. The straight line
+        assumes steady motion for illustration.
+      </desc>
+      <path d="M60 20V185H405" fill="none" stroke="#172b36" stroke-width="2" />
+      <text x="60" y="18">Distance (m)</text>
+      <text x="275" y="232">Time (s)</text>
+      <text x="40" y="200">0</text>
+      <text id="distance-mark" x="8" y="50"></text>
+      <text id="time-mark" x="340" y="209"></text>
+      <path
+        id="trace"
+        d="M60 185L350 45"
+        fill="none"
+        stroke="#086c91"
+        stroke-width="4"
+      />
+      <circle cx="350" cy="45" r="6" fill="#086c91" />
+    </svg>
+    <p id="diagram-state"></p>
+    <small
+      >This static alternative is intentional: model and feedback stay usable
+      without animation or WebGL. It is a regression fixture, not a visual
+      quality reference.</small
+    >
+  </main>
+  <script type="module">
+    import { averageSpeed, readingText } from "./model-contract.mjs";
+    function update() {
+      const model = averageSpeed({
+        distance: document.querySelector("#distance").valueAsNumber,
+        time: document.querySelector("#time").valueAsNumber,
+      });
+      document.querySelector("#reading").textContent = readingText(
+        model.readings[0],
+      );
+      const feedback = document.querySelector("#feedback");
+      feedback.textContent = model.feedback;
+      feedback.dataset.status = model.status;
+      document.querySelector("#diagram-state").textContent =
+        model.status === "ready"
+          ? "Last valid trial. Straight line assumes steady motion; endpoint readings alone do not establish that."
+          : "Showing the last valid trial. The current inputs cannot produce a reading.";
+      if (model.scene) {
+        document.querySelector("#distance-mark").textContent = String(
+          model.scene.distance,
+        );
+        document.querySelector("#time-mark").textContent = String(
+          model.scene.time,
+        );
+        document
+          .querySelector("#trace")
+          .setAttribute(
+            "d",
+            model.scene.distance === 0 ? "M60 185L350 185" : "M60 185L350 45",
+          );
+        document
+          .querySelector("circle")
+          .setAttribute("cy", model.scene.distance === 0 ? "185" : "45");
+      }
+    }
+    document.querySelector("#trial").addEventListener("submit", (event) => {
+      event.preventDefault();
+      update();
+    });
+    update();
+  </script>
+</html>

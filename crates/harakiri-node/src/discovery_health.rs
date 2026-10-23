@@ -12,6 +12,7 @@ pub enum DiscoveryOutcome {
     ExpiredAddress,
     RouteBlocked,
     Unreachable,
+    Incompatible,
     InvalidCatalog,
     CacheError,
 }

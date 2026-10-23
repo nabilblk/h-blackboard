@@ -9,8 +9,11 @@ install -d -m 0755 /home/hb-runtime/control /opt/harakiri/rootfs
 chown root:root /home/hb-runtime/control
 install -d -m 0700 -o hb-worker -g hb-worker /workspace
 install -d -m 0755 /opt/harakiri/rootfs/usr /opt/harakiri/rootfs/bin /opt/harakiri/rootfs/lib /opt/harakiri/rootfs/lib64 /opt/harakiri/rootfs/workspace /opt/harakiri/rootfs/tmp
+install -m 0644 /opt/harakiri/project.py /usr/local/lib/harakiri-project.py
 install -m 0644 /opt/harakiri/files.py /usr/local/lib/harakiri-files.py
+install -m 0644 /opt/harakiri/command.py /usr/local/lib/harakiri-command.py
 install -m 0644 /opt/harakiri/worker-network.py /usr/local/lib/harakiri-worker-network.py
+python3 /opt/harakiri/buildkit.py
 python3 /opt/harakiri/install-runtime.py
 cat >/etc/systemd/system/hb-proxy.service <<'UNIT'
 [Unit]

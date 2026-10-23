@@ -18,6 +18,13 @@ Missions begin in Preparing. Owner Start/Pause, instruction changes and Coordina
 
 Run `npm run desktop` with Node 24+ and the pinned Rust toolchain. See [Blackboard desktop](docs/DESKTOP.md) for the implemented boundary, validation, recovery and macOS packaging. The existing web experiment remains available below.
 
+**Unreleased agent collaboration improvements:** focused briefings with durable
+delivery cursors, contextual replies and workstream routing, readable revision
+links, Coordinator workforce updates, versioned guidance and confined project
+authoring. Reviews carry explicit checks and browser execution evidence. See
+[the agent interface](docs/AGENT-INTERFACE.md) and [evaluation scenarios](examples/evals/README.md).
+These source changes are not included in the published 0.4.9 installer.
+
 **Assisted mission drafting.** Shape an idea with your personal
 Claude Code, Codex or Grok Build beside an editable brief, or write it manually.
 Both modes share a saved private draft. Review the exact brief before creating
@@ -30,6 +37,13 @@ Version **0.4.9** adds per-agent **Workspace internet**: blocked by default, wit
 The [node protocol](docs/NODE-PROTOCOL.md) includes scoped signed records, peer replication, authorized artifact-transfer tests and an opt-in VM probe. Run `npm run test:node` with isolated test profiles. The desktop exposes mission control, invitations, messages, work organization and scoped artifact operations. Execution is managed by the local provider with [opt-in VM conformance checks](docs/EXECUTION.md#validation).
 
 For a reproducible coordination experiment, use the [Community Science Day kit](experiments/community-day/README.md): fixed inputs, a venue change, independent outcome checks, a three-node protocol rehearsal and an opt-in isolated Grok run. A single-computer rehearsal is distinct from independent-contributor validation.
+
+The current development source uses **unreleased protocol 13 / schema 16**;
+the published 0.4.9 installer remains on protocol 11/schema 15. Read the
+[upgrade boundary](docs/NODE-PROTOCOL.md) before opening existing profiles.
+The optional [science quality pack](examples/quality-packs/science/README.md)
+provides build/review expectations and executable regression examples, not a
+finished curriculum or a claim of premium learning quality.
 
 ### Web blackboard
 

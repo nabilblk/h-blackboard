@@ -32,6 +32,8 @@ struct Bootstrap {
     profile: PathBuf,
     owner_seed: String,
     transport_seed: String,
+    #[serde(default)]
+    recovery: bool,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
@@ -188,6 +190,7 @@ pub enum Command {
         revision: String,
         registration: String,
         text: String,
+        clarification: Option<String>,
     },
     // Host-only scoped interface. Never exposed through the renderer preload.
     AgentRequest {
@@ -203,6 +206,14 @@ pub enum Command {
     QueryMessages {
         mission: String,
         query: crate::communication::MessageQuery,
+    },
+    ReadMessage {
+        mission: String,
+        id: String,
+    },
+    CatchUp {
+        mission: String,
+        after: Option<String>,
     },
     MarkMessagesRead {
         mission: String,
@@ -328,7 +339,7 @@ fn open_profile(root: &Path, identity: &ProfileIdentity) -> Result<File> {
         for item in fs::read_dir(root)? {
             let item = item?;
             let name = item.file_name();
-            if name == "blobs" {
+            if name == "blobs" || name == "artifact-staging" {
                 ensure!(
                     fs::symlink_metadata(item.path())?.is_dir(),
                     "invalid blob directory"
@@ -424,6 +435,15 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
     let store: SharedStore = Arc::new(Mutex::new(Store::open(
         &bootstrap.profile.join("node.sqlite"),
     )?));
+    if bootstrap.recovery {
+        with_store(&store, |s| {
+            s.save_network_config(&crate::contact::NetworkConfig::default())?;
+            let mut discovery = s.discovery_config()?;
+            discovery.enabled = false;
+            discovery.lan = false;
+            s.save_discovery_config(&discovery)
+        })?;
+    }
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -528,6 +548,8 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
                     Command::AgentRequest {mission,contribution,registration,operation} => store.agent_request(&identity,&mission,&contribution,&registration,operation),
                     Command::OpenAgentConversation {mission,registration} => Ok(serde_json::json!({"audience":store.open_agent_conversation(&identity,&mission,&registration)?})),
                     Command::QueryMessages {mission,query} => Ok(serde_json::to_value(store.query_messages(&mission,&identity.public_key(),query)?)?),
+                    Command::ReadMessage {mission,id} => Ok(serde_json::to_value(store.read_message(&mission,&identity.public_key(),&id)?)?),
+                    Command::CatchUp {mission,after} => Ok(serde_json::to_value(store.catch_up(&mission,&identity.public_key(),after.as_deref())?)?),
                     Command::MarkMessagesRead {mission,ids} => {store.mark_messages_read(&mission,&identity.public_key(),&ids)?;Ok(serde_json::Value::Null)},
                     Command::WorkEvidence{mission,event}=>Ok(serde_json::to_value(store.work_evidence(&mission,&identity.public_key(),&event)?)?),
                     Command::Workstreams{mission}=>Ok(serde_json::to_value(store.workstreams(&mission,&identity.public_key())?)?),
@@ -543,8 +565,10 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
                         let e=store.withdraw_agent(&identity,&mission,&registration)?;
                         Ok(serde_json::json!({"event":e.id}))
                     }
-                    Command::DirectAgent{mission,revision,registration,text} => {
-                        let e=store.direct_agent(&identity,&mission,&revision,&registration,text)?;
+                    Command::DirectAgent{mission,revision,registration,text,clarification} => {
+                        let e=if let Some(direction)=clarification {
+                            store.clarify_agent(&identity,&mission,&revision,&registration,&direction,text)?
+                        } else { store.direct_agent(&identity,&mission,&revision,&registration,text)? };
                         Ok(serde_json::json!({"event":e.id}))
                     }
                     Command::Messages {mission,audience,before} => Ok(serde_json::to_value(store.query_messages(&mission,&identity.public_key(),crate::communication::MessageQuery::conversation(audience.as_deref().unwrap_or("main"),before))?)?),
@@ -585,8 +609,8 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
         // Never echo input or internal errors: they can contain paths or text.
         let response = match result {
             Ok(value) => serde_json::json!({ "id": request.id, "ok": true, "value": value }),
-            Err(_) => {
-                serde_json::json!({ "id": request.id, "ok": false, "error": "operation_rejected" })
+            Err(error) => {
+                serde_json::json!({ "id": request.id, "ok": false, "error": crate::errors::public_code(&error) })
             }
         };
         write_frame(&mut output, &response)?;
@@ -657,8 +681,10 @@ pub fn typescript() -> String {
         crate::withdrawal::WithdrawalView::decl(&cfg),
         crate::communication::MessageFeed::decl(&cfg),
         crate::communication::MessageQuery::decl(&cfg),
+        crate::briefing::Updates::decl(&cfg),
         crate::communication::AgentOperation::decl(&cfg),
         crate::communication::AgentContext::decl(&cfg),
+        crate::observations::ResourceHint::decl(&cfg),
         crate::observations::Observation::decl(&cfg),
         crate::observations::ObservedState::decl(&cfg),
         crate::observations::ObservationView::decl(&cfg),
@@ -684,10 +710,13 @@ pub fn typescript() -> String {
         harakiri_protocol::artifacts::CheckResult::decl(&cfg),
         harakiri_protocol::artifacts::ReviewCheck::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactDocument::decl(&cfg),
+        harakiri_protocol::artifacts::ArtifactRelation::decl(&cfg),
+        harakiri_protocol::artifacts::ArtifactReference::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactAction::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactQuery::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactSummary::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactPage::decl(&cfg),
+        harakiri_protocol::artifacts::ArtifactCandidate::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactRevisionSummary::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactReviewView::decl(&cfg),
         harakiri_protocol::artifacts::ArtifactDecision::decl(&cfg),

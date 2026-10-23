@@ -1,21 +1,77 @@
 import { createContext, memo, useContext, useId } from "react";
-import Markdown, { type Components } from "react-markdown";
+import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 
 const plugins = [remarkGfm, remarkBreaks];
+// Preserve the stored source. Only plain-text technical identifiers receive a
+// compact presentation; code blocks, link destinations and labels stay exact.
+type MarkdownNode = { type: string; value?: string; children?: MarkdownNode[] };
+function readableReferences() {
+  return (tree: MarkdownNode) => {
+    const visit = (node: MarkdownNode) => {
+      if (!node.children || ["code", "inlineCode", "link"].includes(node.type))
+        return;
+      node.children = node.children.flatMap((child) => {
+        if (child.type !== "text" || !child.value) {
+          visit(child);
+          return [child];
+        }
+        return child.value
+          .split(/(\b[a-f0-9]{64}\b)/g)
+          .filter(Boolean)
+          .map((value) => ({
+            type: /^[a-f0-9]{64}$/.test(value) ? "inlineCode" : "text",
+            value,
+          }));
+      });
+    };
+    visit(tree);
+  };
+}
+const conversationPlugins = [...plugins, readableReferences];
 const MarkdownId = createContext("");
 const LinkMode = createContext<"links" | "text">("links");
+export type ReferenceKind =
+  "artifact" | "agent" | "task" | "workstream" | "message" | "thread";
+const ReferenceAction = createContext<
+  ((kind: ReferenceKind, id: string) => void) | undefined
+>(undefined);
+const referencePattern =
+  /^harakiri:\/\/(artifact|agent|task|workstream|message|thread)\/([a-f0-9]{64})$/;
+const safeUrl = (url: string) =>
+  referencePattern.test(url) ? url : defaultUrlTransform(url);
 const components: Components = {
+  code: function MarkdownCode({ node: _node, children, ...props }) {
+    const mode = useContext(LinkMode);
+    const value = String(children);
+    return mode === "text" && /^[a-f0-9]{64}$/.test(value) ? (
+      <code {...props} title={`Technical reference: ${value}`}>
+        {value.slice(0, 8)}…{value.slice(-4)}
+      </code>
+    ) : (
+      <code {...props}>{children}</code>
+    );
+  },
   a: function MarkdownLink({ node: _node, href, children, ...props }) {
     const id = useContext(MarkdownId);
     const mode = useContext(LinkMode);
-    if (mode === "text" && href && !href.startsWith("#"))
-      return (
-        <span>
-          {children} (<code>{href}</code>)
-        </span>
+    const open = useContext(ReferenceAction);
+    const reference = href?.match(referencePattern);
+    if (reference)
+      return open ? (
+        <button
+          type="button"
+          className="markdown-reference"
+          onClick={() => open(reference[1] as ReferenceKind, reference[2])}
+        >
+          {children}
+        </button>
+      ) : (
+        <span title={href}>{children}</span>
       );
+    if (mode === "text" && href && !href.startsWith("#"))
+      return <span title={href}>{children}</span>;
     return href ? (
       <a
         {...props}
@@ -100,24 +156,29 @@ const components: Components = {
 export const Text = memo(function Text({
   value,
   links = "links",
+  onReference,
 }: {
   value: string;
   links?: "links" | "text";
+  onReference?: (kind: ReferenceKind, id: string) => void;
 }) {
   const id = useId();
   return (
     <div className="reading">
       <LinkMode.Provider value={links}>
-        <MarkdownId.Provider value={id}>
-          <Markdown
-            remarkPlugins={plugins}
-            remarkRehypeOptions={{ clobberPrefix: `${id}-` }}
-            components={components}
-            skipHtml
-          >
-            {value}
-          </Markdown>
-        </MarkdownId.Provider>
+        <ReferenceAction.Provider value={onReference}>
+          <MarkdownId.Provider value={id}>
+            <Markdown
+              remarkPlugins={links === "text" ? conversationPlugins : plugins}
+              remarkRehypeOptions={{ clobberPrefix: `${id}-` }}
+              components={components}
+              skipHtml
+              urlTransform={safeUrl}
+            >
+              {value}
+            </Markdown>
+          </MarkdownId.Provider>
+        </ReferenceAction.Provider>
       </LinkMode.Provider>
     </div>
   );

@@ -400,6 +400,7 @@ async fn lan_discovery_finds_a_peer_then_fetches_only_its_signed_public_brief() 
     let cfg = NetworkConfig {
         mode: NetworkMode::Direct,
         allow_lan: true,
+        route_directory: None,
         relays: vec![],
     };
     let reviewed = b.inspect(&reference, &cfg).await?;

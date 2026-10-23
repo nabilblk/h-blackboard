@@ -117,6 +117,312 @@ fn query(view: MessageFeed, audience: &str) -> MessageQuery {
 }
 
 #[test]
+fn human_catch_up_and_message_links_are_scoped_paginated_and_not_read_receipts() {
+    let mut f = Fixture::new();
+    let owner = f.owner.public_key();
+    let host = f.host.public_key();
+    let baseline = f.s.catch_up(&f.mission, &owner, None).unwrap();
+    assert!(baseline.items.is_empty());
+    let dm =
+        f.s.open_agent_conversation(&f.owner, &f.mission, &f.a)
+            .unwrap();
+    let secret =
+        f.s.send_message(&f.owner, &f.mission, &dm, "Private note".into(), None, None)
+            .unwrap();
+    assert!(f.s.read_message(&f.mission, &host, &secret.id).is_err());
+    assert!(f.s.catch_up(&f.mission, &host, Some(&secret.id)).is_err());
+    assert_eq!(
+        f.s.read_message(&f.mission, &owner, &secret.id)
+            .unwrap()
+            .text,
+        "Private note"
+    );
+    assert!(
+        f.s.catch_up(
+            &f.mission,
+            &Identity::from_seed([99; 32]).public_key(),
+            None
+        )
+        .is_err()
+    );
+    let mut expected = vec![secret.id];
+    for n in 0..39 {
+        expected.push(
+            f.s.send_message(
+                &f.host,
+                &f.mission,
+                "main",
+                format!("Finding {n}"),
+                None,
+                None,
+            )
+            .unwrap()
+            .id,
+        );
+    }
+    let mut cursor = baseline.after;
+    let mut actual = vec![];
+    loop {
+        let page = f.s.catch_up(&f.mission, &owner, cursor.as_deref()).unwrap();
+        assert!(page.items.len() <= 32);
+        actual.extend(
+            page.items
+                .iter()
+                .filter(|m| m.kind == "message")
+                .map(|m| m.id.clone()),
+        );
+        cursor = page.after;
+        if !page.has_more {
+            break;
+        }
+    }
+    assert_eq!(actual, expected);
+    assert!(
+        f.s.query_messages(&f.mission, &owner, MessageQuery::conversation("main", None))
+            .unwrap()
+            .items
+            .iter()
+            .filter(|m| m.author == host)
+            .all(|m| m.unread)
+    );
+    let mut remote = Store::open(&f._temp.path().join("late.sqlite")).unwrap();
+    remote.import(&f.s.delta(&f.mission, &[]).unwrap()).unwrap();
+    let event = remote
+        .send_message(
+            &f.outsider,
+            &f.mission,
+            "main",
+            "Late evidence".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    let mut body = event.body;
+    body.created_at_ms = Some(1);
+    let late = f.outsider.sign(body).unwrap();
+    f.s.import(&[late.bytes().to_vec()]).unwrap();
+    let page = f.s.catch_up(&f.mission, &owner, cursor.as_deref()).unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].id, late.id);
+}
+
+#[test]
+fn clarification_is_addressed_acknowledged_and_does_not_replace_direction() {
+    let mut f = Fixture::new();
+    let control = f.start();
+    let before = f.request(AgentOperation::Context {}).unwrap();
+    let direction = before["agent"]["direction"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let update =
+        f.s.clarify_agent(
+            &f.owner,
+            &f.mission,
+            &control,
+            &f.a,
+            &direction,
+            "Use the revised venue capacity as evidence; keep the approved research scope.".into(),
+        )
+        .unwrap();
+    let retry =
+        f.s.clarify_agent(
+            &f.owner,
+            &f.mission,
+            &control,
+            &f.a,
+            &direction,
+            "Use the revised venue capacity as evidence; keep the approved research scope.".into(),
+        )
+        .unwrap();
+    assert_eq!(retry.id, update.id);
+    let after = f.request(AgentOperation::Context {}).unwrap();
+    assert_eq!(after["agent"]["direction"], before["agent"]["direction"]);
+    assert_eq!(after["lifecycle"]["revision"], control);
+    assert_eq!(after["agent"]["pending_clarifications"], 1);
+    let priority = f
+        .request(AgentOperation::PriorityUpdates { after: None })
+        .unwrap();
+    assert!(
+        priority["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["id"] == update.id && m["to"] == f.key("a").public_key())
+    );
+    let pending = f.request(AgentOperation::Clarifications {}).unwrap();
+    assert_eq!(pending["items"][0]["id"], update.id);
+    assert_eq!(
+        f.request(AgentOperation::Context {}).unwrap()["agent"]["pending_clarifications"],
+        1,
+        "reading is not acknowledgment"
+    );
+    let ack = f
+        .request(AgentOperation::AcknowledgeUpdate {
+            control: control.clone(),
+            clarification: update.id.clone(),
+        })
+        .unwrap();
+    assert_eq!(
+        f.request(AgentOperation::AcknowledgeUpdate {
+            control: control.clone(),
+            clarification: update.id.clone()
+        })
+        .unwrap(),
+        ack
+    );
+    assert_eq!(
+        f.request(AgentOperation::Context {}).unwrap()["agent"]["pending_clarifications"],
+        0
+    );
+    assert!(
+        f.s.clarify_agent(
+            &f.outsider,
+            &f.mission,
+            &control,
+            &f.a,
+            &direction,
+            "Unapproved change".into()
+        )
+        .is_err()
+    );
+    assert!(
+        f.s.agent_request(
+            &f.host,
+            &f.mission,
+            "b",
+            &f.s.agent_views(&f.mission)
+                .unwrap()
+                .iter()
+                .find(|a| a.identity.label == "b")
+                .unwrap()
+                .id
+                .clone(),
+            AgentOperation::AcknowledgeUpdate {
+                control,
+                clarification: update.id
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn accounting_activity_cannot_displace_human_instructions_from_a_snapshot() {
+    use harakiri_protocol::governance::GovernanceAction;
+    let mut f = Fixture::new();
+    let start = f.start();
+    let instruction =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            "main",
+            "Check the numerical boundary before handoff".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    for _ in 0..70 {
+        let allocation =
+            f.s.govern(
+                &f.owner,
+                &f.mission,
+                &start,
+                GovernanceAction::Allocate {
+                    node: f.host.public_key(),
+                    turns: Some(1),
+                    slots: 1,
+                },
+            )
+            .unwrap();
+        let seal =
+            f.s.govern(
+                &f.host,
+                &f.mission,
+                &start,
+                GovernanceAction::SealAllocation {
+                    allocation: allocation.id,
+                    grants: vec![],
+                },
+            )
+            .unwrap();
+        f.s.govern(
+            &f.owner,
+            &f.mission,
+            &start,
+            GovernanceAction::Reclaim { seal: seal.id },
+        )
+        .unwrap();
+    }
+    let full = f
+        .request(AgentOperation::Messages {
+            query: MessageQuery::conversation("main", None),
+        })
+        .unwrap();
+    assert_eq!(full["items"].as_array().unwrap().len(), 200);
+    assert!(
+        full["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["kind"] == "governance")
+    );
+    let brief = f
+        .request(AgentOperation::Snapshot {
+            watch: vec![],
+            after: None,
+            priority_after: None,
+        })
+        .unwrap();
+    let messages = brief["main"]["items"].as_array().unwrap();
+    assert!(messages.iter().any(|m| m["id"] == instruction.id));
+    assert!(messages.iter().all(|m| m["kind"] != "governance"));
+    assert_eq!(brief["context"]["lifecycle"]["revision"], start);
+    assert!(brief["criteria"].is_array());
+    assert!(
+        brief["message_projection"]
+            .as_str()
+            .unwrap()
+            .contains("full accounting")
+    );
+    let ledger = f.request(AgentOperation::Governance {}).unwrap();
+    assert_eq!(ledger["allocations"].as_array().unwrap().len(), 70);
+}
+
+#[test]
+fn addressing_a_registration_explains_the_identity_mismatch_without_a_sync_retry() {
+    let mut f = Fixture::new();
+    let error =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            "main",
+            "Hello".into(),
+            Some(f.a.clone()),
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "message recipient is an agent registration; use identity.author"
+    );
+    let recipient = f.key("a").public_key();
+    let sent =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            "main",
+            "Hello".into(),
+            Some(recipient.clone()),
+            None,
+        )
+        .unwrap();
+    assert!(
+        matches!(sent.body.payload, Payload::MessageSent { to: Some(to), .. } if to == recipient)
+    );
+}
+
+#[test]
 fn agent_identity_scope_and_acknowledgment_are_bound_to_exact_current_direction() {
     let mut f = Fixture::new();
     let ctx = f.request(AgentOperation::Context {}).unwrap();
@@ -257,6 +563,34 @@ fn private_agents_share_a_host_but_never_each_others_conversations_or_cursors() 
         })
         .unwrap();
     assert_eq!(messages["items"][0]["text"], "Private constraint");
+    let snapshot = f
+        .request(AgentOperation::Snapshot {
+            watch: vec![],
+            after: None,
+            priority_after: None,
+        })
+        .unwrap();
+    assert!(snapshot["inbox"].to_string().contains("Private constraint"));
+    let other =
+        f.s.agent_views(&f.mission)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.identity.label == "b")
+            .unwrap();
+    let snapshot =
+        f.s.agent_request(
+            &f.host,
+            &f.mission,
+            "b",
+            &other.id,
+            AgentOperation::Snapshot {
+                watch: vec![],
+                after: None,
+                priority_after: None,
+            },
+        )
+        .unwrap();
+    assert!(!snapshot.to_string().contains("Private constraint"));
     f.request(AgentOperation::Post {
         audience: dm.clone(),
         text: "Received privately".into(),
@@ -524,7 +858,7 @@ fn schema_nine_rebuilds_verified_indexes_and_rolls_back_corruption() {
     drop(f.s);
     let reset = || {
         let db = rusqlite::Connection::open(&path).unwrap();
-        db.execute_batch("DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; PRAGMA user_version=8;").unwrap();
+        db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; PRAGMA user_version=8;").unwrap();
     };
     reset();
     let s = Store::open(&path).unwrap();
@@ -551,5 +885,255 @@ fn schema_nine_rebuilds_verified_indexes_and_rolls_back_corruption() {
         )
         .unwrap(),
         0
+    );
+}
+
+#[test]
+fn incremental_delivery_survives_page_limits_restart_private_cursors_and_late_replication() {
+    use harakiri_protocol::work::WorkAction;
+    let mut f = Fixture::new();
+    let control = f.start();
+    let mut expected = vec![];
+    for n in 0..205 {
+        expected.push(
+            f.s.send_message(
+                &f.owner,
+                &f.mission,
+                "main",
+                format!("Instruction {n}"),
+                None,
+                None,
+            )
+            .unwrap()
+            .id,
+        );
+    }
+    let stream =
+        f.s.work(
+            &f.owner,
+            &f.mission,
+            &control,
+            WorkAction::CreateWorkstream {
+                name: "Evidence".into(),
+                goal: "Compare counterexamples".into(),
+            },
+        )
+        .unwrap()
+        .id;
+    let stream_message =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            &format!("workstream:{stream}"),
+            "New counterexample".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    expected.push(stream_message.id.clone());
+    let other =
+        f.s.agent_views(&f.mission)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.identity.label == "b")
+            .unwrap();
+    let dm =
+        f.s.open_agent_conversation(&f.owner, &f.mission, &other.id)
+            .unwrap();
+    let secret =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            &dm,
+            "Private B instruction".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    assert!(
+        f.request(AgentOperation::Updates {
+            after: Some(secret.id)
+        })
+        .is_err()
+    );
+    let mut cursor = None;
+    let mut delivered = vec![];
+    loop {
+        let page = f
+            .request(AgentOperation::Updates {
+                after: cursor.clone(),
+            })
+            .unwrap();
+        let items = page["items"].as_array().unwrap();
+        assert!(items.len() <= 32);
+        delivered.extend(items.iter().map(|m| m["id"].as_str().unwrap().to_owned()));
+        cursor = page["after"].as_str().map(str::to_owned);
+        if page["has_more"] == false {
+            break;
+        }
+    }
+    assert_eq!(delivered, expected);
+    // Reopen the same local store: its insertion cursor remains valid.
+    f.s = Store::open(&f._temp.path().join("test.sqlite")).unwrap();
+    assert!(
+        f.request(AgentOperation::Updates {
+            after: cursor.clone()
+        })
+        .unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    // A remote author's older clock must not put a newly replicated message
+    // behind an already-delivered cursor. Sign it on a separate replica.
+    let mut remote = Store::open(&f._temp.path().join("remote.sqlite")).unwrap();
+    remote.import(&f.s.delta(&f.mission, &[]).unwrap()).unwrap();
+    let event = remote
+        .send_message(
+            &f.outsider,
+            &f.mission,
+            "main",
+            "Arrived after partition".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    let mut body = event.body.clone();
+    body.created_at_ms = Some(1);
+    let late = f.outsider.sign(body).unwrap();
+    f.s.import(&[late.bytes().to_vec()]).unwrap();
+    let page = f
+        .request(AgentOperation::Updates { after: cursor })
+        .unwrap();
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(page["items"][0]["id"], late.id);
+    assert_eq!(page["items"][0]["created_at_ms"], 1);
+}
+
+#[test]
+fn new_registration_keeps_old_history_readable_without_replaying_it_as_pending_work() {
+    let mut f = Fixture::new();
+    let historical =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            "main",
+            "Earlier direction, now superseded".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    let newcomer = f.key("newcomer");
+    let registration =
+        f.s.offer_agent(
+            &f.host,
+            &f.mission,
+            &f.mission,
+            AgentIdentity {
+                author: newcomer.public_key(),
+                label: "newcomer".into(),
+                runtime: "grok".into(),
+                role: AgentRole::Agent,
+                contributor_name: "Host".into(),
+            },
+        )
+        .unwrap()
+        .id;
+    let instruction =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            "main",
+            "The current direction".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    let pending =
+        f.s.agent_request(
+            &f.host,
+            &f.mission,
+            "newcomer",
+            &registration,
+            AgentOperation::Updates { after: None },
+        )
+        .unwrap();
+    assert_eq!(pending["items"].as_array().unwrap().len(), 1);
+    assert_eq!(pending["items"][0]["id"], instruction.id);
+    let old =
+        f.s.agent_request(
+            &f.host,
+            &f.mission,
+            "newcomer",
+            &registration,
+            AgentOperation::Message {
+                id: historical.id.clone(),
+            },
+        )
+        .unwrap();
+    assert_eq!(old["id"], historical.id);
+}
+
+#[test]
+fn priority_messages_cannot_be_hidden_behind_unrelated_dependency_wait_chatter() {
+    let mut f = Fixture::new();
+    f.start();
+    let b = f.key("b");
+    for n in 0..70 {
+        f.s.send_message(
+            &b,
+            &f.mission,
+            "main",
+            format!("Unrelated result {n}"),
+            None,
+            None,
+        )
+        .unwrap();
+    }
+    let human =
+        f.s.send_message(
+            &f.owner,
+            &f.mission,
+            "main",
+            "Stop waiting and review the changed brief".into(),
+            None,
+            None,
+        )
+        .unwrap();
+    let snapshot = f
+        .request(AgentOperation::Snapshot {
+            watch: vec![],
+            after: None,
+            priority_after: None,
+        })
+        .unwrap();
+    assert_eq!(snapshot["updates"]["items"].as_array().unwrap().len(), 32);
+    assert!(!snapshot["updates"].to_string().contains(&human.id));
+    assert_eq!(snapshot["priority"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["priority"]["items"][0]["id"], human.id);
+    let directed =
+        f.s.send_message(
+            &b,
+            &f.mission,
+            "main",
+            "Please check this counterexample".into(),
+            Some(f.key("a").public_key()),
+            None,
+        )
+        .unwrap();
+    let page = f
+        .request(AgentOperation::PriorityUpdates {
+            after: Some(human.id),
+        })
+        .unwrap();
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(page["items"][0]["id"], directed.id);
+    // Priority delivery never consumes or discards the ordinary conversation.
+    assert_eq!(
+        f.request(AgentOperation::Updates { after: None }).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        32
     );
 }

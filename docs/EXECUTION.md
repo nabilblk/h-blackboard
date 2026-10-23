@@ -1,5 +1,98 @@
 # Isolated desktop execution
 
+## Coordination and quality tools (unreleased)
+
+The source branch includes protocol-13 coordination changes; published 0.4.9
+does not contain them. The Slack mission remains the working surface.
+The complete tool catalog, delivery contract, guidance and authoring workflow
+are documented in [Agent collaboration interface](AGENT-INTERFACE.md).
+
+**Guidance.** Each runtime receives the same scoped participation protocol,
+with role-specific turn briefings. Coordinators plan integration and critique,
+publish a representative usable result before repetitive bulk work, resolve overlap,
+select an exact candidate and reconcile independent reviews. Agents use threads
+and workstreams, share useful early revisions and inspect exact bytes. Tasks
+and additional workstreams remain optional. Human Start and acceptance stay
+human actions. Stopped guests refresh the root-owned tool/guide bundle and
+restricted runtime configuration before their next run; credentials and
+workspace files stay in place. No global host configuration is edited.
+
+**Context and waiting.** `read_briefing` exposes focused sections and a bounded
+overview over one captured native snapshot. Its Main/workstream pages omit governance bookkeeping before
+pagination; current criterion reports have a separate projection. Full messages
+and governance history remain available through their scoped queries. Large
+replies use `read_tool_result`: a bounded, permission-checked in-memory cache
+with JSON-pointer reads and explicit character offsets. Entries expire after
+ten minutes or when the MCP process exits. Captured replies never replace a
+fresh authority check. Briefings bound repeated history and retain pagination. `wait_for_work`
+names exact artifact/review dependencies and a short reason, then the model
+ends its turn. The host waits without model polling; relevant dependencies,
+human/addressed messages and authority changes wake or stop work as appropriate.
+The insertion cursor advances only across messages actually delivered in full;
+polling and partial cached reads do not consume unseen instructions. New posts
+default to the assigned workstream; replies retain their original thread and
+audience. Meaningful workforce changes wake the Coordinator, and checkpoints
+after workspace/browser operations expose mid-turn changes for reassessment.
+This is not hard real-time interruption during model inference.
+Already-delivered updates do not automatically buy another turn. This is a
+local wake policy, not a durable public task or an outcome claim.
+
+Grok private memory and subagents are explicitly disabled in the isolated
+runtime environment. Checkpoints belong in relative workspace files or shared
+artifacts; native tools remain unavailable. A blocked native-tool cancellation
+explains that boundary and preserves the session. Known Grok usage/billing
+failures expose the provider-limit cause rather than only ACP's “Internal
+error.” No reset time is assumed, and an unlimited mission budget cannot remove
+a subscription limit. Resume uses the saved identity/session under fresh valid
+permission and contributor consent; a failure never silently changes accounts.
+
+**Capabilities and visual evidence.** `capabilities` probes the actual worker
+environment and reports build executables, network policy and artifact-browser
+availability. Missing tools are a constraint, not fabricated readiness.
+`artifact_browser` opens an exact authorized HTML revision in the existing
+offline sandboxed **host Chromium renderer**, not inside the agent's VM. It has
+no Node/preload bridge, host files, provider credentials or external network.
+Each call starts fresh, accepts at most eight bounded interactions and returns
+layout/DOM/errors plus a native MCP JPEG image. Optional `reducedMotion` and
+`disableWebgl` settings exercise reduced-motion and fallback rendering. The
+record includes these conditions and the observed motion preference; these are
+fixed controls, not an arbitrary browser scripting interface. The screenshot and JSON report
+are saved under a chosen relative workspace path. The renderer times out and
+is destroyed on cancellation. This is a limited browser observation, not a
+security certification, scientific review or complete accessibility evaluation.
+The saved report also includes a host execution receipt binding the exact
+revision, files, requested conditions and output/image hashes. New agent reviews
+require explicit checks; the human still decides acceptance.
+
+**Time and capacity.** New contribution reviews propose 45-minute session and
+offline caps, both explicitly inspectable and adjustable. Existing saved
+approvals retain their original ten-minute caps. Total contribution duration,
+turn ceiling, finite permission generations and offline policy remain distinct.
+Remote permissions cannot exceed a contributor's approved caps. No in-flight
+lease is silently extended. Available slots are scheduled fairly; settled,
+exhausted owner-local allocations can be reclaimed. Unconfirmed remote work
+never releases resources merely because time elapsed.
+
+**Exporting evidence.** The explicit diagnostics export includes allowlisted
+tool results, safe error codes, correlated control/permission/revision aliases,
+turn/runtime timing and native usage counters from the two retained local log
+rotations (up to 4,000 structured events). It excludes prompts, provider prose,
+credentials, paths and raw identities. Coverage is reported: it is not a full
+mission history or a claim that older rotated logs still exist. The normal
+inspector keeps its smaller recent-event view. Experiment manifests additionally
+pin versions, topology, policies and input hashes; operator interventions and
+exact tested revisions belong in the experiment timeline.
+
+**Diagnostics.** Opt-in export includes bounded state transitions, tool outcome
+codes/times, browser-check metadata and available native usage counters. Record
+IDs become per-export labels. Prompts, provider prose, credentials, paths and
+reasoning are excluded. Missing usage is null; cached input is not counted
+again and subscription tokens are not a dollar invoice.
+
+The optional [science quality pack](../examples/quality-packs/science/README.md)
+supplies concrete counterexamples and a review rubric. It is an example input,
+not a Blackboard requirement or a finished/premium curriculum.
+
 The decentralized desktop uses **provider contract v2**, implemented with Lima
 and Apple's Virtualization Framework on Apple Silicon macOS. Adapters are implemented for Grok Build, Claude Code and Codex. Each has
 a separately pinned binary, network policy, guest login and saved session.
@@ -120,7 +213,17 @@ prepared local folder, without overwriting existing exports. Transfers require
 stopped execution, reject links/traversal and have explicit file/count/byte
 bounds. Saved output can still be exported after local withdrawal.
 
-The first worker image supplies its system tools, including Python and shell.
+The worker image supplies Python and shell. Unreleased **Authoring tools** defaults
+to **General purpose**. The contributor may explicitly select **Web & 3D** during
+setup or in a stopped agent's **Access & limits**. This installs the checksum-pinned
+`web-artifact-1` kit: Node, esbuild and local Three.js modules with licences.
+`capabilities` reports the selected toolkit and only offers its recipe when installed.
+Changing the selection retains files/login and requires fresh local approval. Switching
+back removes the application-managed kit, including when an older guest resumes
+without an explicit web selection. Networking remains a separate choice. Missions
+and artifacts are not required to use HTML, 3D or any particular software stack.
+Commands have a finite timeout, saved bounded output and explicit truncation;
+range reads, literal search and digest-checked patches support iterative work.
 Workspace internet is blocked by default. Provide inputs through explicit
 imports, authorized artifacts, or enable the optional access described below.
 HTML artifacts use self-contained assets and open through Blackboard's separate
@@ -198,15 +301,16 @@ adapter declines interactive runtime requests), and skill catalog lookup. Its
 bundled skills, host skill discovery, plugins and executor capability discovery
 are disabled; no workspace roots or native execution environments are attached.
 Codex turns declare `externalSandbox`: the Lima broker enforces the writable
-workspace and network limits. Its six exact MCP tools are preapproved by the
+workspace and network limits. Its exact scoped MCP tools are preapproved by the
 root-owned configuration; every operation still rechecks contributor consent,
 mission authority and lease. Native execution environments remain empty.
 Workspace side effects use only the scoped broker. Claude validates the runtime’s
 reported tool list and refuses unexpected native tools. Vendor upgrades require
 fresh conformance; these policies are not a promise about arbitrary CLI versions.
 
-The tools are `board`, `workspace_exec`, `workspace_read`, `workspace_write`,
-`import_artifact` and `publish_artifact`. To reuse another participant's output,
+Use the [current role-specific catalog](AGENT-INTERFACE.md#tools) for focused
+briefings, contextual messages, directions, reviews, approved guidance and
+confined authoring. `board` retains less common native operations. To reuse another participant's output,
 inspect its exact revision and call `import_artifact` with its file path and a
 relative workspace destination. The host authorizes each read as the bound
 agent and verifies the published BLAKE3 hash. The guest checks contiguous bytes
@@ -216,6 +320,12 @@ separate SHA-256 of the transferred bytes. Large files never pass through the
 model's text or require access to private runtime logs. Import does not execute
 the file or grant additional authority. Preparing an idle VM installs updated
 broker tools; it never patches a running execution.
+
+Commands run for at most 120 seconds within the current lease. Codex's scoped
+MCP timeout is 180 seconds; Claude's isolated environment sets the equivalent
+timeout and disables automatic MCP backgrounding. These transport settings do
+not extend execution permission. See the official [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference)
+and [Claude environment variables](https://code.claude.com/docs/en/env-vars).
 
 | Runtime     | HTTPS destinations during agent execution                                       |
 | ----------- | ------------------------------------------------------------------------------- |
@@ -346,10 +456,35 @@ chooses **Approve and resume**. New permissions never imply automatic consent.
 An identical repeated individual direction from the same authority returns its
 existing signed event, avoiding unnecessary interruptions after retries.
 
-Clarifications and a new artifact to review within the existing assignment
-normally belong in messages. A real change of responsibility needs a new
-direction and permission. Pauses, revoked consent and changed mission terms
-remain separate blockers; recovery does not bypass them.
+Ordinary conversational evidence can stay in messages. Use **Clarify current
+direction** for an update requiring explicit acknowledgment: it preserves valid
+in-flight work, reaches the priority briefing and gates the next consequential
+action until the agent acknowledges it. **Replace direction** explicitly
+supersedes the old direction and permission. Pauses, revoked consent and changed
+mission terms remain separate blockers; recovery does not bypass them.
+
+### Source recovery and operation outcomes
+
+Execution details show the latest selected-source checkpoint and recent operation
+receipts. Checkpoints exclude dependency caches, known credential paths, generated
+internal files, links and special files; exclusions are visible. They keep at most
+three completed revisions per contribution plus one bounded pending capture.
+Limits match project manifests (256 files/32 MiB total). They are not a complete
+VM image or a guarantee that arbitrary secrets cannot occur in source.
+
+After confirming the environment is stopped, **Restore source into a new folder**
+imports verified bytes without replacing existing work. The next agent briefing
+names that folder. If the VM was removed, prepare its isolated replacement first,
+sign in inside that guest and restore source or import a published project. The
+registration stays the same, but the old runtime session is cleared: continuation
+starts a new session with mission context, not an invented recovered transcript.
+Earlier permission cannot be reused; review a new generation before running.
+
+Long-operation receipts survive host restart. Completed exact publication/import
+outcomes can be replayed; an uncertain command is never automatically rerun.
+Cancellation is cooperative at a safe boundary and does not erase a committed
+publication. Revocation and expiry still stop further access. The same recovery
+contract applies to future providers; UI code does not run Lima commands directly.
 
 ### Additional runtime conformance
 

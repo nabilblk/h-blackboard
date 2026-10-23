@@ -151,6 +151,9 @@ pub struct LifecycleView {
     pub phase: MissionPhase,
     pub coordinator: Option<CoordinatorView>,
     pub plan: Option<PlanView>,
+    /// Adaptive execution guidance. Never replaces the plan accepted by Start
+    /// or widens mission terms, contributor consent, or execution permissions.
+    pub operational_plan: Option<PlanView>,
     pub readiness: Option<ReadinessView>,
     pub pause_reason: Option<String>,
     pub start_blockers: Vec<String>,
@@ -197,6 +200,7 @@ impl History {
                 phase: MissionPhase::Preparing,
                 coordinator: None,
                 plan: None,
+                operational_plan: None,
                 readiness: None,
                 pause_reason: None,
                 start_blockers: vec![],
@@ -438,10 +442,15 @@ impl History {
             || e.body.authority.as_ref() != Some(&c.appointment)
             || e.body.audience != "main"
             || e.mission_id() != self.root.id
-            || !matches!(
+            || !(matches!(
                 p.lifecycle.phase,
                 MissionPhase::Preparing | MissionPhase::Paused
-            )
+            ) || (e.body.version >= 13
+                && p.lifecycle.phase == MissionPhase::Active
+                && matches!(
+                    e.body.payload,
+                    Payload::CoordinatorPlanned { .. } | Payload::CoordinatorPlanArtifact { .. }
+                )))
         {
             return Err(Error::Invalid("Coordinator epoch or control revision"));
         }
@@ -512,6 +521,63 @@ impl History {
                     })
                 });
         }
+        // Operational guidance follows the current authority epoch through
+        // pause/resume and closure. A terms edit, appointment or explicit owner
+        // plan resets it. Late records cannot rewrite the plan accepted by Start.
+        let mut eligible = BTreeMap::new();
+        let mut cursor = p.lifecycle.revision.as_str();
+        for _ in 0..crate::limits::MAX_CONTROL_EVENTS {
+            let event = self.get(cursor)?;
+            let Payload::MissionControlled { previous, action } = &event.body.payload else {
+                break;
+            };
+            if matches!(action, ControlAction::Start { .. }) {
+                let mut at = p.clone();
+                at.lifecycle.revision = cursor.to_owned();
+                at.lifecycle.phase = MissionPhase::Active;
+                eligible.insert(cursor.to_owned(), (event.body.sequence, at));
+            }
+            if !matches!(
+                action,
+                ControlAction::Start { .. }
+                    | ControlAction::Pause { .. }
+                    | ControlAction::Close { .. }
+                    | ControlAction::Archive { .. }
+                    | ControlAction::Restore {}
+            ) {
+                break;
+            }
+            cursor = previous;
+        }
+        p.lifecycle.operational_plan = self
+            .records
+            .values()
+            .filter_map(|event| {
+                let (control, text, artifact) = match &event.body.payload {
+                    Payload::CoordinatorPlanned { control, text } => (control, text.clone(), None),
+                    Payload::CoordinatorPlanArtifact { control, revision } => (
+                        control,
+                        "Artifact-backed operational plan".into(),
+                        Some(revision.clone()),
+                    ),
+                    _ => return None,
+                };
+                let (sequence, at) = eligible.get(control)?;
+                if self.check_coordinator(at, event).is_err() {
+                    return None;
+                }
+                Some((
+                    (*sequence, event.body.sequence, event.id.clone()),
+                    PlanView {
+                        id: event.id.clone(),
+                        author: event.body.author.clone(),
+                        text,
+                        artifact,
+                    },
+                ))
+            })
+            .max_by_key(|(rank, _)| rank.clone())
+            .map(|(_, plan)| plan);
         p.lifecycle.start_blockers = if matches!(
             p.lifecycle.phase,
             MissionPhase::Closed | MissionPhase::Archived

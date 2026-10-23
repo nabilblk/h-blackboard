@@ -29,7 +29,7 @@ use std::{
 };
 use tokio::{sync::Semaphore, task::JoinHandle, time::timeout};
 
-pub const ALPN: &[u8] = b"harakiri/sync/11";
+pub const ALPN: &[u8] = b"harakiri/sync/13";
 pub type SharedStore = Arc<Mutex<Store>>;
 
 #[derive(Debug)]
@@ -86,6 +86,13 @@ pub enum Request {
         audience: String,
         heads: Vec<Head>,
     },
+    PullPage {
+        mission: String,
+        audience: String,
+        after: Option<String>,
+        heads: Vec<Head>,
+        sent: Option<String>,
+    },
     Push {
         mission: String,
         audience: String,
@@ -118,6 +125,13 @@ pub enum Response {
     Records {
         events: Vec<String>,
     },
+    RecordPage {
+        events: Vec<String>,
+        after: Option<String>,
+        more: bool,
+        reset: bool,
+        has_sent: bool,
+    },
     Accepted {
         inserted: usize,
         heads: Vec<Head>,
@@ -142,6 +156,8 @@ struct SyncProtocol {
     local: String,
     slots: Arc<Semaphore>,
     catalog_rate: Arc<Mutex<(std::time::Instant, u32)>>,
+    budget: Arc<Mutex<crate::abuse::Budget>>,
+    connections: crate::abuse::Connections,
 }
 
 impl std::fmt::Debug for SyncProtocol {
@@ -167,6 +183,7 @@ impl SyncProtocol {
             let mission = match &request {
                 Request::Observe { mission, .. }
                 | Request::Pull { mission, .. }
+                | Request::PullPage { mission, .. }
                 | Request::Push { mission, .. }
                 | Request::Exchange { mission, .. } => Some(mission),
                 _ => None,
@@ -268,6 +285,41 @@ impl SyncProtocol {
                     store.acknowledge(&mission, &audience, remote, &heads, now())?;
                     Ok(Response::Records { events })
                 }
+                Request::PullPage {
+                    mission,
+                    audience,
+                    after,
+                    heads,
+                    sent,
+                } => {
+                    ensure!(
+                        store.can_read_scope(&mission, &audience, remote)?
+                            && store.can_read_scope(&mission, &audience, &self.local)?,
+                        "not authorized"
+                    );
+                    // Validate supplied heads before recording the peer's claim.
+                    store.verified_heads(&mission, &audience, &heads)?;
+                    ensure!(
+                        sent.as_deref()
+                            .is_none_or(harakiri_protocol::event::is_hash),
+                        "invalid sent cursor"
+                    );
+                    let has_sent = match sent {
+                        None => true,
+                        Some(id) => store.event(&id)?.is_some_and(|e| {
+                            e.mission_id() == mission && e.body.audience == audience
+                        }),
+                    };
+                    let page = store.history_page(&mission, &audience, after.as_deref())?;
+                    store.acknowledge(&mission, &audience, remote, &heads, now())?;
+                    Ok(Response::RecordPage {
+                        events: page.events.iter().map(hex::encode).collect(),
+                        after: page.after,
+                        more: page.more,
+                        reset: page.reset,
+                        has_sent,
+                    })
+                }
                 Request::Push {
                     mission,
                     audience,
@@ -296,12 +348,29 @@ impl ProtocolHandler for SyncProtocol {
             connection.close(1u32.into(), b"unavailable");
             return Ok(());
         };
+        let remote = connection.remote_id().to_string();
+        let Some(_peer_permit) = self.connections.acquire(&remote) else {
+            connection.close(1u32.into(), b"peer connection limit");
+            return Ok(());
+        };
         let result = timeout(Duration::from_secs(limits::REQUEST_TIMEOUT_SECS), async {
             let (mut send, mut recv) = connection.accept_bi().await?;
             let bytes = recv.read_to_end(limits::MAX_FRAME_BYTES).await?;
+            ensure!(
+                self.budget
+                    .lock()
+                    .map_err(|_| anyhow!("request budget unavailable"))?
+                    .allow(&remote, bytes.len(), false),
+                "peer request budget exceeded"
+            );
             let response = serde_json::from_slice(&bytes)
                 .ok()
                 .and_then(|request| {
+                    if matches!(request, Request::Catalog { .. })
+                        && !self.budget.lock().ok()?.allow(&remote, 0, true)
+                    {
+                        return None;
+                    }
                     self.handle(&connection.remote_id().to_string(), request)
                         .ok()
                 })
@@ -355,6 +424,7 @@ pub struct PeerNode {
     pub(crate) blobs: FsStore,
     router: Router,
     blob_policy: JoinHandle<()>,
+    pub(crate) route_cache: Mutex<HashMap<String, (std::time::Instant, Option<EndpointAddr>)>>,
 }
 
 impl PeerNode {
@@ -374,6 +444,10 @@ impl PeerNode {
         let (events, blob_policy) = blob_policy(store.clone());
         let router = Router::builder(endpoint.clone())
             .accept(
+                crate::compatibility::ALPN,
+                crate::compatibility::Compatibility::default(),
+            )
+            .accept(
                 ALPN,
                 SyncProtocol {
                     identity: identity.clone(),
@@ -381,6 +455,8 @@ impl PeerNode {
                     local: endpoint.id().to_string(),
                     slots: Arc::new(Semaphore::new(limits::MAX_CONNECTIONS)),
                     catalog_rate: Arc::new(Mutex::new((std::time::Instant::now(), 0))),
+                    budget: Arc::new(Mutex::new(crate::abuse::Budget::default())),
+                    connections: crate::abuse::Connections::default(),
                 },
             )
             .accept(
@@ -395,6 +471,7 @@ impl PeerNode {
             blobs,
             router,
             blob_policy,
+            route_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -412,7 +489,20 @@ impl PeerNode {
 
     pub async fn request(&self, peer: EndpointAddr, request: &Request) -> Result<Response> {
         timeout(Duration::from_secs(limits::REQUEST_TIMEOUT_SECS), async {
-            let connection = self.endpoint.connect(peer, ALPN).await?;
+            let connection = match self.endpoint.connect(peer.clone(), ALPN).await {
+                Ok(connection) => connection,
+                Err(original) => {
+                    // Only use the stable handshake to diagnose a failed sync
+                    // protocol. Never downgrade record validation or authority.
+                    if let Ok(Ok(reply)) =
+                        timeout(Duration::from_secs(3), self.compatibility(peer)).await
+                        && !reply.compatible
+                    {
+                        bail!("peer protocol incompatible");
+                    }
+                    return Err(original.into());
+                }
+            };
             let (mut send, mut recv) = connection.open_bi().await?;
             let bytes = serde_json::to_vec(request)?;
             ensure!(bytes.len() <= limits::MAX_FRAME_BYTES, "request limit");
@@ -429,6 +519,7 @@ impl PeerNode {
                 let mission = match request {
                     Request::Observe { mission, .. }
                     | Request::Pull { mission, .. }
+                    | Request::PullPage { mission, .. }
                     | Request::Push { mission, .. }
                     | Request::Exchange { mission, .. } => mission,
                     _ => bail!("unexpected revocation"),
@@ -442,6 +533,25 @@ impl PeerNode {
         .await?
     }
 
+    pub async fn compatibility(&self, peer: EndpointAddr) -> Result<crate::compatibility::Reply> {
+        let connection = self
+            .endpoint
+            .connect(peer, crate::compatibility::ALPN)
+            .await?;
+        let result = async {
+            let (mut send, mut recv) = connection.open_bi().await?;
+            send.write_all(&serde_json::to_vec(&crate::compatibility::Hello {
+                protocol: limits::VERSION,
+            })?)
+            .await?;
+            send.finish()?;
+            let bytes = recv.read_to_end(256).await?;
+            Ok::<_, anyhow::Error>(serde_json::from_slice(&bytes)?)
+        }
+        .await;
+        connection.close(0u32.into(), b"handshake complete");
+        result
+    }
     pub async fn pull(&self, peer: EndpointAddr, mission: &str) -> Result<usize> {
         self.pull_scope(peer, mission, "main").await
     }
@@ -462,35 +572,78 @@ impl PeerNode {
         }
         let mut inserted = 0;
         for _ in 0..=limits::MAX_HISTORY_EVENTS / limits::MAX_BATCH_EVENTS {
-            let heads = with_store(&self.store, |s| s.heads_in(mission, audience))?;
-            let response = self
-                .request(
-                    peer.clone(),
-                    &Request::Pull {
-                        mission: mission.into(),
-                        audience: audience.into(),
-                        heads,
-                    },
-                )
-                .await?;
-            let Response::Records { events } = response else {
-                bail!("peer refused synchronization");
-            };
-            if events.is_empty() {
+            let (count, more, _) = self.pull_page(peer.clone(), mission, audience).await?;
+            inserted += count;
+            if !more {
                 return Ok(inserted);
             }
-            let bytes = decode_events(&events, mission, audience)?;
-            let result = with_store(&self.store, |s| {
-                ensure!(!s.locally_withdrawn(mission)?, "participation withdrawn");
-                s.import(&bytes)
-            })?;
-            inserted += result.inserted;
-            ensure!(
-                result.inserted > 0 && result.forks == 0,
-                "conflicting or non-progressing peer history"
-            );
         }
         bail!("synchronization work limit reached")
+    }
+
+    async fn pull_page(
+        &self,
+        peer: EndpointAddr,
+        mission: &str,
+        audience: &str,
+    ) -> Result<(usize, bool, bool)> {
+        let endpoint = peer.id.to_string();
+        let ((cursor, sent), heads) = with_store(&self.store, |s| {
+            Ok((
+                s.sync_cursors(mission, audience, &endpoint)?,
+                s.heads_in(mission, audience)?,
+            ))
+        })?;
+        let Response::RecordPage {
+            events,
+            after,
+            more,
+            reset,
+            has_sent,
+        } = self
+            .request(
+                peer,
+                &Request::PullPage {
+                    mission: mission.into(),
+                    audience: audience.into(),
+                    after: cursor.clone(),
+                    heads,
+                    sent,
+                },
+            )
+            .await?
+        else {
+            bail!("peer refused synchronization");
+        };
+        ensure!(!more || !events.is_empty(), "non-progressing peer history");
+        let bytes = decode_events(&events, mission, audience)?;
+        let expected = bytes
+            .last()
+            .map(|b| Event::verify(b).map(|e| e.id))
+            .transpose()?;
+        ensure!(
+            if events.is_empty() {
+                after == if reset { None } else { cursor.clone() }
+            } else {
+                after == expected
+            },
+            "invalid history page cursor"
+        );
+        ensure!(!more || after != cursor, "non-progressing peer history");
+        let count = with_store(&self.store, |s| {
+            ensure!(!s.locally_withdrawn(mission)?, "participation withdrawn");
+            let result = s.import(&bytes)?;
+            // A crash before the cursor commit repeats a verified page. A
+            // failed/partial import never skips its remaining causal records.
+            s.save_sync_cursor(mission, audience, &endpoint, true, after.as_deref())?;
+            if !has_sent {
+                // The peer lost a previously acknowledged prefix (for example
+                // an older backup). Replay outbound history from its root too.
+                s.save_sync_cursor(mission, audience, &endpoint, false, None)?;
+            }
+            Ok(result.inserted)
+        })?;
+        Ok((count, more, count > 0 || after != cursor))
     }
 
     pub fn contact(&self) -> Result<String> {
@@ -505,7 +658,7 @@ impl PeerNode {
         let nonce = hex::encode(rand::random::<[u8; 32]>());
         let Response::Inspection { inspection } = self
             .request(
-                i.contact.address(config)?,
+                self.resolve_contact(&i.contact, config).await?,
                 &Request::Inspect {
                     ticket: ticket.into(),
                     nonce: nonce.clone(),
@@ -533,7 +686,7 @@ impl PeerNode {
             s.reviewed_join_revision(&i.mission, ticket)
         })?;
         let offer = Offer::sign(&self.identity, ticket, contact, revision)?;
-        let addr = i.contact.address(config)?;
+        let addr = self.resolve_contact(&i.contact, config).await?;
         let Response::JoinStatus { status } = self
             .request(
                 addr.clone(),
@@ -584,56 +737,39 @@ impl PeerNode {
         mission: &str,
         audience: &str,
     ) -> Result<()> {
-        let heads = with_store(&self.store, |s| s.heads_in(mission, audience))?;
-        let Response::Records { events } = self
-            .request(
-                peer.clone(),
-                &Request::Pull {
-                    mission: mission.into(),
-                    audience: audience.into(),
-                    heads,
-                },
-            )
-            .await?
-        else {
-            bail!("sync refused")
-        };
-        let bytes = decode_events(&events, mission, audience)?;
-        with_store(&self.store, |s| {
-            ensure!(!s.locally_withdrawn(mission)?, "participation withdrawn");
-            s.import(&bytes)?;
-            Ok(())
+        let endpoint = peer.id.to_string();
+        let (_, _, pulled) = self.pull_page(peer.clone(), mission, audience).await?;
+        let (cursor, page) = with_store(&self.store, |s| {
+            let cursor = s.sync_cursors(mission, audience, &endpoint)?.1;
+            Ok((
+                cursor.clone(),
+                s.history_page(mission, audience, cursor.as_deref())?,
+            ))
         })?;
-        // An empty push is a bounded request for the peer's persisted heads.
-        let Response::Accepted { heads, .. } = self
-            .request(
-                peer.clone(),
-                &Request::Push {
-                    mission: mission.into(),
-                    audience: audience.into(),
-                    events: vec![],
-                },
-            )
-            .await?
-        else {
-            bail!("sync refused")
-        };
-        let delta = with_store(&self.store, |s| s.delta_in(mission, audience, &heads))?;
         let response = self
             .request(
                 peer.clone(),
                 &Request::Push {
                     mission: mission.into(),
                     audience: audience.into(),
-                    events: delta.iter().map(hex::encode).collect(),
+                    events: page.events.iter().map(hex::encode).collect(),
                 },
             )
             .await?;
-        let Response::Accepted { heads, .. } = response else {
+        let Response::Accepted { heads, inserted } = response else {
             bail!("sync refused")
         };
+        ensure!(inserted <= page.events.len(), "invalid import count");
         with_store(&self.store, |s| {
-            s.acknowledge(mission, audience, &peer.id.to_string(), &heads, now())
+            s.save_sync_cursor(mission, audience, &endpoint, false, page.after.as_deref())?;
+            s.acknowledge(mission, audience, &endpoint, &heads, now())?;
+            s.record_sync_progress(
+                mission,
+                audience,
+                &endpoint,
+                pulled || inserted > 0 || page.after != cursor,
+                now(),
+            )
         })?;
         Ok(())
     }
@@ -862,11 +998,17 @@ fn blob_policy(store: SharedStore) -> (EventSender, JoinHandle<()>) {
     let (sender, mut receiver) = EventSender::channel(64, mask);
     let task = tokio::spawn(async move {
         let mut connections: HashMap<u64, (String, u64)> = HashMap::new();
+        let mut budget = crate::abuse::BlobBudget::default();
         while let Some(event) = receiver.recv().await {
             match event {
                 ProviderMessage::ClientConnected(message) => {
                     let allowed = if connections.len() < limits::MAX_CONNECTIONS {
                         if let Some(endpoint) = message.endpoint_id
+                            && connections
+                                .values()
+                                .filter(|(peer, _)| peer == &endpoint.to_string())
+                                .count()
+                                < 4
                             && with_store(&store, |s| s.known_endpoint(&endpoint.to_string()))
                                 .unwrap_or(false)
                         {
@@ -909,13 +1051,13 @@ fn blob_policy(store: SharedStore) -> (EventSender, JoinHandle<()>) {
                     let _ = message.tx.send(Err(AbortReason::Permission)).await;
                 }
                 ProviderMessage::Throttle(message) => {
-                    let allowed =
-                        connections
-                            .get_mut(&message.connection_id)
-                            .is_some_and(|(_, sent)| {
-                                *sent = sent.saturating_add(message.size);
-                                *sent <= limits::MAX_BLOB_BYTES * 2 + 65536
-                            });
+                    let allowed = connections.get_mut(&message.connection_id).is_some_and(
+                        |(endpoint, sent)| {
+                            *sent = sent.saturating_add(message.size);
+                            *sent <= limits::MAX_BLOB_BYTES * 2 + 65536
+                                && budget.allow(endpoint, message.size)
+                        },
+                    );
                     let _ = message
                         .tx
                         .send(if allowed {

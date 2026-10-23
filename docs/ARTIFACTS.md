@@ -1,5 +1,82 @@
 # Usable artifacts
 
+## Decentralized desktop (unreleased protocol 13)
+
+Editable projects may contain up to **256 files**, **16 MiB per file**, **32 MiB
+total**, and **48 KiB of file descriptors**. Paths and file/directory conflicts are
+validated. Earlier protocol records retain their old limits. Preview output and
+editable source can be separate revisions joined by a pinned reference; HTML is
+optional, and an artifact does not host a backend service.
+
+Project imports verify an exact manifest once and verify every file before
+exposing a new directory. A retry can reuse an identical completed import; changed
+or additional files are preserved and rejected as a retry target. Publication
+chunks survive restart with missing-content resumption and a 24-hour staging
+expiry. Repeating the same authored publication returns the existing commit only
+after current authority is checked. The native permission boundary remains active
+through transfers.
+
+The optional `integrate_project` tool performs a conservative file-level three-way
+comparison of exact base/current/proposal projects. It writes to a new directory,
+preserves inputs, keeps the current version on a conflict and returns a conflict
+report. Review and resolve conflicts before publishing; it is not an automatic
+line merge or Git workflow requirement.
+
+**Files → Offline copy on this Mac** downloads authorized exact revision files,
+shows progress and supports cancellation/retry. Verified partial bytes are kept.
+Saved manifests alone do not imply file availability. Copies remain in the local
+node profile until that profile is removed; automatic eviction and background
+cross-peer pinning policies are not enabled. Removing a member cannot erase
+previously downloaded copies.
+
+The mission summary exposes its current exact candidate throughout execution.
+Candidate selection, reported checks, independent review and human acceptance
+remain distinct. Source/command manifests and browser receipts support evaluation;
+they do not themselves establish premium design or domain correctness.
+
+The desktop's contextual Artifacts panel keeps the conversation open. A human
+or current Coordinator selects an exact **delivery candidate**; its preview is
+at the top. A new publication cannot silently replace that choice. Type, review
+and conversation filters apply before pagination. A candidate or a Complete
+stage is not verification or acceptance. Review labels distinguish source,
+executed tests, browser and visual checks; historical scope remains visible.
+
+When publishing a revision, `parents` names current revisions of **that same
+artifact**. `inputs` retains the old live dependency semantics. New `references`
+can be `{revision, relation:"live"}`, `"pinned"` or `"citation"`. Use a pin for
+an exact reusable input, and a citation for an old review you addressed. A live
+input follows its current head. A pin does not become stale merely because a
+successor exists; actual term/authority/transitive invalidation still applies.
+Details explain the observed freshness problem. Existing signed inputs are
+never silently reinterpreted.
+
+The scoped `publish_artifact` tool checks lineage and entrypoint before upload.
+`artifact_browser` opens a published HTML draft and returns a screenshot plus
+bounded DOM/interaction evidence. Reviews name the exact revision and checks
+actually performed. See [execution tools](EXECUTION.md#coordination-and-quality-tools-unreleased)
+and [desktop limits](DESKTOP.md#artifacts-open-the-work-inspect-the-evidence).
+
+Agents can load approved `artifacts`, `visual-design` and `review` guidance when
+relevant. The confined web build kit supports modular source and offline
+bundling; it does not impose HTML on reports or other nonvisual deliverables.
+`import_artifact_project` retrieves a small complete revision into a new
+directory. Range reads, literal search and digest-checked patches support
+revision rather than repeated rewrites. New publication defaults to the assigned
+workstream; existing artifacts still require exact expected parent revisions.
+
+`review_artifact` keeps the original audience and requires explicit checks.
+Browser reports carry local execution receipts and can be published as evidence.
+These record what ran, not a visual-quality judgment or remote attestation.
+Named references in conversations open the intended revision; the original
+message remains available under **Message source**. See the full
+[agent workflow and validation limits](AGENT-INTERFACE.md).
+
+## Trusted-local web version
+
+The rest of this document describes the original web application and its CLI;
+its routes, file limits and authoring helper differ from the decentralized
+desktop. Desktop agents use the scoped tools above, not host filesystem paths.
+
 Artifacts give a mission durable, inspectable outputs. Applications open in a new browser tab; reports can be read directly; CSV and JSON tables can be previewed; source and other files can be downloaded. The mission conversation remains the working surface.
 
 ## Find and open results

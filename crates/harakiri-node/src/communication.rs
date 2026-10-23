@@ -47,6 +47,10 @@ impl MessageQuery {
 #[derive(Debug, Deserialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentOperation {
+    Agent {
+        registration: String,
+    },
+    Clarifications {},
     Agents {
         after: Option<String>,
     },
@@ -78,6 +82,23 @@ pub enum AgentOperation {
         transfer: harakiri_protocol::artifacts::ArtifactTransfer,
     },
     Context {},
+    Snapshot {
+        #[serde(default)]
+        watch: Vec<String>,
+        after: Option<String>,
+        #[serde(default)]
+        priority_after: Option<String>,
+    },
+    Message {
+        id: String,
+    },
+    Updates {
+        after: Option<String>,
+    },
+    PriorityUpdates {
+        after: Option<String>,
+    },
+    Observations {},
     Workstreams {},
     Tasks {
         query: harakiri_protocol::work::TaskQuery,
@@ -99,6 +120,10 @@ pub enum AgentOperation {
         control: String,
         direction: String,
     },
+    AcknowledgeUpdate {
+        control: String,
+        clarification: String,
+    },
     Plan {
         control: String,
         text: String,
@@ -110,6 +135,12 @@ pub enum AgentOperation {
     Direct {
         control: String,
         registration: String,
+        text: String,
+    },
+    Clarify {
+        control: String,
+        registration: String,
+        direction: String,
         text: String,
     },
 }
@@ -274,6 +305,82 @@ impl Store {
             "contribution binding mismatch"
         );
         let state = self.control_state(mission)?;
+        if let AgentOperation::Snapshot {
+            watch,
+            after,
+            priority_after,
+        } = &operation
+        {
+            ensure!(
+                harakiri_protocol::artifacts::ids(watch, 16),
+                "invalid watched artifacts"
+            );
+            // This entire response is materialized inside one synchronous
+            // native request. No network import can interleave its projections.
+            let context = self.agent_request(
+                human,
+                mission,
+                contribution,
+                registration,
+                AgentOperation::Context {},
+            )?;
+            // Execution accounting remains available in the full conversation
+            // and governance ledger. It must not displace human instructions
+            // from a bounded turn briefing. Criteria are projected separately.
+            let viewer = identity.public_key();
+            let main = self.message_query_filtered(
+                mission,
+                Some(&viewer),
+                MessageQuery::conversation("main", None),
+                true,
+            )?;
+            let inbox = self.agent_request(
+                human,
+                mission,
+                contribution,
+                registration,
+                AgentOperation::Messages {
+                    query: MessageQuery {
+                        view: MessageFeed::Inbox,
+                        audience: None,
+                        thread: None,
+                        before: None,
+                        anchor: None,
+                        search: None,
+                    },
+                },
+            )?;
+            let workstream = if let Some(id) = context["agent"]["assignment"]["workstream"].as_str()
+            {
+                serde_json::to_value(self.message_query_filtered(
+                    mission,
+                    Some(&viewer),
+                    MessageQuery::conversation(&format!("workstream:{id}"), None),
+                    true,
+                )?)?
+            } else {
+                serde_json::Value::Null
+            };
+            let watched = watch
+                .iter()
+                .map(|id| self.artifact_detail(mission, &viewer, id))
+                .collect::<Result<Vec<_>>>()?;
+            return Ok(serde_json::json!({
+                "snapshot": {"heads": self.heads(mission)?, "captured_at_ms": crate::store::now()?},
+                "message_projection": "Governance activity is omitted from Main/workstream briefing pages. Current criterion reports are in criteria; full accounting and history remain available through governance and messages.",
+                "owner": self.owner(mission)?, "humans": self.members(mission)?.iter().filter(|m| !m.revoked && !m.withdrawn).map(|m| &m.author).collect::<Vec<_>>(), "context": context, "main": main, "inbox": inbox, "workstream": workstream,
+                "tasks": self.tasks(mission, &viewer, Default::default())?,
+                "workstreams": self.workstreams(mission, &viewer)?,
+                "criteria": self.governance(mission, &viewer)?.criteria,
+                "artifacts": self.artifacts(mission, &viewer, Default::default())?,
+                "watched": watched,
+                "updates": self.agent_updates(mission, &viewer, after.as_deref(), false)?,
+                "priority": self.agent_updates(mission, &viewer, priority_after.as_deref(), true)?,
+                "workforce": self.agent_views(mission)?,
+                "observations": self.observation_views(mission)?,
+                "replica": {"scope": "local authorized history", "remote_completeness": "unknown"},
+            }));
+        }
         if matches!(
             &operation,
             AgentOperation::PlanArtifact { .. }
@@ -288,6 +395,57 @@ impl Store {
             );
         }
         let event = match operation {
+            AgentOperation::Agent { registration } => {
+                return Ok(serde_json::to_value(
+                    self.communicative_agent(mission, &registration)?,
+                )?);
+            }
+            AgentOperation::Clarifications {} => {
+                let records = self.agent_records(mission)?;
+                let mut items = Vec::new();
+                if let Some(direction) = &a.direction {
+                    for event in crate::clarifications::pending(
+                        &records,
+                        registration,
+                        &state.lifecycle.revision,
+                        &direction.id,
+                    ) {
+                        items.push(self.agent_message(
+                            mission,
+                            &identity.public_key(),
+                            &event.id,
+                        )?);
+                    }
+                }
+                return Ok(serde_json::json!({"items":items,"scope":"current_direction"}));
+            }
+            AgentOperation::Snapshot { .. } => unreachable!("snapshot returned above"),
+            AgentOperation::Message { id } => {
+                return Ok(serde_json::to_value(self.agent_message(
+                    mission,
+                    &identity.public_key(),
+                    &id,
+                )?)?);
+            }
+            AgentOperation::Updates { after } => {
+                return Ok(serde_json::to_value(self.agent_updates(
+                    mission,
+                    &identity.public_key(),
+                    after.as_deref(),
+                    false,
+                )?)?);
+            }
+            AgentOperation::PriorityUpdates { after } => {
+                return Ok(serde_json::to_value(self.agent_updates(
+                    mission,
+                    &identity.public_key(),
+                    after.as_deref(),
+                    true,
+                )?)?);
+            }
+            AgentOperation::Observations {} => {
+                return Ok(serde_json::to_value(self.observation_views(mission)?)?);
+            }
             AgentOperation::Agents { after } => {
                 return Ok(serde_json::to_value(self.agent_page(mission, after)?)?);
             }
@@ -342,6 +500,13 @@ impl Store {
                 conversation,
                 action,
             } => {
+                if let harakiri_protocol::artifacts::ArtifactAction::Review { checks, .. } = &action
+                {
+                    ensure!(
+                        !checks.is_empty(),
+                        "agent reviews require explicit checks; report unavailable checks as not_run"
+                    );
+                }
                 ensure!(
                     !matches!(
                         action,
@@ -415,6 +580,42 @@ impl Store {
                 mission,
                 Payload::CoordinatorPlanned { control, text },
             )?,
+            AgentOperation::AcknowledgeUpdate {
+                control,
+                clarification,
+            } => {
+                ensure!(
+                    state.lifecycle.revision == control,
+                    "control changed; read context again"
+                );
+                let records = self.agent_records(mission)?;
+                if let Some(existing) = records.values().find(|e| e.body.author == identity.public_key() && matches!(&e.body.payload,
+                    Payload::AgentClarificationAcknowledged { clarification: c, .. } if c == &clarification)) {
+                    return Ok(serde_json::json!({"event":existing.id}));
+                }
+                ensure!(
+                    a.direction
+                        .as_ref()
+                        .is_some_and(|d| crate::clarifications::pending(
+                            &records,
+                            registration,
+                            &control,
+                            &d.id
+                        )
+                        .iter()
+                        .any(|e| e.id == clarification)),
+                    "clarification is not pending for the current direction"
+                );
+                self.append(
+                    &identity,
+                    mission,
+                    Payload::AgentClarificationAcknowledged {
+                        registration: registration.into(),
+                        control,
+                        clarification,
+                    },
+                )?
+            }
             AgentOperation::Ready { control, plan } => {
                 if let Some(id) = state
                     .lifecycle
@@ -435,16 +636,39 @@ impl Store {
                 registration,
                 text,
             } => self.direct_agent(&identity, mission, &control, &registration, text)?,
+            AgentOperation::Clarify {
+                control,
+                registration,
+                direction,
+                text,
+            } => self.clarify_agent(
+                &identity,
+                mission,
+                &control,
+                &registration,
+                &direction,
+                text,
+            )?,
         };
         Ok(serde_json::json!({"event":event.id}))
     }
     pub(crate) fn validate_communication(&self, e: &Event) -> Result<bool> {
+        if !self.validate_clarification(e)? {
+            return Ok(false);
+        }
         let mission = e.mission_id();
         match &e.body.payload {
             Payload::MessageSent { to, thread, .. }
             | Payload::WorkstreamMessage { to, thread, .. } => {
                 if let Some(to) = to {
                     if !self.known_participant(mission, to)? {
+                        ensure!(
+                            !self.event(to)?.is_some_and(|record| matches!(
+                                record.body.payload,
+                                Payload::AgentOffered { .. }
+                            )),
+                            "message recipient is an agent registration; use identity.author"
+                        );
                         return Ok(false);
                     }
                     ensure!(
@@ -546,23 +770,16 @@ impl Store {
                 );
                 let valid = match &d.body.payload {
                     Payload::WorkRecorded {
-                        control: assigned_control,
-                        authorization: _,
                         action:
                             harakiri_protocol::work::WorkAction::AssignWorkstream {
                                 registration: r,
                                 ..
                             },
-                    } => {
-                        r == registration
-                            && history.at(assigned_control)?.lifecycle.terms_revision
-                                == state.lifecycle.terms_revision
-                    }
-                    Payload::AgentDirected {
-                        registration: r,
-                        control: c,
                         ..
-                    } => r == registration && c == control,
+                    } => r == registration && self.assignment_applies_at(mission, control, &d)?,
+                    Payload::AgentDirected {
+                        registration: r, ..
+                    } => r == registration && self.assignment_applies_at(mission, control, &d)?,
                     Payload::MissionControlled {
                         action: ControlAction::Start { participants, .. },
                         ..
@@ -594,9 +811,19 @@ pub(crate) fn project(tx: &Transaction<'_>, e: &Event, fork: bool) -> Result<()>
         tx.execute("INSERT INTO agent_registry(mission,registration,author,contributor) VALUES(?1,?2,?3,?4)",params![e.mission_id(),e.id,identity.author,e.body.author])?;
     }
     if let Some((kind, text)) = crate::lifecycle::activity(&e.body.payload) {
+        let recipient = if let Payload::AgentClarified { registration, .. } = &e.body.payload {
+            Some(tx.query_row(
+                "SELECT author FROM agent_registry WHERE mission=?1 AND registration=?2",
+                params![e.mission_id(), registration],
+                |r| r.get::<_, String>(0),
+            )?)
+        } else {
+            None
+        };
         let (to, thread) = match &e.body.payload {
             Payload::MessageSent { to, thread, .. }
             | Payload::WorkstreamMessage { to, thread, .. } => (to.as_deref(), thread.as_deref()),
+            Payload::AgentClarified { .. } => (recipient.as_deref(), None),
             _ => (None, None),
         };
         tx.execute(
@@ -640,6 +867,15 @@ impl Store {
         mission: &str,
         viewer: Option<&str>,
         query: MessageQuery,
+    ) -> Result<MessagePage> {
+        self.message_query_filtered(mission, viewer, query, false)
+    }
+    fn message_query_filtered(
+        &self,
+        mission: &str,
+        viewer: Option<&str>,
+        query: MessageQuery,
+        briefing: bool,
     ) -> Result<MessagePage> {
         ensure!(
             harakiri_protocol::event::is_hash(mission),
@@ -743,9 +979,10 @@ impl Store {
             WHERE e.mission=?1 AND e.fork=0 AND e.rowid<?3 AND e.rowid<=?4
               AND (?2 IS NULL OR e.audience='main' OR EXISTS(SELECT 1 FROM audience_readers ar WHERE ar.mission=e.mission AND ar.audience=e.audience AND ar.author=?2))
               AND ((?5='conversation' AND d.channel=?6 AND ((?7 IS NULL AND (d.thread IS NULL OR ?8<>'')) OR d.thread=?7 OR e.id=?7))
-                OR (?5='sent' AND e.author=?2 AND d.kind='message')
-                OR (?5='inbox' AND e.author<>?2 AND d.kind='message' AND (e.audience<>'main' OR d.recipient=?2 OR parent.author=?2)))
+                OR (?5='sent' AND e.author=?2 AND d.kind IN ('message','clarification'))
+                OR (?5='inbox' AND e.author<>?2 AND d.kind IN ('message','clarification') AND (e.audience<>'main' OR d.recipient=?2 OR parent.author=?2)))
               AND (?8='' OR instr(lower(d.text),lower(?8))>0)
+              AND (?9=0 OR d.kind<>'governance')
             ORDER BY e.rowid DESC LIMIT 201")?;
         let rows = q.query_map(
             params![
@@ -756,7 +993,8 @@ impl Store {
                 feed,
                 audience,
                 query.thread,
-                search
+                search,
+                briefing
             ],
             |r| {
                 Ok((
@@ -779,6 +1017,8 @@ impl Store {
             let agent_registration = match &e.body.payload {
                 Payload::AgentOffered { .. } => Some(e.id.clone()),
                 Payload::AgentDirected { registration, .. }
+                | Payload::AgentClarified { registration, .. }
+                | Payload::AgentClarificationAcknowledged { registration, .. }
                 | Payload::AgentWithdrawn { registration }
                 | Payload::AgentAcknowledged { registration, .. } => Some(registration.clone()),
                 _ => None,
@@ -795,6 +1035,10 @@ impl Store {
                             "Direction for {} in Main:\n\n{}",
                             target.identity.label, direction
                         )
+                    }
+                    Payload::AgentClarified { text: update, .. } => {
+                        text =
+                            format!("Clarification for {}:\n\n{}", target.identity.label, update);
                     }
                     Payload::AgentWithdrawn { .. } => {
                         text = format!(
@@ -818,6 +1062,13 @@ impl Store {
             let (to, thread) = match &e.body.payload {
                 Payload::MessageSent { to, thread, .. }
                 | Payload::WorkstreamMessage { to, thread, .. } => (to.clone(), thread.clone()),
+                Payload::AgentClarified { registration, .. } => (
+                    agents
+                        .iter()
+                        .find(|a| &a.id == registration)
+                        .map(|a| a.identity.author.clone()),
+                    None,
+                ),
                 _ => (None, None),
             };
             let m = MessageView {

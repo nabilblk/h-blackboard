@@ -150,6 +150,7 @@ try {
     forgedRequestBlocked: await window.contributor.prepare({workspace:'/tmp',permissions:'full-access'}).then(() => false, () => true),
     forgedNodeRequestBlocked: await window.blackboardNode.createMission({profile:'/tmp',command:'launch'}).then(() => false, () => true),
     forgedSetupBlocked: await window.blackboardSetup.setup({command:'sh',workspace:'/Users',role:'owner'}).then(() => false, () => true),
+    forgedCapabilityChangeBlocked: await window.blackboardExecution.setCapabilityPack(crypto.randomUUID(),'untrusted-tools',null).then(() => false, () => true),
     forgedNetworkChangeBlocked: await window.blackboardExecution.setNetwork(crypto.randomUUID(),'unrestricted',null).then(() => false, () => true),
     unconfirmedCompletionBlocked: await window.blackboardSetup.completeMission({id:crypto.randomUUID(),mission:'a'.repeat(64),control:'b'.repeat(64),revisions:['c'.repeat(64)],reason:'Perfect'}).then(() => false, e => e.message === 'Invalid setup request.'),
     insecureInvitationRejected: await window.contributor.inspect('http://127.0.0.1:9/j/desktop_fixture_0123456789').then(() => false, e => e.message.includes('HTTPS')),
@@ -186,6 +187,7 @@ try {
       "openLogin",
       "state",
       "prepare",
+      "setCapabilityPack",
       "setNetwork",
       "login",
       "start",
@@ -262,6 +264,7 @@ try {
   assert.equal(evaluated.forgedNodeRequestBlocked, true);
   assert.equal(evaluated.forgedSetupBlocked, true);
   assert.equal(evaluated.forgedNetworkChangeBlocked, true);
+  assert.equal(evaluated.forgedCapabilityChangeBlocked, true);
   assert.equal(evaluated.unconfirmedCompletionBlocked, true);
   assert.deepEqual(
     evaluated.setupBridge.sort(),

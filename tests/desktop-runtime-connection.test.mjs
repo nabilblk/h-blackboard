@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import {
   ClaudeConnection,
   CodexConnection,
+  runtimeConnection,
 } from "../desktop/execution/runtime-connection.mjs";
 import {
   newRecord,
@@ -15,6 +16,7 @@ import {
   runtimePolicy,
 } from "../desktop/execution/contract.mjs";
 import { executionBinding } from "../desktop/node-service.mjs";
+import { GrokConnection } from "../bin/grok-acp.mjs";
 
 const tools = [
   "board",
@@ -22,6 +24,10 @@ const tools = [
   "workspace_read",
   "workspace_write",
   "import_artifact",
+  "wait_for_work",
+  "artifact_browser",
+  "read_tool_result",
+  "capabilities",
   "publish_artifact",
 ].map((t) => `mcp__harakiri__${t}`);
 function transport(respond) {
@@ -42,6 +48,121 @@ function transport(respond) {
   });
   return child;
 }
+
+for (const encoded of [false, true])
+  test(`Grok preserves the provider-limit cause from ${encoded ? "encoded" : "structured"} ACP data`, async (t) => {
+    const detail = {
+      message:
+        "API error (status 402 Payment Required): Grok Build usage balance exhausted",
+      http_status: 402,
+      private_request: "test-only-secret-must-not-be-shown",
+    };
+    const child = transport((message, c) =>
+      c.send({
+        id: message.id,
+        error: {
+          code: -32603,
+          message: "Internal error",
+          data: encoded ? JSON.stringify(detail) : detail,
+        },
+      }),
+    );
+    t.after(() => child.kill());
+    const connection = new GrokConnection({ transport: child });
+    await assert.rejects(connection.request("session/prompt", {}), (error) => {
+      assert.equal(error.code, "provider_usage_limit");
+      assert.match(error.message, /usage balance is exhausted/);
+      assert.match(error.message, /resume the saved agent/);
+      assert.match(error.message, /unlimited Blackboard budget/);
+      assert.doesNotMatch(error.message, /secret|private_request|5.?h|reset/i);
+      return true;
+    });
+    assert.equal(connection.pending.size, 0);
+  });
+
+test("Grok does not reinterpret an unrelated internal error as a quota failure", async (t) => {
+  const child = transport((message, c) =>
+    c.send({
+      id: message.id,
+      error: {
+        code: -32603,
+        message: "Internal error",
+        data: { http_status: 500, message: "private provider detail" },
+      },
+    }),
+  );
+  t.after(() => child.kill());
+  const connection = new GrokConnection({ transport: child });
+  await assert.rejects(connection.request("session/prompt", {}), (error) => {
+    assert.equal(error.code, undefined);
+    assert.equal(error.message, "Grok Build: Internal error");
+    return true;
+  });
+});
+
+test("Grok explains a blocked native tool cancellation without exposing private arguments", async (t) => {
+  const sessionId = randomUUID();
+  let promptId;
+  const child = transport((message, c) => {
+    if (message.method === "initialize")
+      c.send({
+        id: message.id,
+        result: {
+          protocolVersion: 1,
+          agentCapabilities: { loadSession: true },
+          authMethods: [{ id: "cached_token" }],
+          _meta: { defaultAuthMethodId: "cached_token" },
+        },
+      });
+    else if (message.method === "authenticate")
+      c.send({ id: message.id, result: {} });
+    else if (message.method === "session/new")
+      c.send({ id: message.id, result: { sessionId } });
+    else if (message.method === "session/prompt") {
+      promptId = message.id;
+      c.send({
+        id: "vendor-permission",
+        method: "session/request_permission",
+        params: {
+          sessionId,
+          toolCall: {
+            toolCallId: "private-memory",
+            _meta: { "x.ai/tool": { name: "use_tool" } },
+            rawInput: {
+              tool_name: "workspace_read",
+              tool_input: { path: "/private/runtime/memory" },
+            },
+          },
+          options: [
+            { kind: "allow_once", optionId: "yes" },
+            { kind: "reject_once", optionId: "no" },
+          ],
+        },
+      });
+    } else if (message.id === "vendor-permission") {
+      assert.equal(message.result.outcome.optionId, "no");
+      c.send({ id: promptId, result: { stopReason: "cancelled" } });
+    }
+  });
+  t.after(() => child.kill());
+  const connection = runtimeConnection("grok", {
+    transport: child,
+    onEvent() {},
+  });
+  await assert.rejects(
+    connection.run({
+      prompt: "Review the saved artifact.",
+      seconds: 5,
+      onSession() {},
+    }),
+    (error) => {
+      assert.match(error.message, /unavailable tool request was blocked/);
+      assert.match(error.message, /Saved work is retained/);
+      assert.doesNotMatch(error.message, /private\/runtime/);
+      return true;
+    },
+  );
+});
 
 test("runtime consent and journals distinguish all three policies while preserving Grok", () => {
   assert.equal(policyDigest("grok"), POLICY_DIGEST);

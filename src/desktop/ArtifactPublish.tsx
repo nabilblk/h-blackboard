@@ -72,6 +72,13 @@ export function ArtifactPublish({
           limitations: String(form.get("limitations")).trim(),
           entrypoint: String(form.get("entrypoint")) || null,
           inputs: String(form.get("inputs")).split(/\s+/).filter(Boolean),
+          references: (["live", "pinned", "citation"] as const).flatMap(
+            (relation) =>
+              String(form.get(`references-${relation}`) || "")
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((revision) => ({ revision, relation })),
+          ),
           files: [],
         };
         void perform(async () => {
@@ -84,6 +91,7 @@ export function ArtifactPublish({
                 throw new Error("Each file can be up to 16 MiB.");
               const { upload } = await node.artifactTransfer(mission.id, {
                 type: "begin",
+                resume_key: null,
                 control,
                 conversation: channel,
                 path: logicalPath(file),
@@ -214,7 +222,7 @@ export function ArtifactPublish({
           onChange={(e) => selectFiles(e.target.files)}
         />
         <span className="d-field-help">
-          Up to 32 files, 16 MiB each, 32 MiB total. HTML should include its
+          Up to 256 files, 16 MiB each, 32 MiB total. HTML should include its
           assets and work offline.
         </span>
       </Field>
@@ -288,6 +296,27 @@ export function ArtifactPublish({
         </Field>
         <p className="d-field-help">
           A changed input flags this output for review.
+        </p>
+        {(["live", "pinned", "citation"] as const).map((relation) => (
+          <Field key={relation}>
+            {relation === "live"
+              ? "Follow the latest input"
+              : relation === "pinned"
+                ? "Keep these exact input versions"
+                : "Historical citations or reviews addressed"}
+            <textarea
+              name={`references-${relation}`}
+              rows={2}
+              defaultValue={existing?.references
+                ?.filter((r) => r.relation === relation)
+                .map((r) => r.revision)
+                .join("\n")}
+            />
+          </Field>
+        ))}
+        <p className="d-field-help">
+          Pins preserve a deliberate version choice. Citations record history;
+          they do not assert that a dependency is current.
         </p>
       </Disclosure>
       {progress ? <p role="status">{progress}</p> : null}

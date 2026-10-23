@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
-import { Id, Runtime, Limits, NetworkAccess } from "./model.mjs";
+import {
+  Id,
+  Runtime,
+  Limits,
+  NetworkAccess,
+  CapabilityPack,
+} from "./model.mjs";
 import { Hash } from "./execution/contract.mjs";
 import { retireSupersededConsent } from "./execution/permissions.mjs";
 import { OnboardingStore } from "./onboarding-store.mjs";
@@ -14,6 +20,7 @@ const setup = z
     role: z.enum(["agent", "coordinator"]),
     runtime: Runtime,
     networkAccess: NetworkAccess.default("restricted"),
+    capabilityPack: CapabilityPack.default("general"),
     label: z
       .string()
       .trim()
@@ -33,6 +40,7 @@ const permission = z
     id: Id,
     contributionId: Id,
     networkRevision: Id.nullable().default(null),
+    capabilityRevision: Id.nullable().default(null),
     control: Hash,
     direction: Hash,
     turns: z.number().int().min(1).max(10000),
@@ -226,6 +234,7 @@ export class OnboardingService {
             workspaceChoiceId,
             runtime: r.runtime,
             networkAccess: r.networkAccess,
+            capabilityPack: r.capabilityPack,
             limits: r.limits,
           },
           { contributionId: id },
@@ -338,6 +347,10 @@ export class OnboardingService {
       throw new Error("Review the changed permission as a new action.");
     if (previousJob?.status === "complete") return previousJob;
     const c = this.executions.contribution(r.contributionId);
+    if ((c.capabilityRevision ?? null) !== r.capabilityRevision)
+      throw new Error(
+        "Authoring tools changed. Review this agent’s current toolkit before approving.",
+      );
     if ((c.networkRevision ?? null) !== r.networkRevision)
       throw new Error(
         "Internet access changed. Review this agent's current access before approving.",
@@ -469,6 +482,7 @@ export class OnboardingService {
           grant: job.grant,
           contributionId: c.id,
           networkRevision: r.networkRevision,
+          capabilityRevision: r.capabilityRevision,
         });
       // Persist launch intent before calling the enforcing manager. A retry
       // never dispatches a second run for this reviewed permission.

@@ -7,6 +7,43 @@ import { resolve } from "node:path";
 const emit = (event) => process.stdout.write(JSON.stringify(event) + "\n");
 const setupTimeout = 30000;
 
+function requestError(error) {
+  // ACP wraps provider failures in "Internal error" with structured data.
+  // Interpret only known fields; never publish that object (it may contain
+  // request bodies or credentials), and do not guess a subscription reset time.
+  let data = error.data;
+  if (typeof data === "string" && data.length <= 4096) {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      // Older runtimes supplied a plain diagnostic string instead.
+    }
+  }
+  const description =
+    typeof data === "string"
+      ? data.slice(0, 4096)
+      : typeof data?.message === "string"
+        ? data.message.slice(0, 4096)
+        : "";
+  const exhausted = /Grok Build usage balance exhausted/i.test(
+    description || String(error.message ?? "").slice(0, 4096),
+  );
+  if (exhausted || data?.http_status === 402) {
+    const failure = new Error(
+      (exhausted
+        ? "Grok Build usage balance is exhausted."
+        : "Grok Build rejected the request because of a usage or billing limit (HTTP 402).") +
+        " Check your Grok allowance, then resume the saved agent. An unlimited Blackboard budget does not override provider limits.",
+    );
+    failure.code = "provider_usage_limit";
+    return failure;
+  }
+  const detail = typeof error.data === "string" ? `: ${error.data}` : "";
+  return new Error(
+    `Grok Build: ${error.message || "ACP request failed"}${detail}`,
+  );
+}
+
 export function permissionOutcome(params, mode, previous = {}) {
   const call = { ...previous, ...params.toolCall };
   const name = call._meta?.["x.ai/tool"]?.name;
@@ -147,6 +184,15 @@ export class GrokConnection {
             this.permissions,
             this.calls.get(message.params.toolCall?.toolCallId),
           );
+          const choice = message.params.options?.find(
+            (option) => option.optionId === result.outcome.optionId,
+          );
+          if (
+            result.outcome.outcome === "cancelled" ||
+            choice?.kind === "reject_once" ||
+            choice?.kind === "reject_always"
+          )
+            this.permissionDenied = true;
           this.send({ id: message.id, result });
           this.onEvent({
             type: "permission",
@@ -187,13 +233,7 @@ export class GrokConnection {
     clearTimeout(pending.timer);
     this.pending.delete(message.id);
     if (message.error) {
-      const detail =
-        typeof message.error.data === "string" ? `: ${message.error.data}` : "";
-      pending.reject(
-        new Error(
-          `Grok Build: ${message.error.message || "ACP request failed"}${detail}`,
-        ),
-      );
+      pending.reject(requestError(message.error));
     } else if (Object.hasOwn(message, "result"))
       pending.resolve(message.result);
     else

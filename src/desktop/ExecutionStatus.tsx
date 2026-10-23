@@ -1,3 +1,4 @@
+import { observations as sharedObservations } from "../application/observations";
 import { useApplication } from "./ApplicationProvider";
 import {
   createContext,
@@ -37,51 +38,45 @@ export function ExecutionStatusProvider({
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const [next, reports] = await Promise.all([
-          execution.overview(mission),
-          node.observations(mission),
-        ]);
-        if (!cancelled) setStates(next);
-        if (!cancelled)
-          setObservations((old) => ({
-            ...Object.fromEntries(
-              Object.entries(old).map(([id, v]) => [
-                id,
-                { ...v, expiresAt: 0 },
-              ]),
-            ),
-            ...Object.fromEntries(
-              reports.map((v) => [
-                v.report.registration,
-                { ...v, expiresAt: Date.now() + v.remaining_ms },
-              ]),
-            ),
-          }));
-      } catch {
-        if (!cancelled)
-          setStates((current) =>
-            Object.fromEntries(
-              Object.entries(current).map(([id, state]) => [
-                id,
-                {
-                  ...state,
-                  error:
-                    "Execution observation unavailable. Retry or inspect local execution.",
-                },
-              ]),
-            ),
-          );
-      }
-      if (!cancelled) timer = setTimeout(poll, 3000);
-    };
-    void poll();
+    const stopExecution = sharedObservations(execution).subscribe(
+      `execution:${mission}`,
+      () => execution.overview(mission),
+      setStates,
+      () => {
+        setStates((current) =>
+          Object.fromEntries(
+            Object.entries(current).map(([id, state]) => [
+              id,
+              {
+                ...state,
+                error:
+                  "Execution observation unavailable. Retry or inspect local execution.",
+              },
+            ]),
+          ),
+        );
+      },
+    );
+    const stopReports = sharedObservations(node).subscribe(
+      `observations:${mission}`,
+      () => node.observations(mission),
+      (reports) => {
+        setObservations((old) => ({
+          ...Object.fromEntries(
+            Object.entries(old).map(([id, v]) => [id, { ...v, expiresAt: 0 }]),
+          ),
+          ...Object.fromEntries(
+            reports.map((v) => [
+              v.report.registration,
+              { ...v, expiresAt: Date.now() + v.remaining_ms },
+            ]),
+          ),
+        }));
+      },
+    );
     return () => {
-      cancelled = true;
-      clearTimeout(timer);
+      stopExecution();
+      stopReports();
     };
   }, [mission, execution, node]);
   return (

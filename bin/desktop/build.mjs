@@ -1,3 +1,4 @@
+import { writeBundledInventory } from "./licenses.mjs";
 import { build as buildVite } from "vite";
 import react from "@vitejs/plugin-react";
 import { build as buildJS } from "esbuild";
@@ -42,12 +43,22 @@ export async function buildDesktop() {
   });
   // A separate output and entry. Neither a desktop build nor packaging touches
   // the web server's live dist/, database, credentials or public tunnel.
+  const bundledModules = new Set();
   await buildVite({
     configFile: false,
     root: join(root, "src/desktop"),
     base: "/",
     publicDir: false,
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: "harakiri-bundled-inventory",
+        generateBundle() {
+          for (const id of this.getModuleIds())
+            if (id.includes("node_modules/")) bundledModules.add(id);
+        },
+      },
+    ],
     build: {
       outDir: join(output, "ui"),
       emptyOutDir: true,
@@ -56,7 +67,7 @@ export async function buildDesktop() {
     },
   });
   await rename(join(output, "ui/desktop.html"), join(output, "ui/index.html"));
-  await buildJS({
+  const hostBundle = await buildJS({
     entryPoints: [join(root, "desktop/main.mjs")],
     outfile: join(output, "main.mjs"),
     bundle: true,
@@ -64,6 +75,7 @@ export async function buildDesktop() {
     format: "esm",
     target: "node24",
     external: ["electron"],
+    metafile: true,
   });
   await copyFile(
     join(root, "desktop/preload.cjs"),
@@ -74,9 +86,15 @@ export async function buildDesktop() {
     "agent.md",
     "bridge.py",
     "artifact_io.py",
+    "operations.py",
+    "checkpoint.py",
+    "project.py",
     "control.py",
     "files.py",
+    "command.py",
+    "buildkit.py",
     "mcp.py",
+    "mcp_results.py",
     "proxy.py",
     "worker-network.py",
     "setup.sh",
@@ -123,30 +141,13 @@ export async function buildDesktop() {
       ),
       join(output, `reader-fonts/${family}.woff2`),
     );
-  const bundledLicenses = [];
-  for (const [name, license] of [
-    ["react", "LICENSE"],
-    ["react-dom", "LICENSE"],
-    ["scheduler", "LICENSE"],
-    ["lucide-react", "LICENSE"],
-    ["zod", "LICENSE"],
-    ["zod-to-json-schema", "LICENSE"],
-    ["@fontsource/ibm-plex-mono", "LICENSE"],
-    ["@fontsource/ibm-plex-sans", "LICENSE"],
-    ["vite", "LICENSE.md"],
-    ["esbuild", "LICENSE.md"],
-  ]) {
-    const metadata = JSON.parse(
-      await readFile(join(root, "node_modules", name, "package.json"), "utf8"),
-    );
-    bundledLicenses.push(
-      `${name} ${metadata.version}\n${await readFile(join(root, "node_modules", name, license), "utf8")}`,
-    );
-  }
-  await writeFile(
-    join(output, "licenses/THIRD-PARTY-NOTICES.txt"),
-    bundledLicenses.join("\n\n---\n\n"),
-  );
+  for (const id of Object.keys(hostBundle.metafile.inputs))
+    bundledModules.add(id);
+  await writeBundledInventory({
+    root,
+    output: join(output, "licenses"),
+    modules: bundledModules,
+  });
   return output;
 }
 

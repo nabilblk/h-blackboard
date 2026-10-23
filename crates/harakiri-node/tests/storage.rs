@@ -28,6 +28,7 @@ fn scoped_review_upgrade_preserves_v9_history_and_sets_downgrade_barrier() {
     store.import(&[legacy.bytes().to_vec()]).unwrap();
     drop(store);
     let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; ").unwrap();
     db.pragma_update(None, "user_version", 13).unwrap();
     drop(db);
     let store = Store::open(&path).unwrap();
@@ -40,7 +41,7 @@ fn scoped_review_upgrade_preserves_v9_history_and_sets_downgrade_barrier() {
     assert_eq!(
         db.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
             .unwrap(),
-        15
+        16
     );
 }
 
@@ -218,7 +219,7 @@ fn schema_seven_preserves_old_messages_and_requires_pending_applicants_to_review
     drop(s);
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute("INSERT INTO local_joins(mission,ticket,genesis,status) VALUES(?1,'old-pending-capability',?2,'pending')",rusqlite::params![e.id,e.bytes()]).unwrap();
-    db.execute_batch("DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE control_records; DROP TABLE join_reviews; PRAGMA user_version=6;")
+    db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE control_records; DROP TABLE join_reviews; PRAGMA user_version=6;")
         .unwrap();
     drop(db);
     let s = Store::open(&path).unwrap();
@@ -230,7 +231,7 @@ fn schema_seven_preserves_old_messages_and_requires_pending_applicants_to_review
     // An invalid signed prefix rolls back both the new projection and the
     // pending-consent migration rather than silently resetting the profile.
     let db = rusqlite::Connection::open(&path).unwrap();
-    db.execute_batch("DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE control_records; DROP TABLE join_reviews; PRAGMA user_version=6; UPDATE local_joins SET status='pending';").unwrap();
+    db.execute_batch("DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE control_records; DROP TABLE join_reviews; PRAGMA user_version=6; UPDATE local_joins SET status='pending';").unwrap();
     db.execute(
         "UPDATE events SET bytes=?1 WHERE id=?2",
         rusqlite::params![vec![1u8, 2, 3], e.id],
@@ -324,7 +325,7 @@ fn message_projection_migrates_transactionally_and_preserves_invalid_history() {
     drop(store);
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute_batch(
-        "DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE join_reviews; DROP TABLE control_records; DROP TABLE advertisements; DROP TABLE withdrawals; DROP TABLE local_withdrawals; DROP TABLE revocation_notices; DROP TABLE invitations; DROP TABLE join_requests; DROP TABLE contacts; DROP TABLE local_joins; DROP TABLE settings; DROP TABLE messages; DROP TABLE audience_cuts; DROP TABLE revocations;
+        "DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE join_reviews; DROP TABLE control_records; DROP TABLE advertisements; DROP TABLE withdrawals; DROP TABLE local_withdrawals; DROP TABLE revocation_notices; DROP TABLE invitations; DROP TABLE join_requests; DROP TABLE contacts; DROP TABLE local_joins; DROP TABLE settings; DROP TABLE messages; DROP TABLE audience_cuts; DROP TABLE revocations;
         DROP TABLE audience_readers; DROP TABLE audiences; DROP TABLE delivery;
         DROP INDEX writer_history; ALTER TABLE events DROP COLUMN audience;
         CREATE INDEX writer_history ON events(mission,author,sequence); PRAGMA user_version=1;",
@@ -339,7 +340,7 @@ fn message_projection_migrates_transactionally_and_preserves_invalid_history() {
     drop(store);
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute_batch(
-        "DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE join_reviews; DROP TABLE control_records; DROP TABLE advertisements; DROP TABLE withdrawals; DROP TABLE local_withdrawals; DROP TABLE revocation_notices; DROP TABLE invitations; DROP TABLE join_requests; DROP TABLE contacts; DROP TABLE local_joins; DROP TABLE settings; DROP TABLE messages; DROP TABLE audience_cuts; DROP TABLE revocations;
+        "DROP TABLE sync_progress; DROP INDEX replication_history; ALTER TABLE delivery DROP COLUMN last_progress_ms; ALTER TABLE delivery DROP COLUMN last_converged_ms; ALTER TABLE delivery DROP COLUMN stalled_exchanges; DROP TABLE governance_records; DROP TABLE available_files; DROP TABLE artifact_records; DROP TABLE work_records; DROP TABLE message_reads; DROP TABLE message_details; DROP TABLE agent_registry; DROP TABLE agent_records; DROP TABLE join_reviews; DROP TABLE control_records; DROP TABLE advertisements; DROP TABLE withdrawals; DROP TABLE local_withdrawals; DROP TABLE revocation_notices; DROP TABLE invitations; DROP TABLE join_requests; DROP TABLE contacts; DROP TABLE local_joins; DROP TABLE settings; DROP TABLE messages; DROP TABLE audience_cuts; DROP TABLE revocations;
         DROP TABLE audience_readers; DROP TABLE audiences; DROP TABLE delivery;
         DROP INDEX writer_history; ALTER TABLE events DROP COLUMN audience;
         CREATE INDEX writer_history ON events(mission,author,sequence); PRAGMA user_version=1;",

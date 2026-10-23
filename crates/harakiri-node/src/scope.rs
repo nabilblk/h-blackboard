@@ -29,6 +29,10 @@ pub struct DeliveryView {
     pub pending: bool,
     pub last_success_ms: Option<i64>,
     pub last_error: Option<String>,
+    pub last_progress_ms: Option<i64>,
+    pub last_converged_ms: Option<i64>,
+    pub stalled_exchanges: u32,
+    pub control_acknowledged: bool,
 }
 
 impl Store {
@@ -469,16 +473,33 @@ impl Store {
             .collect()
     }
     pub fn deliveries(&self, mission: &str, audience: &str) -> Result<Vec<DeliveryView>> {
-        let mut q=self.connection.prepare("SELECT endpoint,dirty,last_success_ms,last_error FROM delivery WHERE mission=?1 AND audience=?2 ORDER BY endpoint LIMIT 1024")?;
-        Ok(q.query_map(params![mission, audience], |r| {
-            Ok(DeliveryView {
-                endpoint: r.get(0)?,
-                pending: r.get(1)?,
-                last_success_ms: r.get(2)?,
-                last_error: r.get(3)?,
+        let control = self.control_state(mission)?.lifecycle.revision;
+        let mut q=self.connection.prepare("SELECT endpoint,dirty,last_success_ms,last_error,last_progress_ms,last_converged_ms,stalled_exchanges,acknowledged FROM delivery WHERE mission=?1 AND audience=?2 ORDER BY endpoint LIMIT 1024")?;
+        let rows = q
+            .query_map(params![mission, audience], |r| {
+                Ok((
+                    DeliveryView {
+                        endpoint: r.get(0)?,
+                        pending: r.get(1)?,
+                        last_success_ms: r.get(2)?,
+                        last_error: r.get(3)?,
+                        last_progress_ms: r.get(4)?,
+                        last_converged_ms: r.get(5)?,
+                        stalled_exchanges: r.get(6)?,
+                        control_acknowledged: false,
+                    },
+                    r.get::<_, Option<String>>(7)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter()
+            .map(|(mut view, raw)| {
+                let heads: Vec<Head> = serde_json::from_str(raw.as_deref().unwrap_or("[]"))?;
+                view.control_acknowledged = audience == "main"
+                    && self.acknowledged_event(mission, audience, &control, &heads)?;
+                Ok(view)
             })
-        })?
-        .collect::<rusqlite::Result<_>>()?)
+            .collect()
     }
     pub fn acknowledge(
         &mut self,
@@ -492,8 +513,13 @@ impl Store {
             self.can_read_scope(mission, audience, endpoint)?,
             "not authorized"
         );
-        // A concurrently appended local event must remain pending.
-        let dirty = !self.delta_in(mission, audience, heads)?.is_empty();
+        // Validate claims. Different frontiers can mean either side is behind;
+        // a successful RPC or an empty outgoing delta does not mean convergence.
+        self.verified_heads(mission, audience, heads)?;
+        let mut claimed = heads.to_vec();
+        claimed.sort_by(|a, b| a.author.cmp(&b.author));
+        let dirty = self.heads_in(mission, audience)? != claimed
+            || self.conflicted_scope(mission, audience)?;
         self.connection.execute("INSERT INTO delivery(mission,audience,endpoint,dirty,acknowledged,last_success_ms) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(mission,audience,endpoint) DO UPDATE SET dirty=excluded.dirty,acknowledged=excluded.acknowledged,last_success_ms=excluded.last_success_ms,last_error=NULL",params![mission,audience,endpoint,dirty,serde_json::to_string(heads)?,i64::try_from(now)?])?;
         Ok(())
     }

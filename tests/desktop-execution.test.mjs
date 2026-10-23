@@ -12,7 +12,10 @@ import {
 } from "../desktop/execution/contract.mjs";
 import { ExecutionStore } from "../desktop/execution/store.mjs";
 import { LimaProvider } from "../desktop/execution/lima.mjs";
-import { executionDiagnostics } from "../desktop/execution/diagnostics.mjs";
+import {
+  executionDiagnostics,
+  retainedDiagnosticEvents,
+} from "../desktop/execution/diagnostics.mjs";
 import {
   exportWorkspace,
   readImportFiles,
@@ -57,6 +60,110 @@ test("shareable execution diagnostics only export bounded structured facts", () 
   );
 });
 
+test("diagnostic correlations retain useful failure and usage facts without provider prose or identities", () => {
+  const grant = "a".repeat(64),
+    reservation = "b".repeat(64);
+  const result = executionDiagnostics({
+    observedAt: 2000,
+    events: [
+      {
+        at: 1000,
+        type: "tool_outcome",
+        message: JSON.stringify({
+          operation: "snapshot",
+          outcome: "rejected",
+          code: "history_incomplete",
+          milliseconds: 17,
+          grant,
+          reservation,
+          prompt: "SECRET",
+          path: "/Users/PRIVATE",
+        }),
+      },
+      {
+        at: 1100,
+        type: "tool_outcome",
+        message: JSON.stringify({
+          operation: "snapshot",
+          outcome: "ok",
+          milliseconds: 4,
+          grant,
+          reservation,
+        }),
+      },
+      {
+        at: 1200,
+        type: "turn_completed",
+        message: JSON.stringify({
+          turns: 1,
+          tokens: 110,
+          inputTokens: 100,
+          outputTokens: 10,
+          cachedInputTokens: 80,
+          providerText: "SECRET",
+        }),
+      },
+      {
+        at: 1300,
+        type: "turn_completed",
+        message: JSON.stringify({ turns: 1 }),
+      },
+      {
+        at: 1400,
+        type: "runtime_ready",
+        message: JSON.stringify({
+          milliseconds: 200,
+          resumed: true,
+          grant,
+          reservation,
+          path: "/PRIVATE",
+        }),
+      },
+      {
+        at: 1500,
+        type: "dependency_wait",
+        message: JSON.stringify({
+          artifacts: 2,
+          reviews: 1,
+          grant,
+          reservation,
+          reason: "SECRET task text",
+        }),
+      },
+      {
+        at: 1600,
+        type: "browser_check",
+        message: JSON.stringify({
+          control: grant,
+          revision: reservation,
+          grant,
+          width: 390,
+          height: 700,
+          reducedMotion: true,
+          webglDisabled: true,
+          screenshot: "SECRET",
+        }),
+      },
+    ],
+  });
+  assert.equal(result.outcomes[0].code, "history_incomplete");
+  assert.equal(result.outcomes[0].grant, result.outcomes[1].grant);
+  assert.notEqual(result.outcomes[0].grant, result.outcomes[0].reservation);
+  assert.equal(result.outcomes[2].tokens, 110);
+  assert.equal(result.outcomes[2].cachedInputTokens, 80);
+  assert.equal(result.outcomes[3].tokens, null);
+  assert.equal(result.outcomes[4].resumed, true);
+  assert.equal(result.outcomes[4].milliseconds, 200);
+  assert.equal(result.outcomes[5].artifacts, 2);
+  assert.equal(result.outcomes[5].reviews, 1);
+  assert.equal(result.outcomes[5].grant, result.outcomes[0].grant);
+  assert.equal(result.outcomes[6].control, result.outcomes[0].grant);
+  assert.equal(result.outcomes[6].revision, result.outcomes[0].reservation);
+  assert.equal(result.outcomes[6].reducedMotion, true);
+  assert.equal(result.outcomes[6].webglDisabled, true);
+  assert.doesNotMatch(JSON.stringify(result), /SECRET|PRIVATE|a{64}|b{64}/);
+});
+
 test("execution intent survives restart, rejects identity substitution and symlinks", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "hb-execution-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -72,6 +179,47 @@ test("execution intent survives restart, rejects identity substitution and symli
   symlinkSync(store.path(id), store.path(other));
   assert.throws(() => store.read(other));
   assert.throws(() => store.read("../../outside"));
+});
+
+test("opt-in diagnostics cover retained rotations and tolerate interrupted final writes without exporting prose", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "hb-safe-diagnostics-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const id = randomUUID();
+  const events = Array.from({ length: 100 }, (_, at) =>
+    JSON.stringify({
+      at,
+      type: "tool_outcome",
+      message: JSON.stringify({
+        operation: "snapshot",
+        outcome: "ok",
+        milliseconds: 1,
+        secret: "PRIVATE",
+      }),
+    }),
+  );
+  writeFileSync(
+    join(directory, `${id}.events.jsonl.previous`),
+    events.join("\n") + "\n",
+  );
+  writeFileSync(
+    join(directory, `${id}.events.jsonl`),
+    JSON.stringify({ type: "agent", message: "PRIVATE prompt" }) +
+      '\n{"interrupted":',
+  );
+  const retained = retainedDiagnosticEvents(directory, id);
+  const diagnostic = executionDiagnostics({}, retained);
+  assert.equal(diagnostic.outcomes.length, 100);
+  assert.equal(diagnostic.coverage.files, 2);
+  assert.equal(diagnostic.coverage.malformed, 1);
+  assert.equal(diagnostic.coverage.completeHistory, false);
+  assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE/);
+  assert.throws(() => retainedDiagnosticEvents(directory, "../secret"));
+  rmSync(join(directory, `${id}.events.jsonl`));
+  symlinkSync(
+    join(directory, `${id}.events.jsonl.previous`),
+    join(directory, `${id}.events.jsonl`),
+  );
+  assert.throws(() => retainedDiagnosticEvents(directory, id), /bounded local/);
 });
 
 test("permission expiry cannot be extended by a clock rollback or later turn", () => {
@@ -131,6 +279,85 @@ test("VM identity stays short, collision-free for UUIDs and scoped to the deskto
   assert.notEqual(one.instance(id), two.instance(id));
   assert.notEqual(one.instance(id), one.instance(randomUUID()));
   assert.throws(() => one.instance("../../outside"));
+});
+
+test("stopped guest guidance is refreshed once and cached only after every tool file is written", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "hb-tool-refresh-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const provider = new LimaProvider({ directory });
+  const contribution = { id: randomUUID(), networkAccess: "restricted" };
+  const files = new Map();
+  const installed = [];
+  let writes = 0;
+  provider.guest = async (_id, [command, path, ...rest], options = {}) => {
+    if (command === "install") installed.push([path, ...rest]);
+    if (command === "cat") return files.get(path) ?? "";
+    if (command === "tee") {
+      files.set(path, String(options.input));
+      writes++;
+    }
+    return "";
+  };
+  await provider.syncTools(contribution);
+  assert.equal(writes, 17);
+  assert.match(files.get("/opt/harakiri/agent.md"), /wait_for_work/);
+  assert.match(files.get("/opt/harakiri/tools.json"), /artifact_browser/);
+  assert.match(files.get("/opt/harakiri/tools.json"), /checkpoint_workspace/);
+  assert.ok(files.has("/opt/harakiri/operations.py"));
+  assert.ok(files.has("/opt/harakiri/project.py"));
+  assert.ok(files.has("/opt/harakiri/checkpoint.py"));
+  assert.ok(
+    installed.some(
+      (args) => args.at(-1) === "/usr/local/lib/harakiri-project.py",
+    ),
+    "the isolated worker must receive the refreshed project helper, not just the runtime account",
+  );
+  assert.match(files.get("/opt/harakiri/mcp_results.py"), /class ResultCache/);
+  await provider.syncTools(contribution);
+  assert.equal(writes, 17);
+  assert.equal(
+    JSON.parse(files.get("/opt/harakiri/capabilities.json")).pack,
+    "general",
+  );
+  files.set("/opt/harakiri/tools.digest", "interrupted-old-install");
+  await provider.syncTools(contribution);
+  assert.equal(writes, 34);
+  await provider.syncTools({ ...contribution, capabilityPack: "web-3d" });
+  assert.equal(
+    JSON.parse(files.get("/opt/harakiri/capabilities.json")).pack,
+    "web-3d",
+  );
+  const webDigest = files.get("/opt/harakiri/tools.digest");
+  await provider.syncTools(contribution);
+  assert.notEqual(files.get("/opt/harakiri/tools.digest"), webDigest);
+  assert.equal(
+    JSON.parse(files.get("/opt/harakiri/capabilities.json")).pack,
+    "general",
+  );
+  assert.ok(
+    [...files.keys()].every((path) => path.startsWith("/opt/harakiri/")),
+  );
+});
+
+test("missing environments cannot boot or export through Lima's default template", async () => {
+  const provider = new LimaProvider({ directory: "/tmp/hb-missing-vm" });
+  const contribution = { id: randomUUID(), runtime: "grok" };
+  let commands = 0;
+  provider.vm = async () => ({ exists: false, running: false });
+  provider.run = async () => {
+    commands++;
+    throw new Error("Unexpected Lima command");
+  };
+  await assert.rejects(provider.boot(contribution.id), /Prepare this isolated/);
+  await assert.rejects(
+    provider.exportFiles({ contribution }),
+    /Prepare this isolated/,
+  );
+  await assert.rejects(
+    provider.login({ contribution }),
+    /Prepare this isolated/,
+  );
+  assert.equal(commands, 0);
 });
 
 test("concurrent boots cannot oversubscribe local VM capacity", async () => {
@@ -231,7 +458,7 @@ test("cancelled starts leave a serialized capacity queue promptly without releas
   });
   const controller = new AbortController();
   let boots = 0;
-  provider.vm = async () => ({ running: false });
+  provider.vm = async () => ({ exists: true, running: false });
   provider.run = async ([command]) => {
     if (command === "start") boots++;
     return "";

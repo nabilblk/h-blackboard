@@ -1,4 +1,6 @@
 export const discoveryOutcomes = {
+  incompatible:
+    "Version mismatch · update both computers to the same Blackboard version",
   waiting: "Waiting to exchange briefs",
   contacting: "Contacting peer",
   ok: "Briefs exchanged",

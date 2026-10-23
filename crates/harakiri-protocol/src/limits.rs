@@ -1,5 +1,5 @@
 //! Safety limits are protocol limits, independent of a mission's compute budget.
-pub const VERSION: u16 = 11;
+pub const VERSION: u16 = 13;
 pub const MAX_AUDIENCES: usize = 1024;
 pub const MAX_AGENTS: usize = 512;
 pub const MAX_AGENT_RECORDS: usize = 4096;
@@ -13,7 +13,7 @@ pub const MAX_PENDING_EVENTS: usize = 256;
 pub const MAX_HISTORY_EVENTS: usize = 100_000;
 pub const MAX_CONNECTIONS: usize = 32;
 pub const MAX_BLOB_BYTES: u64 = 16 * 1024 * 1024;
-pub const MAX_FILES: usize = 32;
+pub const MAX_FILES: usize = 256;
 pub const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 pub const MAX_NESTING: usize = 12;
 pub const REQUEST_TIMEOUT_SECS: u64 = 10;

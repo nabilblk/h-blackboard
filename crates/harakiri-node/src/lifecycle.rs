@@ -27,6 +27,7 @@ pub fn activity(payload: &Payload) -> Option<(&'static str, String)> {
         Payload::ArtifactRecorded{action,..}=>Some(("artifact",match action {
             harakiri_protocol::artifacts::ArtifactAction::Publish{artifact,document,..}=>format!("Artifact {}: {}\n\n{}",if artifact.is_some(){"revised"}else{"published"},document.title,document.summary),
             harakiri_protocol::artifacts::ArtifactAction::Review{summary,..}=>format!("Artifact review recorded.\n\n{summary}"),
+            harakiri_protocol::artifacts::ArtifactAction::Candidate{..}=>"Current delivery candidate selected. Review this exact revision before handoff.".into(),
             harakiri_protocol::artifacts::ArtifactAction::Accept{accepted,reason,..}=>format!("Human acceptance {}.\n\n{reason}",if *accepted{"recorded"}else{"withdrawn"}),
             harakiri_protocol::artifacts::ArtifactAction::Highlight{highlighted,..}=>if *highlighted{"Artifact highlighted.".into()}else{"Artifact highlight removed.".into()},
         })),
@@ -41,6 +42,8 @@ pub fn activity(payload: &Payload) -> Option<(&'static str, String)> {
             harakiri_protocol::work::WorkAction::ReportAttempt { summary, .. } => format!("Task progress reported.\n\n{summary}"),
         })),
         Payload::AgentAcknowledged { .. } => Some(("acknowledgment", "Acknowledged the assigned direction. Receipt is recorded; execution status is tracked separately.".into())),
+        Payload::AgentClarified { text, .. } => Some(("clarification", text.clone())),
+        Payload::AgentClarificationAcknowledged { .. } => Some(("acknowledgment", "Acknowledged the clarification to the current direction.".into())),
         Payload::GovernanceRecorded {action,..} => Some(("governance", match action {
             harakiri_protocol::governance::GovernanceAction::Criterion{wording,met,summary,..}=>format!("Criterion {}: {wording}\n\n{summary}",if *met {"reported met"}else{"not yet met"}),
             _=>"Resource permission or allowance updated. Open Budget & permissions for the signed ledger.".into(),

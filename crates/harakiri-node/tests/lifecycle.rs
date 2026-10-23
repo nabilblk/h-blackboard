@@ -64,6 +64,100 @@ fn ready(s: &mut Store, c: &Identity, mission: &str) -> Event {
 }
 
 #[test]
+fn operational_plan_adapts_without_rewriting_start_and_survives_pause_resume() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut s = Store::open(&temp.path().join("adaptive.sqlite")).unwrap();
+    let owner = Identity::from_seed([71; 32]);
+    let c = Identity::from_seed([72; 32]);
+    let m = s
+        .create(
+            &owner,
+            "01".repeat(32),
+            definition(Coordination::Coordinated),
+        )
+        .unwrap()
+        .id;
+    appoint(&mut s, &owner, &m, &c);
+    let initial = plan(&mut s, &c, &m, "Investigate the options");
+    let ready = ready(&mut s, &c, &m);
+    let start = command(
+        &mut s,
+        &owner,
+        &m,
+        Action::Start {
+            participants: vec![],
+            readiness: Some(ready.id.clone()),
+        },
+    );
+    let adapted = plan(
+        &mut s,
+        &c,
+        &m,
+        "The first option failed review. Compare the remaining two.",
+    );
+    let state = s.control_state(&m).unwrap();
+    assert_eq!(state.lifecycle.revision, start.id);
+    assert_eq!(state.lifecycle.plan.unwrap().id, initial.id);
+    assert_eq!(state.lifecycle.operational_plan.unwrap().id, adapted.id);
+    assert_eq!(state.lifecycle.readiness.unwrap().id, ready.id);
+    assert!(
+        s.append(
+            &c,
+            &m,
+            Payload::CoordinatorReadied {
+                control: start.id,
+                plan: adapted.id.clone()
+            }
+        )
+        .is_err()
+    );
+    command(
+        &mut s,
+        &owner,
+        &m,
+        Action::Pause {
+            reason: "Break".into(),
+        },
+    );
+    let paused = s.control_state(&m).unwrap();
+    assert_eq!(paused.lifecycle.operational_plan.unwrap().id, adapted.id);
+    assert!(paused.lifecycle.start_blockers.is_empty());
+    command(
+        &mut s,
+        &owner,
+        &m,
+        Action::Start {
+            participants: vec![],
+            readiness: Some(ready.id),
+        },
+    );
+    assert_eq!(
+        s.control_state(&m)
+            .unwrap()
+            .lifecycle
+            .operational_plan
+            .unwrap()
+            .id,
+        adapted.id
+    );
+    command(
+        &mut s,
+        &owner,
+        &m,
+        Action::UpdateInstructions {
+            definition: definition(Coordination::Coordinated),
+        },
+    );
+    assert!(
+        s.control_state(&m)
+            .unwrap()
+            .lifecycle
+            .operational_plan
+            .is_none()
+    );
+}
+
+#[test]
 fn coordinator_acknowledges_exact_plan_and_only_human_starts_or_pauses() {
     let temp = tempfile::tempdir().unwrap();
     let mut s = Store::open(&temp.path().join("node.sqlite")).unwrap();
@@ -173,10 +267,10 @@ fn coordinator_acknowledges_exact_plan_and_only_human_starts_or_pauses() {
             &m,
             Payload::CoordinatorPlanned {
                 control: start.id.clone(),
-                text: "Unauthorized replan".into()
+                text: "Adapt the execution sequence within the approved scope".into()
             }
         )
-        .is_err()
+        .is_ok()
     );
     assert!(
         s.control(

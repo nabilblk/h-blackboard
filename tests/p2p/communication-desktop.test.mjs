@@ -54,6 +54,8 @@ test(
       },
     };
     const { mission } = await n.handle("createMission", { definition });
+    const catchUpBaseline = await n.handle("catchUp", { mission, after: null });
+    assert.equal(catchUpBaseline.items.length, 0);
     const current = async () =>
       (await n.state()).missions.find((m) => m.id === mission);
     const prepare = async (role, label) => {
@@ -78,6 +80,13 @@ test(
     const agent = await prepare("agent", "Accessibility");
     const channel = n.openAgentChannel(co.id);
     const worker = n.openAgentChannel(agent.id);
+    const snapshot = await worker.request({ type: "snapshot", watch: [] });
+    assert.equal(snapshot.context.agent.id, agent.shared.registration);
+    assert.equal(snapshot.context.lifecycle.phase, "preparing");
+    assert.ok(snapshot.snapshot.heads.length);
+    assert.ok(snapshot.snapshot.captured_at_ms > 0);
+    assert.equal(snapshot.owner, (await n.state()).identity.owner);
+    assert.deepEqual(snapshot.artifacts.candidates, []);
     assert.equal(NodeRequests.agentRequest, undefined);
     assert.equal(NodeRequests.openAgentChannel, undefined);
     assert.doesNotMatch(
@@ -274,6 +283,20 @@ test(
       text: "I will account for it privately.",
       thread: message.event,
     });
+    const located = await n.handle("readMessage", { mission, id: reply.event });
+    assert.equal(located.audience, audience);
+    assert.equal(located.thread, message.event);
+    let copied = null;
+    n.writeClipboard = (value) => {
+      copied = value;
+    };
+    await n.handle("copyMessageReference", { mission, id: reply.event });
+    assert.equal(copied, `[Message](harakiri://message/${reply.event})`);
+    const humanUpdates = await n.handle("catchUp", {
+      mission,
+      after: message.event,
+    });
+    assert.ok(humanUpdates.items.some((m) => m.id === reply.event));
     const inbox = await n.handle("queryMessages", {
       mission,
       query: { view: "inbox" },

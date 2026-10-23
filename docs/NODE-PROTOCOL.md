@@ -1,8 +1,86 @@
 # Experimental local node and peer protocol
 
+## Unreleased protocol v13 / schema 16
+
+The development branch negotiates `harakiri/sync/13`. Update connected peers
+together and back up profiles before opening this build. Published 0.4.9 still
+uses v11/schema 15. The schema migration preserves signed records; an older
+executable cannot reopen the upgraded profile.
+
+Protocol 13 adds active operational plans, direction-bound clarification and
+explicit acknowledgment. An operational plan does not replace the Start-approved
+plan or widen consent. New project manifests permit 256 files within unchanged
+per-file/total byte limits and a 48 KiB descriptor ceiling; older records retain
+their version's limits. Upload staging resumes verified chunks after restart and
+expires after 24 hours. Current authorization is checked even on replay.
+
+The stable `harakiri/compat/1` handshake carries only version/compatibility facts,
+with a two-second bounded response, and never grants access to history. Peers
+without that handshake can still produce an unreachable/version error rather
+than a negotiated downgrade. Optional `route_directory` uses authenticated
+endpoint lookup for already-known identities; relay-only publication excludes
+mission content, and every returned/cached route is re-filtered through local
+relay/LAN policy. Lookup is replaceable and off by default.
+
+Ingress applies per-endpoint/global connection, request, catalog and byte budgets;
+blob traffic has independent budgets. These bound a noisy participant, not a
+Sybil population. Fresh workforce reports may contain local capacity and deadline
+hints; reports never reserve resources or claim a provider's remaining quota.
+
+Host-only human catch-up and message-reference reads enforce participant/audience
+visibility. Catch-up uses local insertion cursors, including late replication,
+and never writes a message-read or agent-acknowledgment event.
+
+Synchronization uses durable per-peer, per-audience event cursors over each
+replica's append-only accepted log. Pages remain bounded by both event count
+and bytes. A cursor advances only after verified import; interruption replays
+idempotently. Unknown backup anchors reset the appropriate direction. Writer
+heads still acknowledge verified history, but are not pagination cursors.
+Three pending exchanges with no progress surface a stall. Reachability,
+convergence, acknowledgment of the current control and observed execution are
+different facts. No acknowledgment establishes remote termination.
+
+Artifact documents may declare `references: [{revision, relation}]` with
+`live`, `pinned` or `citation` relationships. Legacy `inputs` retain their live
+dependency meaning. Live inputs follow current heads; pins retain exact input
+versions without treating every successor as invalidation; citations retain
+historical context without dependency propagation. Authority, visibility and
+mission-term checks still apply. Empty references preserve earlier wire bytes.
+Nonempty typed references require v12.
+
+The owner/current Coordinator can select a public exact delivery candidate
+with `candidate {revision, previous}`. `previous` names all observed candidate
+decisions; concurrent decisions remain visible until reconciled. A new artifact
+revision does not silently move the candidate. Selection is neither review,
+human acceptance nor mission completion. This action requires v12.
+
+The scoped agent `snapshot` operation materializes context, conversations,
+recent messages, tasks, workstreams, criteria, artifacts and requested watched
+revisions in one native request, tagged with capture time and Main heads. It
+does not guarantee permanently fresh context or control a model's private
+memory. Existing paginated queries remain available. Artifact queries filter
+type/review state before pagination, after visibility checks.
+Snapshot Main/workstream message pages exclude governance bookkeeping before
+pagination, so accounting activity cannot displace all human instructions.
+The snapshot's criterion projection and explicit full message/governance queries
+retain those facts. Private conversation visibility remains unchanged.
+
+Native IPC failures use an allowlist of stable public error codes and recovery
+messages. Arbitrary database or remote error prose is not exposed. Unknown
+failures remain a generic rejection.
+
+Direct directions, like workstream assignments, can be recorded during
+Preparing. Their authors remain the mission owner or current Coordinator.
+They carry into Start only for agents in its reviewed participant snapshot,
+with unchanged terms and assignment authority. Waiting for Start remains a
+distinct status; acknowledgment and work permissions still require Active.
+An agent's roster `id` is its registration for assignments; `identity.author`
+is its message address. A registration passed to `post.to` produces a specific
+correction hint rather than a misleading synchronization retry.
+
 ## Protocol v11: reusable readiness, stop requests and remote observations
 
-Live peers negotiate `harakiri/sync/11`; every connected peer must upgrade. SQLite schema 15 prevents older executables from reopening upgraded profiles. Signed v1–10 records remain readable, with original bytes unchanged. Back up a profile before upgrading.
+Released 0.4.4–0.4.9 peers negotiate `harakiri/sync/11`. Their SQLite schema is 15; signed v1–10 records remain readable, with original bytes unchanged. The unreleased change above supersedes their networking/storage version.
 
 An ordinary Pause retains the exact readiness accepted by Start when the terms, plan and Coordinator remain valid. A changed plan, terms, mode or authority still invalidates reuse. Resume remains a new owner-signed Start; no acknowledgment is fabricated.
 
@@ -113,7 +191,7 @@ payload: one of the supported types below
 | `coordinator_planned` | Exact owner `control` revision, `text`                                               | Appointed Coordinator key and appointment ID, Main. |
 | `coordinator_readied` | Exact owner `control` revision, exact `plan` event ID                                | Appointed Coordinator key and appointment ID, Main. |
 | `agent_offered`       | Reviewed `control`, public agent `identity`                                          | Admitted contributor, Main.                         |
-| `agent_directed`      | `registration`, exact active `control`, `text`                                       | Owner or appointed Coordinator, Main.               |
+| `agent_directed`      | `registration`, exact Preparing or Active `control`, `text`                          | Owner or appointed Coordinator, Main.               |
 | `agent_withdrawn`     | Exact `registration`                                                                 | Original contributor, Main.                         |
 | `artifact_published`  | `title`, `files: [{path, hash, size, media_type}]`                                   | Admitted signing identity.                          |
 
@@ -262,6 +340,16 @@ Catalog signatures prove the publisher key, not that the publisher owns the name
 
 Up to eight community addresses use `harakiri://peer/<signed contact>` and the existing contact signature domain. Addresses expire after 24 hours; they are replaceable connection hints, never membership capabilities. The worker attempts at most two community exchanges per five-second pass, cycles feed pages for catch-up and forwards valid cached listings. A creator's brief can reach C through B without C configuring A as a community peer.
 
+In the unreleased build, a fresh configured community address also refreshes
+mission routes for already admitted members. The contact signer and endpoint
+must match the stored membership, both local and remote participants must still
+be authorized, discovery must be enabled, and the route must satisfy local
+network settings. Blocked or expired contacts are ignored; an older ticket cannot
+replace a newer contact. This lets a returning member recover synchronization
+after cached addresses expire, without joining again or restoring revoked
+authority. A usable fresh address is still required; this is not automatic
+internet-wide peer rediscovery.
+
 Opt-in LAN discovery uses pinned [`iroh-mdns-address-lookup` 0.6.0](https://docs.rs/iroh-mdns-address-lookup/0.6.0/iroh_mdns_address_lookup/) with the `harakiri-v1` service name and IP-only advertisements. It requires both discovery consent and locally permitted LAN routes. It announces endpoint identity and connection addresses, not private mission records. Up to 32 discovered neighbors are considered. Multicast responses are untrusted hints; authenticated connections and signed claims establish identity. Disabling discovery closes its worker and LAN lookup by restarting this node's endpoint.
 
 The automated feed test uses three separate local processes; an opt-in multicast test uses two endpoints on the same machine under a unique service namespace. Neither proves independent-machine discovery or cross-NAT connectivity. The bounded catalog is a deliberate first implementation of community discovery; evaluate larger gossip meshes only against measured scale and abuse requirements.
@@ -280,7 +368,7 @@ The owner's signed revocation records the accepted Main frontier for that member
 
 Serving nodes check revocation on subsequent requests. A removed node receives its own signed owner revocation notice rather than general mission history. A valid owner denial immediately blocks its local writes and future serving, even if causal predecessors have not arrived; the notice cannot grant authority or project missing history. The conservative stop persists across restart. Accepted frontiers still require the complete validated control record. During a partition, revocation cannot instantly reach disconnected nodes or erase bytes already delivered; later evidence remains subject to the signed frontier.
 
-Artifacts use `iroh-blobs` 0.103.0. The published manifest contains content hashes, sizes, media types and normalized relative paths. Files are pinned in local storage before their manifest is appended. A crash can leave an unreferenced pinned blob, never an acknowledged manifest for unpersisted bytes. Garbage collection policy is still pending.
+Artifacts use `iroh-blobs` 0.103.1. The published manifest contains content hashes, sizes, media types and normalized relative paths. Files are pinned in local storage before their manifest is appended. A crash can leave an unreferenced pinned blob, never an acknowledged manifest for unpersisted bytes. Garbage collection policy is still pending.
 
 Serving intercepts connection and **each GET**, including the authenticated size lookup. A known hash is not permission. The requester needs membership in a mission with an accepted manifest referencing that hash. Collection requests, pushes and availability observation are denied. Transfers have a byte allowance and a 30-second connection window. Downloads verify size before transfer and verify the resulting content hash. HTML is transferred as bytes; this proof never executes or displays it.
 
@@ -375,7 +463,14 @@ Evidence is saved under ignored `var/node/feasibility/`. This fixture is not exp
 
 ## Remaining gates
 
-The following remain: portable encrypted recovery/new-writer enrollment; independent-machine discovery/connectivity and collaboration trials; broader runtime conformance; public-network capacity/abuse hardening; Developer ID signing/notarization; and independent security review. A local test pass is not proof of safe public execution.
+Portable encrypted recovery and bounded ingress defenses are implemented and
+tested locally. Remaining evidence gates include independent-machine
+discovery/connectivity and collaboration, workload/abuse testing, fresh runtime
+conformance, signing-key rotation/new-writer procedures, actual Developer ID
+signing/notarization, dependency notice review and independent security review.
+The protected recovery file restores one existing identity; it does not solve
+multi-writer coordination or compromised-key rotation. A local test pass is not
+proof of safe public execution. See [release procedure](RELEASING.md).
 
 ## Resource ledger and mission completion (v8)
 

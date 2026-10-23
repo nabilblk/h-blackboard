@@ -135,6 +135,18 @@ pub enum Payload {
         control: String,
         direction: String,
     },
+    /// Additional guidance within an unchanged direction and permission scope.
+    AgentClarified {
+        registration: String,
+        control: String,
+        direction: String,
+        text: String,
+    },
+    AgentClarificationAcknowledged {
+        registration: String,
+        control: String,
+        clarification: String,
+    },
     GovernanceRecorded {
         control: String,
         action: crate::governance::GovernanceAction,
@@ -341,6 +353,30 @@ impl EventBody {
                         }) =>
                     {
                         action.validate()?;
+                        if let crate::artifacts::ArtifactAction::Publish { document, .. } = action {
+                            if self.version < 13 && document.files.len() > 32 {
+                                return Err(Error::Invalid("project manifests require v13"));
+                            }
+                            if self.version >= 13
+                                && document.files.iter().any(|a| {
+                                    document
+                                        .files
+                                        .iter()
+                                        .any(|b| b.path.starts_with(&format!("{}/", a.path)))
+                                })
+                            {
+                                return Err(Error::Invalid("artifact file and directory conflict"));
+                            }
+                        }
+                        if self.version < 12
+                            && (matches!(action, crate::artifacts::ArtifactAction::Publish { document, .. } if !document.references.is_empty())
+                                || matches!(
+                                    action,
+                                    crate::artifacts::ArtifactAction::Candidate { .. }
+                                ))
+                        {
+                            return Err(Error::Invalid("typed artifact references require v12"));
+                        }
                         if self.version < 10
                             && matches!(action, crate::artifacts::ArtifactAction::Review { checks, .. } if !checks.is_empty())
                         {
@@ -395,6 +431,27 @@ impl EventBody {
                         && is_hash(registration)
                         && is_hash(control)
                         && is_hash(direction) => {}
+                    Payload::AgentClarified {
+                        registration,
+                        control,
+                        direction,
+                        text,
+                    } if self.version >= 13
+                        && self.audience == "main"
+                        && is_hash(registration)
+                        && is_hash(control)
+                        && is_hash(direction)
+                        && bounded(text, 1, 2048)
+                        && !text.trim().is_empty() => {}
+                    Payload::AgentClarificationAcknowledged {
+                        registration,
+                        control,
+                        clarification,
+                    } if self.version >= 13
+                        && self.audience == "main"
+                        && is_hash(registration)
+                        && is_hash(control)
+                        && is_hash(clarification) => {}
                     Payload::MissionControlled { previous, action }
                         if self.version >= 3 && self.audience == "main" && is_hash(previous) =>
                     {
@@ -476,7 +533,12 @@ impl EventBody {
                     Payload::ArtifactPublished { title, files } => {
                         if !bounded(title, 1, 240)
                             || files.is_empty()
-                            || files.len() > limits::MAX_FILES
+                            || files.len()
+                                > if self.version >= 13 {
+                                    limits::MAX_FILES
+                                } else {
+                                    32
+                                }
                         {
                             return Err(Error::Invalid("artifact"));
                         }

@@ -1,3 +1,4 @@
+import { authoringPack } from "../../shared/authoring-packs.mjs";
 import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
 import { Button } from "../ui/Button";
@@ -65,6 +66,8 @@ export function GroupContributionConsent({
     minutes: draft.requests[0]?.minutes ?? 60,
     turns: draft.requests[0]?.turns ?? 20,
     follow: draft.requests[0]?.followDirections ?? true,
+    leaseMinutes: draft.requests[0]?.leaseMinutes ?? 45,
+    offlineMinutes: draft.requests[0]?.offlineMinutes ?? 45,
   });
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -100,8 +103,11 @@ export function GroupContributionConsent({
                   registration: c.sharedAgent!.registration,
                   contributionId: c.id,
                   networkRevision: c.networkRevision ?? null,
+                  capabilityRevision: c.capabilityRevision ?? null,
                   ownerPermission: isOwner,
                   minutes: settings.minutes,
+                  leaseMinutes: settings.leaseMinutes,
+                  offlineMinutes: settings.offlineMinutes,
                   turns: settings.turns,
                   followDirections: settings.follow,
                 }));
@@ -130,7 +136,7 @@ export function GroupContributionConsent({
             {eligible
               .map(
                 (c) =>
-                  `${c.sharedAgent?.label ?? c.runtime} (${c.networkAccess === "internet" ? "public HTTPS" : "internet blocked"})`,
+                  `${c.sharedAgent?.label ?? c.runtime} (${authoringPack(c.capabilityPack).label}; ${c.networkAccess === "internet" ? "public HTTPS" : "internet blocked"})`,
               )
               .join(" · ")}
           </p>
@@ -196,14 +202,24 @@ export function ApprovalFields({
   minutes,
   turns,
   follow,
+  leaseMinutes,
+  offlineMinutes,
   change,
   disabled = false,
 }: {
   minutes: number;
   turns: number;
   follow: boolean;
+  leaseMinutes: number;
+  offlineMinutes: number;
   disabled?: boolean;
-  change: (v: { minutes: number; turns: number; follow: boolean }) => void;
+  change: (v: {
+    minutes: number;
+    turns: number;
+    follow: boolean;
+    leaseMinutes: number;
+    offlineMinutes: number;
+  }) => void;
 }) {
   return (
     <fieldset className="n-fields" disabled={disabled}>
@@ -212,7 +228,13 @@ export function ApprovalFields({
         <select
           value={minutes}
           onChange={(e) =>
-            change({ minutes: Number(e.target.value), turns, follow })
+            change({
+              minutes: Number(e.target.value),
+              turns,
+              follow,
+              leaseMinutes,
+              offlineMinutes,
+            })
           }
         >
           {[15, 30, 60, 120, 240, 480].map((m) => (
@@ -226,7 +248,15 @@ export function ApprovalFields({
         <input
           type="checkbox"
           checked={follow}
-          onChange={(e) => change({ minutes, turns, follow: e.target.checked })}
+          onChange={(e) =>
+            change({
+              minutes,
+              turns,
+              follow: e.target.checked,
+              leaseMinutes,
+              offlineMinutes,
+            })
+          }
         />
         Follow new directions inside this mission’s current instructions
       </label>
@@ -242,14 +272,69 @@ export function ApprovalFields({
             required
             value={turns}
             onChange={(e) =>
-              change({ minutes, turns: Number(e.target.value), follow })
+              change({
+                minutes,
+                turns: Number(e.target.value),
+                follow,
+                leaseMinutes,
+                offlineMinutes,
+              })
             }
           />
         </Field>
+        <Field>
+          Maximum work session
+          <select
+            value={leaseMinutes}
+            onChange={(e) =>
+              change({
+                minutes,
+                turns,
+                follow,
+                leaseMinutes: Number(e.target.value),
+                offlineMinutes: Math.min(
+                  offlineMinutes,
+                  Number(e.target.value),
+                ),
+              })
+            }
+          >
+            {[10, 30, 45, 60, 120].map((m) => (
+              <option key={m} value={m}>
+                {m} minutes
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field>
+          Maximum time without renewed authority
+          <select
+            value={offlineMinutes}
+            onChange={(e) =>
+              change({
+                minutes,
+                turns,
+                follow,
+                leaseMinutes,
+                offlineMinutes: Number(e.target.value),
+              })
+            }
+          >
+            {[5, 10, 30, 45, 60, 120]
+              .filter((m) => m <= leaseMinutes)
+              .map((m) => (
+                <option key={m} value={m}>
+                  {m} minutes
+                </option>
+              ))}
+          </select>
+        </Field>
         <p className="d-field-help">
           A turn is one runtime invocation, not a token or a dollar. Your
-          subscription’s limits still apply. Short permissions renew only inside
-          this time window and allowance.
+          subscription’s limits still apply. Permissions renew between sessions
+          inside your contribution window. A request must finish within the
+          shorter session or offline limit. Pause and Stop remain available
+          throughout.
         </p>
       </Disclosure>
     </fieldset>
@@ -274,6 +359,8 @@ export function ContributionConsent({
     minutes: 60,
     turns: 20,
     follow: true,
+    leaseMinutes: 45,
+    offlineMinutes: 45,
   });
   const [agreements, setAgreements] = useState<ContributionAgreement[]>([]);
   const [review, setReview] = useState(false);
@@ -387,8 +474,11 @@ export function ContributionConsent({
                 registration: agent.id,
                 contributionId: contribution?.id ?? null,
                 networkRevision: contribution?.networkRevision ?? null,
+                capabilityRevision: contribution?.capabilityRevision ?? null,
                 ownerPermission: isOwner,
                 minutes: settings.minutes,
+                leaseMinutes: settings.leaseMinutes,
+                offlineMinutes: settings.offlineMinutes,
                 turns: settings.turns,
                 followDirections: settings.follow,
               });
@@ -399,6 +489,7 @@ export function ContributionConsent({
           <p>{agent.direction?.text ?? mission.definition.objective}</p>
           {contribution ? (
             <p className="d-field-help">
+              {authoringPack(contribution.capabilityPack).label} tools ·
               Workspace internet:{" "}
               {contribution.networkAccess === "internet"
                 ? "Public HTTPS allowed; requests may send mission data externally."
@@ -460,6 +551,8 @@ export function StartMissionReview({
     minutes: saved?.request.approvals[0]?.minutes ?? 60,
     turns: saved?.request.approvals[0]?.turns ?? 20,
     follow: saved?.request.approvals[0]?.followDirections ?? true,
+    leaseMinutes: saved?.request.approvals[0]?.leaseMinutes ?? 45,
+    offlineMinutes: saved?.request.approvals[0]?.offlineMinutes ?? 45,
   });
   const eligible = agents.filter(
     (a) =>
@@ -515,8 +608,13 @@ export function StartMissionReview({
               networkRevision:
                 contributions.find((c) => c.sharedAgent?.registration === a.id)
                   ?.networkRevision ?? null,
+              capabilityRevision:
+                contributions.find((c) => c.sharedAgent?.registration === a.id)
+                  ?.capabilityRevision ?? null,
               ownerPermission: true,
               minutes: settings.minutes,
+              leaseMinutes: settings.leaseMinutes,
+              offlineMinutes: settings.offlineMinutes,
               turns: settings.turns,
               followDirections: settings.follow,
             })),
@@ -538,7 +636,8 @@ export function StartMissionReview({
           : "Start this mission"}
       </h3>
       <p className="n-preserve">
-        {mission.lifecycle.plan?.text ?? mission.definition.objective}
+        {(mission.lifecycle.operational_plan ?? mission.lifecycle.plan)?.text ??
+          mission.definition.objective}
       </p>
       {saved ? (
         <p role="status">
@@ -572,7 +671,7 @@ export function StartMissionReview({
               />
               {a.identity.label} ·{" "}
               {local
-                ? `this Mac · ${local.networkAccess === "internet" ? "public HTTPS" : "internet blocked"} · approve and run`
+                ? `this Mac · ${authoringPack(local.capabilityPack).label} · ${local.networkAccess === "internet" ? "public HTTPS" : "internet blocked"} · approve and run`
                 : "another contributor · their approval is required"}
             </label>
           );

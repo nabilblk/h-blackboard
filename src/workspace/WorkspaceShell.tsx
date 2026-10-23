@@ -88,7 +88,12 @@ export function WorkspaceShell({
     <button
       type="button"
       onClick={() => go(id)}
-      aria-current={view === id ? "page" : undefined}
+      aria-current={
+        view === id ||
+        (id === "device" && ["connections", "activity"].includes(String(view)))
+          ? "page"
+          : undefined
+      }
     >
       {icon}
       <span>{label}</span>

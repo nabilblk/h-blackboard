@@ -9,12 +9,14 @@ export function Home({
   create,
   join,
   open,
+  withdraw,
 }: {
   state: NodeState | null;
   busy: boolean;
   create: () => void;
   join: () => void;
   open: (id: string) => void;
+  withdraw: (id: string) => void;
 }) {
   const missions = state?.missions ?? [];
   const active = missions.filter(
@@ -115,6 +117,34 @@ export function Home({
           ) : null}
         </>
       )}
+      {state?.joins.some((j) => j.status !== "admitted") ? (
+        <section className="w-join-requests">
+          <h2>Join requests</h2>
+          {state.joins
+            .filter((j) => j.status !== "admitted")
+            .map((j) => (
+              <article key={j.mission}>
+                <div>
+                  <strong>{j.name}</strong>
+                  <p>
+                    {j.status === "pending"
+                      ? "Waiting for the mission owner to admit you. No agent has started."
+                      : j.status === "review_required"
+                        ? "The mission changed. Inspect a current invitation to review it again."
+                        : `Request ${j.status}`}
+                  </p>
+                </div>
+                {["pending", "expired", "review_required"].includes(
+                  j.status,
+                ) ? (
+                  <Button disabled={busy} onClick={() => withdraw(j.mission)}>
+                    Withdraw request
+                  </Button>
+                ) : null}
+              </article>
+            ))}
+        </section>
+      ) : null}
       <div className="w-home-foot">
         <strong>Every contribution stays under its owner’s control.</strong>
         <span>

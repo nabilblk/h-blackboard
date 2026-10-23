@@ -29,11 +29,11 @@ export default function ContributionDetail({
     <>
       <button className="d-back" disabled={busy} onClick={back}>
         <ArrowLeft size={14} />
-        Contributions
+        My agents
       </button>
       <Heading
-        section="Your contribution"
-        title={item.mission.name}
+        section={`Your agent · ${item.mission.name}`}
+        title={item.sharedAgent?.label ?? runtimes[item.runtime].label}
         action={
           openMission ? (
             <Button onClick={openMission} disabled={!openMission}>
@@ -42,7 +42,9 @@ export default function ContributionDetail({
           ) : undefined
         }
       >
-        {item.mission.origin}
+        {runtimes[item.runtime].label} ·{" "}
+        {item.mission.role === "coordinator" ? "Coordinator" : "Agent"} on this
+        Mac
       </Heading>
       <ExecutionPanel item={item} />
       <Disclosure

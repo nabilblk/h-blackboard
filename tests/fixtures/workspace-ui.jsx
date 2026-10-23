@@ -14,10 +14,12 @@ const makeMission = (n, name, phase) => ({
     name,
     objective: "Create an engaging science festival for local families.",
     scope: "Two days, three venues. A renderer test only.",
-    criteria: [
-      { id: "one", text: "An accessible programme with a clear schedule." },
-    ],
-    policy: { coordination: "peer" },
+    criteria: ["An accessible programme with a clear schedule."],
+    policy: {
+      coordination: "peer",
+      participation: "private",
+      budget: { mode: "unlimited" },
+    },
   },
   state: "ready",
   event_count: 3,
@@ -55,6 +57,57 @@ let localState = {
   contributions: [],
   activity: [],
 };
+const agentScene = new URLSearchParams(location.search).has("agents");
+const executionRecords = {};
+if (agentScene) {
+  localState.contributions = ["grok", "claude", "codex"].map(
+    (runtime, index) => ({
+      id: `local-${index}`,
+      mission: {
+        missionId: hash(1),
+        name: "Science festival",
+        role: index === 0 ? "coordinator" : "agent",
+        origin: "local",
+        inspectedAt: new Date().toISOString(),
+      },
+      contributorId: "local",
+      deviceId: "device",
+      runtime,
+      limits: { mode: "bounded", concurrency: 1, turns: 20, minutes: 60 },
+      status: "prepared",
+      nodeBinding: { owner, revision: hash(21) },
+      sharedAgent: {
+        registration: hash(50 + index),
+        author: hash(60 + index),
+        label: ["Robin", "Finch", "Wren"][index],
+        withdrawn: false,
+      },
+      workspace: "/isolated-test/export",
+      createdAt: new Date().toISOString(),
+      revokedAt: null,
+    }),
+  );
+  for (const [index, item] of localState.contributions.entries())
+    executionRecords[item.id] = {
+      record: {
+        status: ["running", "stopped", "recovery_required"][index],
+        reason: [
+          "Checking the venue evidence.",
+          "Process stopped. Saved work is available.",
+          "No termination receipt was received.",
+        ][index],
+        session: "test-session",
+        generation: 1,
+        expiresAt: Date.now() + 3600000,
+      },
+      permissions: [],
+      direction: null,
+      permissionProblem: null,
+      capacity: 3,
+      busy: false,
+      events: [],
+    };
+}
 const messages = [
   {
     id: hash(100),
@@ -87,6 +140,35 @@ const client = {
     agents: async () => ({ items: [], after: null, total: 0 }),
     observations: async () => [],
     peers: async () => ({ members: [], requests: [], delivery: [] }),
+    configureNetwork: async (config) => {
+      window.calls.push(["network", config]);
+      nodeState = {
+        ...nodeState,
+        network: "enabled",
+        connection: { config, running: true, error: null },
+      };
+    },
+    inspectInvitation: async () => ({
+      mission: hash(6),
+      owner: hash(70),
+      endpoint: hash(71),
+      definition: makeMission(6, "Shared workshop", "preparing").definition,
+      reviewed_revision: hash(16),
+      expires_ms: Date.now() + 600000,
+    }),
+    requestJoin: async () => {
+      window.calls.push(["join"]);
+      nodeState = {
+        ...nodeState,
+        joins: [
+          { mission: hash(6), name: "Shared workshop", status: "pending" },
+        ],
+      };
+    },
+    withdrawMission: async () => {
+      nodeState = { ...nodeState, joins: [] };
+      window.calls.push(["withdraw"]);
+    },
     audiences: async () => [],
     queryMessages: async (_m, q) => ({
       items: messages.filter(
@@ -144,6 +226,12 @@ const client = {
     takeInvitation: async () => null,
     takeNotification: async () => null,
     startState: async () => [],
+    appPreferences: async () => ({
+      background: false,
+      notifications: false,
+      notificationsSupported: true,
+    }),
+    journeyDiagnostics: async () => ({ enabled: false, events: 0 }),
     state: async () => [],
     preflight: async () => ({
       supported: true,
@@ -158,7 +246,28 @@ const client = {
       window.calls.push(["prepare", request]);
     },
   },
-  execution: { overview: async () => ({}) },
+  execution: {
+    overview: async () =>
+      Object.fromEntries(
+        Object.entries(executionRecords).map(([id, state]) => [
+          id,
+          { ...state, observedAt: Date.now() },
+        ]),
+      ),
+    stop: async (id) => {
+      window.calls.push(["stop", id]);
+      if (id === "local-2")
+        throw new Error("Stop remains unconfirmed. Retry recovery.");
+      executionRecords[id] = {
+        ...executionRecords[id],
+        record: {
+          ...executionRecords[id].record,
+          status: "stopped",
+          reason: "Stopped by you.",
+        },
+      };
+    },
+  },
   drafting: {
     providers: async () => ({ providers: [] }),
     state: async () => null,

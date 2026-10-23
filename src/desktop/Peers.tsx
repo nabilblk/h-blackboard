@@ -1,3 +1,4 @@
+import { JourneySteps } from "../ui/JourneySteps";
 import { Disclosure } from "../ui/Disclosure";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
@@ -215,7 +216,6 @@ export function JoinMission({
   const [review, setReview] = useState<InvitationReview | null>(initialReview);
   const [submitted, setSubmitted] = useState(false);
   const [reviewedAgain, setReviewedAgain] = useState(false);
-  const [advancedNetwork, setAdvancedNetwork] = useState(false);
   const inspect = async () => {
     if (!state?.connection?.running) {
       if (state?.status !== "ready") await node.enroll();
@@ -241,58 +241,17 @@ export function JoinMission({
     <>
       <button className="d-back" disabled={busy} onClick={back}>
         <ArrowLeft size={15} />
-        My missions
+        Home
       </button>
-      <Heading section="Peer invitation" title="Join a shared mission.">
-        Review the mission and its owner, then choose whether to request a
-        place.
+      <Heading section="Invitation" title="Join a mission">
+        Bring an invitation. Review the goal. Choose how you want to help.
       </Heading>
-      {!state?.connection?.running ? (
-        <section className="d-panel">
-          <h2>Connect to the mission</h2>
-          <p>
-            Enable encrypted peer connections to inspect this invitation. Public
-            Iroh relays can help your computers connect and can observe
-            connection metadata. This does not join, publish a mission or start
-            an agent.
-          </p>
-          {!ticket.trim() ? (
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() =>
-                void perform(async () => {
-                  if (state?.status !== "ready") await node.enroll();
-                  await node.configureNetwork({
-                    mode: "public_relays",
-                    allow_lan: false,
-                    route_directory: null,
-                    relays: [],
-                  });
-                  await updated();
-                })
-              }
-            >
-              Enable peer connections
-            </Button>
-          ) : null}
-          <Button
-            onClick={() => setAdvancedNetwork((v) => !v)}
-            aria-expanded={advancedNetwork}
-          >
-            Connection options
-          </Button>
-          {advancedNetwork ? (
-            <NetworkSettings
-              state={state}
-              busy={busy}
-              perform={perform}
-              updated={updated}
-            />
-          ) : null}
-        </section>
-      ) : null}
-      {!initialReview ? (
+      <JourneySteps
+        label="Join a mission"
+        steps={["Invitation", "Review mission", "Join"]}
+        current={submitted ? 2 : review ? 1 : 0}
+      />
+      {!review ? (
         <section className="d-panel n-join" aria-label="Mission invitation">
           <header>
             <h2>Mission invitation</h2>
@@ -323,9 +282,15 @@ export function JoinMission({
               />
             </Field>
             <p className="d-field-help">
-              Ask the mission’s creator for the link from Members → People &amp;
-              invitations → Create invitation in their desktop app.
+              Ask the creator for an invitation from their mission’s People tab.
             </p>
+            {!state?.connection?.running ? (
+              <p className="d-field-help">
+                Connect and review enables encrypted peer connections. Public
+                Iroh relays may see connection metadata; they cannot read
+                mission traffic.
+              </p>
+            ) : null}
             <Button
               variant="primary"
               disabled={busy || !ticket.trim()}
@@ -338,6 +303,16 @@ export function JoinMission({
                   : "Connect and review"}
             </Button>
           </form>
+          {!state?.connection?.running ? (
+            <Disclosure title="Connection options">
+              <NetworkSettings
+                state={state}
+                busy={busy}
+                perform={perform}
+                updated={updated}
+              />
+            </Disclosure>
+          ) : null}
           <div className="d-explainer">
             <ShieldCheck size={17} />
             <p>
@@ -348,11 +323,31 @@ export function JoinMission({
         </section>
       ) : null}
       {review ? (
+        <Button
+          onClick={() => {
+            setReview(null);
+            setTicket("");
+            setSubmitted(false);
+          }}
+        >
+          Use another invitation
+        </Button>
+      ) : null}
+      {review ? (
         <section className="d-panel n-review" aria-label="Reviewed mission">
           <header>
             <h2>{review.definition.name}</h2>
             <Status tone="success">Signature verified</Status>
           </header>
+          {submitted ? (
+            <p className="w-join-status" role="status">
+              {status === "admitted"
+                ? "You’re admitted. Open the mission or prepare an agent when you’re ready."
+                : status === "pending" || !status
+                  ? "Request sent. Waiting for the mission owner to admit you."
+                  : `Request ${status}.`}
+            </p>
+          ) : null}
           <h3>{review.definition.objective}</h3>
           <p className="n-preserve">{review.definition.scope}</p>
           {review.definition.criteria.length ? (
@@ -415,15 +410,7 @@ export function JoinMission({
                   Review updated mission
                 </Button>
               </>
-            ) : submitted ? (
-              <Status muted>
-                {status === "admitted"
-                  ? "Admitted · your mission is available"
-                  : status && status !== "pending"
-                    ? `Request ${status}`
-                    : "Request saved · waiting for owner approval"}
-              </Status>
-            ) : (
+            ) : submitted ? null : (
               <Button
                 variant="primary"
                 disabled={busy}

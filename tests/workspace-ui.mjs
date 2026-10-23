@@ -234,6 +234,108 @@ try {
     await evaluate("document.querySelector('.w-nav-open') === null"),
     true,
   );
+  await browser("set", "viewport", "1440", "960");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Join with an invitation",
+    "--exact",
+  );
+  await browser("fill", ".n-join input", "harakiri://join/fixture");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Connect and review",
+    "--exact",
+  );
+  await browser("wait", "--text", "Shared workshop");
+  assert.equal(await evaluate("window.calls.some(c=>c[0] === 'join')"), false);
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Request to join",
+    "--exact",
+  );
+  await browser(
+    "wait",
+    "--text",
+    "Request sent. Waiting for the mission owner",
+  );
+  await browser("screenshot", join(evidence, "connected-join.png"));
+  await browser("find", "role", "button", "click", "--name", "Home", "--exact");
+  await browser("wait", "--text", "Join requests");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Withdraw request",
+    "--exact",
+  );
+  await browser("open", `${origin}/?agents`);
+  await browser("wait", ".w-sidebar");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "My agents",
+    "--exact",
+  );
+  await browser("wait", "--text", "Executing the approved work.");
+  await browser("screenshot", join(evidence, "connected-agents.png"));
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Stop all 2 agents",
+    "--exact",
+  );
+  await browser("wait", "--text", "Stop remains unconfirmed");
+  assert.equal(
+    await evaluate("window.calls.filter(c=>c[0] === 'stop').length"),
+    2,
+  );
+  assert.ok(
+    await evaluate(
+      "document.querySelector('.w-agent-list').textContent.includes('Unknown')",
+    ),
+  );
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Settings",
+    "--exact",
+  );
+  await browser("wait", "--text", "How people see you");
+  await browser("fill", '.w-settings input[name="name"]', "Alex Rivera");
+  await browser(
+    "find",
+    "role",
+    "button",
+    "click",
+    "--name",
+    "Save name",
+    "--exact",
+  );
+  await browser("wait", "--text", "Saved on this Mac");
+  await browser("screenshot", join(evidence, "connected-settings.png"));
   await browser("open", `${origin}/?empty`);
   await evaluate(
     "localStorage.removeItem('harakiri.last-view.v1'); location.reload()",

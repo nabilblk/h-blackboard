@@ -225,3 +225,12 @@
   line-height: 1.5;
   margin-top: var(--space-3);
 }
+.hb-screen-error {
+  padding: var(--space-12);
+  max-width: 70ch;
+}
+.hb-screen-error p {
+  margin: var(--space-7) 0 var(--space-9);
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}

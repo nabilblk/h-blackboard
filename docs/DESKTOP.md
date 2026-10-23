@@ -18,8 +18,8 @@ The local 0.5.0 installer is a development build. The landing download remains
 0.4.9 until the separate public release gates are satisfied. Version 0.5.0 uses
 protocol 13/schema 16; update peers together and back up profiles before testing.
 
-Validation:304 application tests,108 Rust tests (one other test remains ignored),
-61 P2P/cross-language checks,45 guest Python tests,all six browser suites, and real
+Validation: 304 application tests, 108 Rust tests (one other test remains ignored),
+61 P2P/cross-language checks, 45 guest Python tests, all six browser suites, and real
 native temporary-profile journeys. Three local desktop profiles exercised
 admission, private messaging, owner-offline synchronization, revocation and the
 artifact lifecycle with isolated interactive preview. No live model run was made
@@ -28,12 +28,11 @@ signature checks. Its fresh-profile packaged identity/restart check still needs
 macOS Keychain approval; development-app identity and restart passed. This is an
 ad-hoc signed development build, not a notarized public release.
 
-
 ## Unreleased coordination improvements
 
 The current source uses **protocol 13 / schema 16**. Downloaded 0.4.9 remains
 protocol 11/schema 15. Back up profiles and upgrade all peers together when
-testing this source; the changes below are not in the existing DMG.
+testing this source; the changes below are not in the published 0.4.9 DMG.
 
 ### Dependable collaboration iteration
 

@@ -32,7 +32,12 @@ function visit(node, check) {
 }
 
 test("frontend boundaries: screens use application ports; components have no application dependency", async () => {
-  for (const directory of ["src/desktop", "src/ui", "src/application"]) {
+  for (const directory of [
+    "src/desktop",
+    "src/workspace",
+    "src/ui",
+    "src/application",
+  ]) {
     for (const file of await sources(directory)) {
       // This is the one composition root: selecting a host is its job.
       if (file === resolve("src/desktop/main.tsx")) continue;
@@ -86,7 +91,10 @@ test("frontend boundaries: screens use application ports; components have no app
             `${file}: direct native bridge access`,
           );
         }
-        if (directory === "src/desktop" && node.type === "JSXOpeningElement") {
+        if (
+          ["src/desktop", "src/workspace"].includes(directory) &&
+          node.type === "JSXOpeningElement"
+        ) {
           assert.ok(
             !["details", "summary"].includes(node.name.name),
             `${file}: use the shared Disclosure/ActionPopover`,

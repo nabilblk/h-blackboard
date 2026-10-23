@@ -44,7 +44,7 @@ import {
 } from "../application/contracts/workspace";
 import { MissionControl, phaseLabel } from "./Lifecycle";
 import { People } from "./Peers";
-import { ContextPanel } from "./ContextPanel";
+import { ContextPanel, PanelLayout } from "./ContextPanel";
 import { Conversation, type MissionSession } from "./Conversation";
 export type { MissionSession } from "./Conversation";
 import { ArtifactPanel } from "./Artifacts";
@@ -234,6 +234,7 @@ function MissionWorkspace({
   prepare: _legacyPrepare,
   contributions,
   initialSetup = false,
+  fullPage = false,
 }: {
   mission: MissionView;
   error: string;
@@ -252,6 +253,7 @@ function MissionWorkspace({
   withdrawal?: WithdrawalView;
   prepare: (role: "agent" | "coordinator") => void;
   initialSetup?: boolean;
+  fullPage?: boolean;
 }) {
   const { missions: node, setup, execution } = useApplication();
   useEffect(() => {
@@ -568,597 +570,677 @@ function MissionWorkspace({
       await updated();
     });
   return (
-    <section
-      className="n-room"
-      aria-label={`Mission ${mission.definition.name}`}
-    >
-      <header className="n-room-header">
-        <nav className="n-workspace-history" aria-label="Workspace history">
-          <IconButton
-            aria-label="Back in workspace"
-            title="Back (Alt + Left)"
-            disabled={!history.canBack}
-            onClick={history.back}
-          >
-            <ArrowLeft size={16} />
-          </IconButton>
-          <IconButton
-            aria-label="Forward in workspace"
-            title="Forward (Alt + Right)"
-            disabled={!history.canForward}
-            onClick={history.forward}
-          >
-            <ArrowRight size={16} />
-          </IconButton>
-        </nav>
-        <div>
-          <h1>
-            <button
-              className="n-mission-title"
-              onClick={() => inspect("overview")}
-              aria-label={`Open mission brief: ${mission.definition.name}`}
+    <PanelLayout value={fullPage ? "page" : "inspector"}>
+      <section
+        className={`n-room ${fullPage ? "w-room" : ""}`}
+        aria-label={`Mission ${mission.definition.name}`}
+      >
+        <header className="n-room-header">
+          <nav className="n-workspace-history" aria-label="Workspace history">
+            <IconButton
+              aria-label="Back in workspace"
+              title="Back (Alt + Left)"
+              disabled={!history.canBack}
+              onClick={history.back}
             >
-              <span className="d-hash">#</span> {mission.definition.name}
-              <ChevronRight size={16} />
-            </button>
-          </h1>
-        </div>
-        <div className="n-action-row">
-          <Button
-            aria-expanded={panel === "catchup"}
-            onClick={() => setPanel(panel === "catchup" ? null : "catchup")}
-          >
-            Catch up
-          </Button>
-          <Button
-            aria-expanded={people}
-            onClick={() => {
-              setMemberTab("agents");
-              setPanel(people ? null : "members");
-            }}
-          >
-            Members
-          </Button>
-          {mission.owner === owner &&
-          mission.lifecycle.phase === "active" &&
-          !blocked ? (
-            <Button
-              disabled={busy}
-              onClick={() =>
-                void perform(async () => {
-                  await node.pauseMission(
-                    mission.id,
-                    mission.lifecycle.revision,
-                    "Paused by the mission owner.",
-                  );
-                  await updated();
-                })
-              }
+              <ArrowLeft size={16} />
+            </IconButton>
+            <IconButton
+              aria-label="Forward in workspace"
+              title="Forward (Alt + Right)"
+              disabled={!history.canForward}
+              onClick={history.forward}
             >
-              <Pause size={15} />
-              Pause mission
-            </Button>
-          ) : null}
-          {localAgents.length ? (
-            <Button disabled={busy} onClick={stopMine}>
-              <Square size={14} />
-              Stop my agents
-            </Button>
-          ) : null}
-          <ActionPopover label="More">
-            <Button
-              onClick={() => {
-                inspect("overview");
-              }}
-            >
-              Mission details
-            </Button>
-            {!blocked &&
-            !["closed", "archived"].includes(mission.lifecycle.phase) ? (
-              <Button
-                onClick={() => {
-                  prepare("agent");
-                }}
+              <ArrowRight size={16} />
+            </IconButton>
+          </nav>
+          <div>
+            <h1>
+              <button
+                className="n-mission-title"
+                onClick={() => inspect("overview")}
+                aria-label={`Open mission brief: ${mission.definition.name}`}
               >
-                Add my agents
+                <span className="d-hash">#</span> {mission.definition.name}
+                <ChevronRight size={16} />
+              </button>
+            </h1>
+          </div>
+          <div className="n-action-row">
+            <Button
+              aria-expanded={panel === "catchup"}
+              onClick={() => setPanel(panel === "catchup" ? null : "catchup")}
+            >
+              Catch up
+            </Button>
+            {!fullPage ? (
+              <>
+                <Button
+                  aria-expanded={people}
+                  onClick={() => {
+                    setMemberTab("agents");
+                    setPanel(people ? null : "members");
+                  }}
+                >
+                  Members
+                </Button>
+              </>
+            ) : null}
+            {mission.owner === owner &&
+            mission.lifecycle.phase === "active" &&
+            !blocked ? (
+              <Button
+                disabled={busy}
+                onClick={() =>
+                  void perform(async () => {
+                    await node.pauseMission(
+                      mission.id,
+                      mission.lifecycle.revision,
+                      "Paused by the mission owner.",
+                    );
+                    await updated();
+                  })
+                }
+              >
+                <Pause size={15} />
+                Pause mission
               </Button>
             ) : null}
-            <Button
+            {localAgents.length ? (
+              <Button disabled={busy} onClick={stopMine}>
+                <Square size={14} />
+                Stop my agents
+              </Button>
+            ) : null}
+            <ActionPopover label="More">
+              <Button
+                onClick={() => {
+                  inspect("overview");
+                }}
+              >
+                Mission details
+              </Button>
+              {!blocked &&
+              !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+                <Button
+                  onClick={() => {
+                    prepare("agent");
+                  }}
+                >
+                  Add my agents
+                </Button>
+              ) : null}
+              <Button
+                onClick={() => {
+                  setPermissionAgent(null);
+                  setPanel("budget");
+                }}
+              >
+                Budget &amp; permissions
+              </Button>
+              <Button
+                onClick={() => {
+                  setPanel("contribution");
+                }}
+              >
+                Your contribution
+              </Button>
+              <Button
+                onClick={() => {
+                  setMemberTab("people");
+                  setPanel("members");
+                }}
+              >
+                Invite people
+              </Button>
+            </ActionPopover>
+          </div>
+        </header>
+        {fullPage ? (
+          <nav className="w-mission-tabs" aria-label="Mission views">
+            <button aria-pressed={panel === null} onClick={closePanel}>
+              Conversation
+            </button>
+            <button
+              aria-pressed={["artifacts", "tasks", "workstream"].includes(
+                panel ?? "",
+              )}
               onClick={() => {
-                setPermissionAgent(null);
-                setPanel("budget");
+                setArtifactId(null);
+                setPanel("artifacts");
               }}
             >
-              Budget &amp; permissions
-            </Button>
-            <Button
+              Work{artifactCount ? <span>{artifactCount}</span> : null}
+            </button>
+            <button
+              aria-pressed={people || participation || panel === "setup"}
               onClick={() => {
-                setPanel("contribution");
+                setMemberTab("agents");
+                setPanel("members");
               }}
             >
-              Your contribution
+              People
+              {workAgents.length ? <span>{workAgents.length}</span> : null}
+            </button>
+            <button
+              aria-pressed={controls || panel === "budget"}
+              onClick={() => inspect("overview")}
+            >
+              Brief
+            </button>
+          </nav>
+        ) : null}
+        {fullPage &&
+        ["artifacts", "tasks", "workstream"].includes(panel ?? "") ? (
+          <nav className="w-work-tabs" aria-label="Work views">
+            <Button
+              aria-pressed={panel === "artifacts"}
+              onClick={() => {
+                setArtifactId(null);
+                setPanel("artifacts");
+              }}
+            >
+              Artifacts · {artifactCount}
             </Button>
+            <Button
+              aria-pressed={panel === "tasks"}
+              onClick={() => {
+                setTaskId(null);
+                setPanel("tasks");
+              }}
+            >
+              Tasks · {taskCount}
+            </Button>
+          </nav>
+        ) : null}
+        {stalledPeers > 0 ? (
+          <div className="d-alert" role="status">
+            {stalledPeers}{" "}
+            {stalledPeers === 1 ? "connection is" : "connections are"} not
+            synchronizing. New instructions may not have arrived.
             <Button
               onClick={() => {
                 setMemberTab("people");
                 setPanel("members");
               }}
             >
-              Invite people
+              Inspect connections
             </Button>
-          </ActionPopover>
-        </div>
-      </header>
-      {stalledPeers > 0 ? (
-        <div className="d-alert" role="status">
-          {stalledPeers}{" "}
-          {stalledPeers === 1 ? "connection is" : "connections are"} not
-          synchronizing. New instructions may not have arrived.
-          <Button
-            onClick={() => {
-              setMemberTab("people");
-              setPanel("members");
-            }}
-          >
-            Inspect connections
-          </Button>
-        </div>
-      ) : null}
-      {panel === "catchup" ? (
-        <ContextPanel title="Catch up" close={closePanel}>
-          <CatchUp
-            mission={mission.id}
-            owner={owner}
-            openArtifact={(id) => {
-              setArtifactId(id);
-              setPanel("artifacts");
-            }}
-            openMessage={(message) => {
-              updateSession((s) => ({
-                ...s,
-                audience: message.audience,
-                feed: "conversation",
-                anchor: message.thread ?? message.id,
-                thread: message.thread
-                  ? { id: message.thread, audience: message.audience }
-                  : null,
-              }));
-              setPanel(null);
-            }}
-          />
-        </ContextPanel>
-      ) : null}
-      {panel === "setup" ? (
-        <ContextPanel
-          title={
-            setupRole === "coordinator" ? "Set up Coordinator" : "Add my agents"
-          }
-          close={closePanel}
-          error={error}
-        >
-          <AgentSetup
-            reviewMission={() => openControls(true)}
-            key={`${mission.id}:${setupRole}:${mission.lifecycle.terms_revision}`}
-            mission={mission}
-            role={setupRole}
-            localKey={owner}
-            contributions={contributions}
-            updated={changed}
-          />
-        </ContextPanel>
-      ) : null}
-      {panel === "tasks" ? (
-        <ContextPanel
-          title="Tasks"
-          close={closePanel}
-          error={error || observedError}
-        >
-          <TaskPanel
-            initialTask={taskId}
-            mission={mission}
-            localKey={owner}
-            busy={busy}
-            blocked={blocked}
-            perform={perform}
-            changed={changed}
-            streams={streams}
-            agents={workAgents}
-            open={(audience) => {
-              updateSession((s) => ({ ...s, feed: "conversation", audience }));
-              setPanel(null);
-            }}
-          />
-        </ContextPanel>
-      ) : null}
-      {panel === "artifacts" ? (
-        <ContextPanel
-          title="Artifacts"
-          close={closePanel}
-          error={error || observedError}
-        >
-          <ArtifactPanel
-            key={artifactId ?? "list"}
-            mission={mission}
-            owner={owner}
-            agents={workAgents}
-            streams={streams}
-            initial={artifactId}
-            conversation={session.audience}
-            busy={busy}
-            blocked={blocked}
-            perform={perform}
-            changed={changed}
-            openConversation={(audience) => {
-              updateSession((s) => ({ ...s, feed: "conversation", audience }));
-              setPanel(null);
-            }}
-          />
-        </ContextPanel>
-      ) : null}
-      {panel === "workstream" ? (
-        <ContextPanel
-          title={streamId ? "Workstream details" : "New workstream"}
-          close={closePanel}
-          error={error || observedError}
-        >
-          <WorkstreamPanel
-            key={streamId ?? "new"}
-            mission={mission}
-            localKey={owner}
-            busy={busy}
-            blocked={blocked}
-            perform={perform}
-            changed={changed}
-            stream={streams.find((s) => s.id === streamId) ?? null}
-            agents={workAgents}
-            open={openWorkstream}
-          />
-        </ContextPanel>
-      ) : null}
-      {people ? (
-        <ContextPanel title="Members" close={closePanel} error={error}>
-          <ViewTabs
-            label="Member views"
-            value={memberTab}
-            onChange={setMemberTab}
-            items={[
-              { value: "agents", label: "Agents" },
-              { value: "people", label: "People & invitations" },
-            ]}
-          />
-          <div hidden={memberTab !== "agents"}>
-            <AgentRoster
-              permissions={(agent) => {
-                setPermissionAgent(agent.id);
-                setPanel("budget");
+          </div>
+        ) : null}
+        {panel === "catchup" ? (
+          <ContextPanel title="Catch up" close={closePanel}>
+            <CatchUp
+              mission={mission.id}
+              owner={owner}
+              openArtifact={(id) => {
+                setArtifactId(id);
+                setPanel("artifacts");
               }}
-              message={(agent, privateChat) => {
-                if (privateChat)
-                  void perform(async () => {
-                    const { audience } = await node.openAgentConversation(
-                      mission.id,
-                      agent.id,
-                    );
+              openMessage={(message) => {
+                updateSession((s) => ({
+                  ...s,
+                  audience: message.audience,
+                  feed: "conversation",
+                  anchor: message.thread ?? message.id,
+                  thread: message.thread
+                    ? { id: message.thread, audience: message.audience }
+                    : null,
+                }));
+                setPanel(null);
+              }}
+            />
+          </ContextPanel>
+        ) : null}
+        {panel === "setup" ? (
+          <ContextPanel
+            title={
+              setupRole === "coordinator"
+                ? "Set up Coordinator"
+                : "Add my agents"
+            }
+            close={closePanel}
+            error={error}
+          >
+            <AgentSetup
+              reviewMission={() => openControls(true)}
+              key={`${mission.id}:${setupRole}:${mission.lifecycle.terms_revision}`}
+              mission={mission}
+              role={setupRole}
+              localKey={owner}
+              contributions={contributions}
+              updated={changed}
+            />
+          </ContextPanel>
+        ) : null}
+        {panel === "tasks" ? (
+          <ContextPanel
+            title="Tasks"
+            close={closePanel}
+            error={error || observedError}
+          >
+            <TaskPanel
+              initialTask={taskId}
+              mission={mission}
+              localKey={owner}
+              busy={busy}
+              blocked={blocked}
+              perform={perform}
+              changed={changed}
+              streams={streams}
+              agents={workAgents}
+              open={(audience) => {
+                updateSession((s) => ({
+                  ...s,
+                  feed: "conversation",
+                  audience,
+                }));
+                setPanel(null);
+              }}
+            />
+          </ContextPanel>
+        ) : null}
+        {panel === "artifacts" ? (
+          <ContextPanel
+            title="Artifacts"
+            close={closePanel}
+            error={error || observedError}
+          >
+            <ArtifactPanel
+              key={artifactId ?? "list"}
+              mission={mission}
+              owner={owner}
+              agents={workAgents}
+              streams={streams}
+              initial={artifactId}
+              conversation={session.audience}
+              busy={busy}
+              blocked={blocked}
+              perform={perform}
+              changed={changed}
+              openConversation={(audience) => {
+                updateSession((s) => ({
+                  ...s,
+                  feed: "conversation",
+                  audience,
+                }));
+                setPanel(null);
+              }}
+            />
+          </ContextPanel>
+        ) : null}
+        {panel === "workstream" ? (
+          <ContextPanel
+            title={streamId ? "Workstream details" : "New workstream"}
+            close={closePanel}
+            error={error || observedError}
+          >
+            <WorkstreamPanel
+              key={streamId ?? "new"}
+              mission={mission}
+              localKey={owner}
+              busy={busy}
+              blocked={blocked}
+              perform={perform}
+              changed={changed}
+              stream={streams.find((s) => s.id === streamId) ?? null}
+              agents={workAgents}
+              open={openWorkstream}
+            />
+          </ContextPanel>
+        ) : null}
+        {people ? (
+          <ContextPanel title="Members" close={closePanel} error={error}>
+            <ViewTabs
+              label="Member views"
+              value={memberTab}
+              onChange={setMemberTab}
+              items={[
+                { value: "agents", label: "Agents" },
+                { value: "people", label: "People & invitations" },
+              ]}
+            />
+            <div hidden={memberTab !== "agents"}>
+              <AgentRoster
+                permissions={(agent) => {
+                  setPermissionAgent(agent.id);
+                  setPanel("budget");
+                }}
+                message={(agent, privateChat) => {
+                  if (privateChat)
+                    void perform(async () => {
+                      const { audience } = await node.openAgentConversation(
+                        mission.id,
+                        agent.id,
+                      );
+                      updateSession((s) => ({
+                        ...s,
+                        audience,
+                        feed: "conversation",
+                      }));
+                      setPanel(null);
+                    });
+                  else {
                     updateSession((s) => ({
                       ...s,
-                      audience,
+                      audience: "main",
                       feed: "conversation",
+                      recipients: {
+                        ...s.recipients,
+                        main: agent.identity.author,
+                      },
                     }));
                     setPanel(null);
-                  });
-                else {
-                  updateSession((s) => ({
-                    ...s,
-                    audience: "main",
-                    feed: "conversation",
-                    recipients: {
-                      ...s.recipients,
-                      main: agent.identity.author,
-                    },
-                  }));
-                  setPanel(null);
-                }
-              }}
-              selectedAgent={selectedAgent}
-              mission={mission}
-              localKey={owner}
-              contributions={contributions}
-              busy={busy}
-              perform={perform}
-              updated={updated}
-              prepare={() => prepare("agent")}
-            />
-          </div>
-          <div hidden={memberTab !== "people"}>
-            <People
-              mission={mission.id}
-              agents={workAgents}
-              owner={mission.owner}
-              localKey={owner}
-              enabled={enabled}
-              busy={busy}
-              perform={perform}
-              network={network}
-              privateMessage={privateMessage}
-            />
-            {mission.owner === owner ? (
-              <PublishMission
+                  }
+                }}
+                selectedAgent={selectedAgent}
                 mission={mission}
-                busy={busy}
-                perform={perform}
-                network={network}
-              />
-            ) : null}
-          </div>
-        </ContextPanel>
-      ) : null}
-      {participation ? (
-        <ContextPanel
-          title="Your contribution"
-          close={closePanel}
-          error={error}
-        >
-          <section
-            className="d-panel n-participation"
-            aria-label="Your participation"
-          >
-            <header>
-              <h2>Your participation</h2>
-              <Status muted>
-                {withdrawal
-                  ? "Withdrawn"
-                  : revoked
-                    ? "Revoked"
-                    : mission.lifecycle.phase === "active"
-                      ? "Joined · mission active"
-                      : mission.lifecycle.phase === "paused"
-                        ? "Joined · mission paused"
-                        : "Joined · waiting for mission start"}
-              </Status>
-            </header>
-            <p>
-              Choose a runtime, a dedicated local folder and your own allowance.
-              Preparation does not start work. You approve isolated execution
-              separately from your agent’s details.
-            </p>
-            {!revoked && !withdrawal ? (
-              <>
-                <Field>
-                  Agent role
-                  <select
-                    value={role}
-                    onChange={(e) =>
-                      setRole(e.target.value as "agent" | "coordinator")
-                    }
-                  >
-                    <option value="agent">Agent</option>
-                    {mission.definition.policy?.coordination ===
-                    "coordinated" ? (
-                      <option value="coordinator">Coordinator</option>
-                    ) : null}
-                  </select>
-                </Field>
-                {role === "coordinator" ? (
-                  <p className="d-field-help">
-                    Share this contribution in Members so the mission owner can
-                    select it for coordination. It waits for appointment;
-                    preparing it does not replace the current Coordinator.
-                  </p>
-                ) : null}
-                <div className="n-action-row">
-                  <Button
-                    variant="primary"
-                    disabled={busy || mission.conflicted}
-                    onClick={() =>
-                      prepare(
-                        mission.definition.policy?.coordination === "peer"
-                          ? "agent"
-                          : role,
-                      )
-                    }
-                  >
-                    Prepare contribution
-                  </Button>
-                  {mission.owner !== owner ? (
-                    <Button
-                      disabled={busy}
-                      onClick={() => setConfirmWithdraw(true)}
-                    >
-                      Withdraw from mission…
-                    </Button>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
-            {confirmWithdraw ? (
-              <div className="n-withdraw-confirm">
-                <h3>Withdraw this node from the mission?</h3>
-                <p>
-                  New messages and synchronization stop on this device. Your
-                  prepared contributions are revoked; saved history and
-                  workspace files stay here. Peers are notified when reachable.
-                  Rejoining with this identity is not supported yet.
-                </p>
-                <div className="n-action-row">
-                  <Button
-                    disabled={busy}
-                    onClick={() => setConfirmWithdraw(false)}
-                  >
-                    Keep participating
-                  </Button>
-                  <Button
-                    variant="primary"
-                    disabled={busy}
-                    onClick={() =>
-                      void perform(async () => {
-                        await node.withdrawMission(mission.id);
-                        setConfirmWithdraw(false);
-                        await updated();
-                      })
-                    }
-                  >
-                    Withdraw participation
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-            {withdrawal ? (
-              <p role="status">
-                Withdrawn on this device.{" "}
-                {withdrawal.pending_notifications
-                  ? `${withdrawal.pending_notifications} peer notifications pending.`
-                  : "Known peers have acknowledged the notice."}
-              </p>
-            ) : null}
-          </section>
-        </ContextPanel>
-      ) : null}
-      {panel === "budget" ? (
-        <ContextPanel
-          title="Budget & permissions"
-          close={closePanel}
-          error={error}
-        >
-          <BudgetPanel
-            key={permissionAgent ?? "all"}
-            initialAgent={permissionAgent}
-            mission={mission}
-            owner={owner}
-            agents={workAgents}
-            contributions={contributions}
-            busy={busy}
-            perform={perform}
-          />
-        </ContextPanel>
-      ) : null}
-      {controls ? (
-        <ContextPanel
-          title="Mission"
-          close={closePanel}
-          error={error || observedError}
-        >
-          <ViewTabs
-            label="Mission inspector views"
-            value={inspectorTab}
-            onChange={setInspectorTab}
-            items={[
-              { value: "overview", label: "Overview" },
-              {
-                value: "decisions",
-                label: `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`,
-              },
-              { value: "technical", label: "Technical" },
-            ]}
-          />
-          <div hidden={inspectorTab !== "decisions"}>
-            <MissionDecisions value={experience} act={act} />
-          </div>
-          <div hidden={inspectorTab !== "technical"}>
-            <MissionActivity value={experience} mission={mission} act={act} />
-          </div>
-          <div hidden={inspectorTab !== "overview"}>
-            <MissionControl
-              key={startReviewRequest}
-              reviewStart={startReviewRequest > 0}
-              mission={mission}
-              isOwner={mission.owner === owner}
-              blocked={blocked}
-              busy={busy}
-              open
-              agents={workAgents}
-              presentation={experience}
-              act={act}
-              contributions={contributions}
-              perform={perform}
-              updated={updated}
-            >
-              <MissionProgress
-                mission={mission}
-                owner={owner}
-                agents={workAgents}
+                localKey={owner}
+                contributions={contributions}
                 busy={busy}
                 perform={perform}
                 updated={updated}
-                openArtifact={(id) => {
-                  setArtifactId(id);
-                  setPanel("artifacts");
-                }}
+                prepare={() => prepare("agent")}
               />
-            </MissionControl>
-          </div>
-        </ContextPanel>
-      ) : null}
-      <MissionJourney
-        value={experience}
-        act={act}
-        inspect={inspect}
-        inspectorOpen={panel !== null}
-        candidate={candidate}
-        openCandidate={() => {
-          if (candidate)
-            void perform(async () => {
-              const detail = await node.artifactDetail(
-                mission.id,
-                candidate.revision,
-              );
-              if (detail.document.entrypoint)
-                await node.artifactOpen(
-                  mission.id,
-                  candidate.revision,
-                  detail.document.entrypoint,
-                );
-              else {
-                setArtifactId(candidate.revision);
-                setPanel("artifacts");
-              }
-            });
-        }}
-      />
-      {observedError ? (
-        <p className="d-alert" role="alert">
-          {observedError}
-        </p>
-      ) : null}
-      <Conversation
-        decisions={<MissionDecisions value={experience} act={act} />}
-        contributions={contributions}
-        streams={streams}
-        taskCount={taskCount}
-        tasks={(id) => {
-          setTaskId(id ?? null);
-          setPanel("tasks");
-        }}
-        artifactCount={artifactCount}
-        artifacts={(id) => {
-          setArtifactId(id ?? null);
-          setPanel("artifacts");
-        }}
-        editStream={(id) => {
-          setStreamId(id);
-          setPanel("workstream");
-        }}
-        mission={mission}
-        owner={owner}
-        name={name}
-        busy={busy}
-        blocked={blocked || mission.lifecycle.phase === "archived"}
-        session={session}
-        updateSession={updateSession}
-        readScroll={readScroll}
-        rememberScroll={rememberScroll}
-        perform={perform}
-        detailsOpen={panel !== null}
-        closeDetails={closePanel}
-        members={() => {
-          setMemberTab("agents");
-          setPanel("members");
-        }}
-        profile={(registration) => {
-          setSelectedAgent(registration);
-          setMemberTab("agents");
-          setPanel("members");
-        }}
-      />
-    </section>
+            </div>
+            <div hidden={memberTab !== "people"}>
+              <People
+                mission={mission.id}
+                agents={workAgents}
+                owner={mission.owner}
+                localKey={owner}
+                enabled={enabled}
+                busy={busy}
+                perform={perform}
+                network={network}
+                privateMessage={privateMessage}
+              />
+              {mission.owner === owner ? (
+                <PublishMission
+                  mission={mission}
+                  busy={busy}
+                  perform={perform}
+                  network={network}
+                />
+              ) : null}
+            </div>
+          </ContextPanel>
+        ) : null}
+        {participation ? (
+          <ContextPanel
+            title="Your contribution"
+            close={closePanel}
+            error={error}
+          >
+            <section
+              className="d-panel n-participation"
+              aria-label="Your participation"
+            >
+              <header>
+                <h2>Your participation</h2>
+                <Status muted>
+                  {withdrawal
+                    ? "Withdrawn"
+                    : revoked
+                      ? "Revoked"
+                      : mission.lifecycle.phase === "active"
+                        ? "Joined · mission active"
+                        : mission.lifecycle.phase === "paused"
+                          ? "Joined · mission paused"
+                          : "Joined · waiting for mission start"}
+                </Status>
+              </header>
+              <p>
+                Choose a runtime, a dedicated local folder and your own
+                allowance. Preparation does not start work. You approve isolated
+                execution separately from your agent’s details.
+              </p>
+              {!revoked && !withdrawal ? (
+                <>
+                  <Field>
+                    Agent role
+                    <select
+                      value={role}
+                      onChange={(e) =>
+                        setRole(e.target.value as "agent" | "coordinator")
+                      }
+                    >
+                      <option value="agent">Agent</option>
+                      {mission.definition.policy?.coordination ===
+                      "coordinated" ? (
+                        <option value="coordinator">Coordinator</option>
+                      ) : null}
+                    </select>
+                  </Field>
+                  {role === "coordinator" ? (
+                    <p className="d-field-help">
+                      Share this contribution in Members so the mission owner
+                      can select it for coordination. It waits for appointment;
+                      preparing it does not replace the current Coordinator.
+                    </p>
+                  ) : null}
+                  <div className="n-action-row">
+                    <Button
+                      variant="primary"
+                      disabled={busy || mission.conflicted}
+                      onClick={() =>
+                        prepare(
+                          mission.definition.policy?.coordination === "peer"
+                            ? "agent"
+                            : role,
+                        )
+                      }
+                    >
+                      Prepare contribution
+                    </Button>
+                    {mission.owner !== owner ? (
+                      <Button
+                        disabled={busy}
+                        onClick={() => setConfirmWithdraw(true)}
+                      >
+                        Withdraw from mission…
+                      </Button>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+              {confirmWithdraw ? (
+                <div className="n-withdraw-confirm">
+                  <h3>Withdraw this node from the mission?</h3>
+                  <p>
+                    New messages and synchronization stop on this device. Your
+                    prepared contributions are revoked; saved history and
+                    workspace files stay here. Peers are notified when
+                    reachable. Rejoining with this identity is not supported
+                    yet.
+                  </p>
+                  <div className="n-action-row">
+                    <Button
+                      disabled={busy}
+                      onClick={() => setConfirmWithdraw(false)}
+                    >
+                      Keep participating
+                    </Button>
+                    <Button
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() =>
+                        void perform(async () => {
+                          await node.withdrawMission(mission.id);
+                          setConfirmWithdraw(false);
+                          await updated();
+                        })
+                      }
+                    >
+                      Withdraw participation
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {withdrawal ? (
+                <p role="status">
+                  Withdrawn on this device.{" "}
+                  {withdrawal.pending_notifications
+                    ? `${withdrawal.pending_notifications} peer notifications pending.`
+                    : "Known peers have acknowledged the notice."}
+                </p>
+              ) : null}
+            </section>
+          </ContextPanel>
+        ) : null}
+        {panel === "budget" ? (
+          <ContextPanel
+            title="Budget & permissions"
+            close={closePanel}
+            error={error}
+          >
+            <BudgetPanel
+              key={permissionAgent ?? "all"}
+              initialAgent={permissionAgent}
+              mission={mission}
+              owner={owner}
+              agents={workAgents}
+              contributions={contributions}
+              busy={busy}
+              perform={perform}
+            />
+          </ContextPanel>
+        ) : null}
+        {controls ? (
+          <ContextPanel
+            title="Mission"
+            close={closePanel}
+            error={error || observedError}
+          >
+            <ViewTabs
+              label="Mission inspector views"
+              value={inspectorTab}
+              onChange={setInspectorTab}
+              items={[
+                { value: "overview", label: "Overview" },
+                {
+                  value: "decisions",
+                  label: `Needs you${experience.decisions.length ? ` · ${experience.decisions.length}` : ""}`,
+                },
+                { value: "technical", label: "Technical" },
+              ]}
+            />
+            <div hidden={inspectorTab !== "decisions"}>
+              <MissionDecisions value={experience} act={act} />
+            </div>
+            <div hidden={inspectorTab !== "technical"}>
+              <MissionActivity value={experience} mission={mission} act={act} />
+            </div>
+            <div hidden={inspectorTab !== "overview"}>
+              <MissionControl
+                key={startReviewRequest}
+                reviewStart={startReviewRequest > 0}
+                mission={mission}
+                isOwner={mission.owner === owner}
+                blocked={blocked}
+                busy={busy}
+                open
+                agents={workAgents}
+                presentation={experience}
+                act={act}
+                contributions={contributions}
+                perform={perform}
+                updated={updated}
+              >
+                <MissionProgress
+                  mission={mission}
+                  owner={owner}
+                  agents={workAgents}
+                  busy={busy}
+                  perform={perform}
+                  updated={updated}
+                  openArtifact={(id) => {
+                    setArtifactId(id);
+                    setPanel("artifacts");
+                  }}
+                />
+              </MissionControl>
+            </div>
+          </ContextPanel>
+        ) : null}
+        <div
+          className="w-conversation-surface"
+          hidden={fullPage && panel !== null}
+        >
+          <MissionJourney
+            value={experience}
+            act={act}
+            inspect={inspect}
+            inspectorOpen={panel !== null}
+            candidate={candidate}
+            openCandidate={() => {
+              if (candidate)
+                void perform(async () => {
+                  const detail = await node.artifactDetail(
+                    mission.id,
+                    candidate.revision,
+                  );
+                  if (detail.document.entrypoint)
+                    await node.artifactOpen(
+                      mission.id,
+                      candidate.revision,
+                      detail.document.entrypoint,
+                    );
+                  else {
+                    setArtifactId(candidate.revision);
+                    setPanel("artifacts");
+                  }
+                });
+            }}
+          />
+          {observedError ? (
+            <p className="d-alert" role="alert">
+              {observedError}
+            </p>
+          ) : null}
+          <Conversation
+            compactNavigation={fullPage}
+            decisions={<MissionDecisions value={experience} act={act} />}
+            contributions={contributions}
+            streams={streams}
+            taskCount={taskCount}
+            tasks={(id) => {
+              setTaskId(id ?? null);
+              setPanel("tasks");
+            }}
+            artifactCount={artifactCount}
+            artifacts={(id) => {
+              setArtifactId(id ?? null);
+              setPanel("artifacts");
+            }}
+            editStream={(id) => {
+              setStreamId(id);
+              setPanel("workstream");
+            }}
+            mission={mission}
+            owner={owner}
+            name={name}
+            busy={busy}
+            blocked={blocked || mission.lifecycle.phase === "archived"}
+            session={session}
+            updateSession={updateSession}
+            readScroll={readScroll}
+            rememberScroll={rememberScroll}
+            perform={perform}
+            detailsOpen={panel !== null}
+            closeDetails={closePanel}
+            members={() => {
+              setMemberTab("agents");
+              setPanel("members");
+            }}
+            profile={(registration) => {
+              setSelectedAgent(registration);
+              setMemberTab("agents");
+              setPanel("members");
+            }}
+          />
+        </div>
+      </section>
+    </PanelLayout>
   );
 }

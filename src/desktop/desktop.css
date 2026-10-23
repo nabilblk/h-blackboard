@@ -2647,3 +2647,10 @@ textarea {
 .n-message-link:hover {
   text-decoration: underline;
 }
+
+.w-conversation-surface {
+  display: contents;
+}
+.w-conversation-surface[hidden] {
+  display: none;
+}

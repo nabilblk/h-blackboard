@@ -52,6 +52,7 @@ export type MissionSession = {
 };
 type Props = {
   decisions?: ReactNode;
+  compactNavigation?: boolean;
   contributions: Contribution[];
   streams: WorkstreamView[];
   taskCount: number;
@@ -77,6 +78,7 @@ type Props = {
 
 export function Conversation({
   decisions,
+  compactNavigation = false,
   contributions,
   streams,
   taskCount,
@@ -423,24 +425,28 @@ export function Conversation({
                   Add workstream
                 </button>
               ) : null}
-              <button
-                onClick={() => {
-                  setThread(null);
-                  tasks();
-                }}
-              >
-                <ListChecks size={17} />
-                Tasks<span className="d-count">{taskCount}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setThread(null);
-                  artifacts();
-                }}
-              >
-                <Files size={17} />
-                Artifacts<span className="d-count">{artifactCount}</span>
-              </button>
+              {!compactNavigation ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setThread(null);
+                      tasks();
+                    }}
+                  >
+                    <ListChecks size={17} />
+                    Tasks<span className="d-count">{taskCount}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setThread(null);
+                      artifacts();
+                    }}
+                  >
+                    <Files size={17} />
+                    Artifacts<span className="d-count">{artifactCount}</span>
+                  </button>
+                </>
+              ) : null}
               <button
                 aria-current={feed === "inbox" ? "page" : undefined}
                 onClick={() => select(audience, "inbox")}
@@ -501,7 +507,10 @@ export function Conversation({
                 </button>
               ))}
               {!scopes.length ? (
-                <p>Open Members to start a private conversation.</p>
+                <p>
+                  Open {compactNavigation ? "People" : "Members"} to start a
+                  private conversation.
+                </p>
               ) : null}
               {scopes.length > scopeLimit ? (
                 <button onClick={() => setScopeLimit((n) => n + 20)}>

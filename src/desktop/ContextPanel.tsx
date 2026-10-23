@@ -1,11 +1,51 @@
 import { IconButton } from "../ui/Button";
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
+export const PanelLayout = createContext<"inspector" | "page">("inspector");
+
+export function ContextPanel(props: Parameters<typeof Inspector>[0]) {
+  const layout = useContext(PanelLayout);
+  const heading = useId();
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (layout === "page") ref.current?.focus({ preventScroll: true });
+  }, [layout, props.title]);
+  if (layout === "inspector") return <Inspector {...props} />;
+  return (
+    <section
+      className="w-surface"
+      ref={ref}
+      tabIndex={-1}
+      aria-labelledby={heading}
+    >
+      <header className="w-surface-title">
+        <h2 id={heading}>{props.title}</h2>
+        <IconButton aria-label={`Close ${props.title}`} onClick={props.close}>
+          <X size={18} />
+        </IconButton>
+      </header>
+      {props.error ? (
+        <p className="d-alert" role="alert">
+          {props.error}
+        </p>
+      ) : null}
+      {props.children}
+    </section>
+  );
+}
+
 /** A docked, nonmodal inspector on desktop; a modal sheet on narrow windows.
  * The conversation remains mounted, preserving draft, selection and history. */
-export function ContextPanel({
+function Inspector({
   title,
   close,
   children,

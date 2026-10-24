@@ -650,7 +650,7 @@ export function ArtifactPanel({
                     </Field>
                     <div id={reviewReferencesHelp}>
                       <p className="d-field-help">
-                        Use Copy message reference or Copy revision reference on
+                        Use Copy message link or Copy revision reference on
                         the board (up to 16 records). Full record IDs also work.
                         Describe observations and screenshots in Review or the
                         check evidence fields above.

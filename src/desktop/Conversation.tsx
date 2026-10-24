@@ -345,7 +345,7 @@ export function Conversation({
       message={m}
       label={label}
       location={streams.find((s) => `workstream:${s.id}` === m.audience)?.name}
-      owner={owner}
+      missionOwner={mission.owner}
       role={agentsByAuthor.get(m.author)?.identity.role}
       runtime={agentsByAuthor.get(m.author)?.identity.runtime}
       copyLink={() =>

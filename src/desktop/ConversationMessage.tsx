@@ -10,7 +10,7 @@ import { Disclosure } from "../ui/Disclosure";
 export function Message({
   message: m,
   label,
-  owner,
+  missionOwner,
   profile,
   reply,
   context,
@@ -22,7 +22,7 @@ export function Message({
 }: {
   message: MessageView;
   label: (id: string) => string;
-  owner: string;
+  missionOwner: string;
   profile: (id: string) => void;
   reply?: () => void;
   context?: () => void;
@@ -55,7 +55,7 @@ export function Message({
           {role === "coordinator" ? (
             <span className="n-message-role">Coordinator</span>
           ) : null}
-          {m.author === owner ? (
+          {m.author === missionOwner ? (
             <span className="n-activity-kind">Mission owner</span>
           ) : null}
           {m.kind !== "message" ? (

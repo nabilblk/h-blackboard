@@ -1,4 +1,5 @@
 import { JourneySteps } from "../ui/JourneySteps";
+import { JoinVerification } from "./JoinVerification";
 import { Disclosure } from "../ui/Disclosure";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
@@ -347,6 +348,9 @@ export function JoinMission({
                   ? "Request sent. Waiting for the mission owner to admit you."
                   : `Request ${status}.`}
             </p>
+          ) : null}
+          {submitted && status === "pending" && state?.identity ? (
+            <JoinVerification ownerKey={state.identity.owner} />
           ) : null}
           <h3>{review.definition.objective}</h3>
           <p className="n-preserve">{review.definition.scope}</p>

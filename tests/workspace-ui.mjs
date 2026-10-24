@@ -303,9 +303,21 @@ try {
     "--text",
     "Request sent. Waiting for the mission owner",
   );
+  await browser("find", "text", "Verify your join request", "click", "--exact");
+  const verification = 'input[aria-label="Your verification key"]';
+  assert.deepEqual(
+    await evaluate(
+      `(()=>{const input=document.querySelector('${verification}');return {value:input.value,readOnly:input.readOnly}})()`,
+    ),
+    { value: (2).toString(16).padStart(64, "0"), readOnly: true },
+  );
   await browser("screenshot", join(evidence, "connected-join.png"));
   await browser("find", "role", "button", "click", "--name", "Home", "--exact");
   await browser("wait", "--text", "Join requests");
+  assert.equal(
+    await evaluate(`document.querySelector('${verification}')?.value`),
+    (2).toString(16).padStart(64, "0"),
+  );
   await browser(
     "find",
     "role",
@@ -466,6 +478,28 @@ try {
   assert.equal(
     await evaluate("!!document.querySelector('.d-screen-error')"),
     false,
+  );
+  await browser("open", `${origin}/?contributor`);
+  await browser("wait", ".w-sidebar");
+  await browser("click", '.w-mission-link[title="Science festival"]');
+  await browser("wait", ".n-message");
+  await browser("fill", "#main-message", "Sam checking the plan.");
+  await browser("click", ".n-composer button[type=submit]");
+  await browser("wait", "--text", "Sam checking the plan.");
+  assert.deepEqual(
+    await evaluate(`Array.from(document.querySelectorAll('.n-message')).map(m=>({
+      author:m.querySelector('header strong').textContent,
+      missionOwner:Array.from(m.querySelectorAll('.n-activity-kind')).some(b=>b.textContent==='Mission owner')
+    }))`),
+    [
+      { author: "Alex", missionOwner: true },
+      { author: "Sam", missionOwner: false },
+    ],
+    "The owner's badge must not follow the local viewer's identity",
+  );
+  await browser(
+    "screenshot",
+    join(evidence, "connected-contributor-authorship.png"),
   );
   console.log(
     "Workspace journeys passed: missions, inbox, conversation, draft continuity, search, appearance, mobile and empty state.",

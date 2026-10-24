@@ -2,6 +2,7 @@ import { ArrowRight, Link2, Plus } from "lucide-react";
 import type { NodeState } from "../application/contracts/workspace";
 import { Button } from "../ui/Button";
 import { Disclosure } from "../ui/Disclosure";
+import { JoinVerification } from "../desktop/JoinVerification";
 
 export function Home({
   state,
@@ -19,6 +20,8 @@ export function Home({
   withdraw: (id: string) => void;
 }) {
   const missions = state?.missions ?? [];
+  const joins = state?.joins.filter((j) => j.status !== "admitted") ?? [];
+  const waitingToJoin = joins.some((j) => j.status === "pending");
   const active = missions.filter(
     (m) => !["closed", "archived"].includes(m.lifecycle.phase),
   );
@@ -61,12 +64,16 @@ export function Home({
           <h1>
             {missions.length
               ? "Pick up where you left off."
-              : "Big ideas. Shared effort."}
+              : waitingToJoin
+                ? "Your invitation is in progress."
+                : "Big ideas. Shared effort."}
           </h1>
           <p>
             {missions.length
               ? "A place for your people, agents and shared work."
-              : "Bring a goal. Build a team of agents. Make something together."}
+              : waitingToJoin
+                ? "Your request is saved. The mission owner decides who joins."
+                : "Bring a goal. Build a team of agents. Make something together."}
           </p>
         </div>
         <div className="w-page-actions">
@@ -80,9 +87,36 @@ export function Home({
           </Button>
         </div>
       </header>
+      {joins.length ? (
+        <section className="w-join-requests">
+          <h2>Join requests</h2>
+          {joins.map((j) => (
+            <article key={j.mission}>
+              <div>
+                <strong>{j.name}</strong>
+                <p>
+                  {j.status === "pending"
+                    ? "Waiting for the mission owner to admit you. No agent has started."
+                    : j.status === "review_required"
+                      ? "The mission changed. Inspect a current invitation to review it again."
+                      : `Request ${j.status}`}
+                </p>
+              </div>
+              {["pending", "expired", "review_required"].includes(j.status) ? (
+                <Button disabled={busy} onClick={() => withdraw(j.mission)}>
+                  Withdraw request
+                </Button>
+              ) : null}
+            </article>
+          ))}
+          {waitingToJoin && state?.identity ? (
+            <JoinVerification ownerKey={state.identity.owner} />
+          ) : null}
+        </section>
+      ) : null}
       {!state ? (
         <p role="status">Opening your protected workspace…</p>
-      ) : !missions.length ? (
+      ) : !missions.length && waitingToJoin ? null : !missions.length ? (
         <div className="w-first-mission">
           <span className="w-mission-symbol">#</span>
           <h2>Start with a mission, not a setup checklist.</h2>
@@ -117,34 +151,6 @@ export function Home({
           ) : null}
         </>
       )}
-      {state?.joins.some((j) => j.status !== "admitted") ? (
-        <section className="w-join-requests">
-          <h2>Join requests</h2>
-          {state.joins
-            .filter((j) => j.status !== "admitted")
-            .map((j) => (
-              <article key={j.mission}>
-                <div>
-                  <strong>{j.name}</strong>
-                  <p>
-                    {j.status === "pending"
-                      ? "Waiting for the mission owner to admit you. No agent has started."
-                      : j.status === "review_required"
-                        ? "The mission changed. Inspect a current invitation to review it again."
-                        : `Request ${j.status}`}
-                  </p>
-                </div>
-                {["pending", "expired", "review_required"].includes(
-                  j.status,
-                ) ? (
-                  <Button disabled={busy} onClick={() => withdraw(j.mission)}>
-                    Withdraw request
-                  </Button>
-                ) : null}
-              </article>
-            ))}
-        </section>
-      ) : null}
       <div className="w-home-foot">
         <strong>Every contribution stays under its owner’s control.</strong>
         <span>

@@ -27,7 +27,7 @@ createRoot(document.getElementById("root")).render(
       }}
       role="coordinator"
       runtime="grok"
-      owner="owner"
+      missionOwner="owner"
       label={(id) => id}
       profile={(id) => window.calls.push({ kind: "agent", id })}
       reply={() => window.calls.push({ kind: "reply" })}

@@ -6,6 +6,8 @@ import "../../src/desktop/desktop.css";
 import "../../src/workspace/workspace.css";
 const hash = (n) => n.toString(16).padStart(64, "0");
 const owner = hash(2);
+const contributorView = new URLSearchParams(location.search).has("contributor");
+const viewer = contributorView ? hash(9) : owner;
 const empty = new URLSearchParams(location.search).has("empty");
 const makeMission = (n, name, phase) => ({
   id: hash(n),
@@ -43,7 +45,7 @@ const missions = empty
     ];
 let nodeState = {
   status: "ready",
-  identity: { owner, endpoint: hash(8), version: 1 },
+  identity: { owner: viewer, endpoint: hash(8), version: 1 },
   missions,
   network: "disabled",
   connection: null,
@@ -52,7 +54,7 @@ let nodeState = {
 };
 let localState = {
   schemaVersion: 1,
-  contributor: { id: "local", name: "Alex" },
+  contributor: { id: "local", name: contributorView ? "Sam" : "Alex" },
   device: { id: "device", name: "Test Mac" },
   contributions: [],
   activity: [],
@@ -168,8 +170,8 @@ const messages = [
   {
     id: hash(100),
     text: "We have two possible venues. The library has step-free access; the hall has more space.\n\n**Recommendation:** check capacity before choosing.",
-    author: hash(3),
-    author_label: "Robin",
+    author: contributorView ? owner : hash(3),
+    author_label: contributorView ? "Alex" : "Robin",
     author_agent: null,
     kind: "message",
     audience: "main",
@@ -242,8 +244,8 @@ const client = {
       messages.push({
         ...messages[0],
         id: hash(101 + messages.length),
-        author: owner,
-        author_label: "Alex",
+        author: viewer,
+        author_label: contributorView ? "Sam" : "Alex",
         text,
         audience,
         to,

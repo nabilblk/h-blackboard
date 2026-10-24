@@ -11,6 +11,7 @@ import {
 import { ContributorService } from "../../desktop/service.mjs";
 import { DesktopStore } from "../../desktop/store.mjs";
 import { secureStorage } from "../helpers/secure-storage.mjs";
+import { reviewFromForm } from "../../shared/artifact-review.mjs";
 const document = (title = "Festival guide") => ({
   title,
   summary: "Offline fixture guide",
@@ -21,6 +22,143 @@ const document = (title = "Festival guide") => ({
   inputs: [],
   files: [],
 });
+
+test("human review form records mixed checks and copied board evidence through the native command", async (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-review-form-")));
+  const node = new NodeService({
+    directory: root,
+    binary: resolve("var/node/target/debug/harakiri-node"),
+    secureStorage: secureStorage(),
+  });
+  t.after(async () => {
+    await node.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  await node.handle("enroll", {});
+  const { mission } = await node.handle("createMission", {
+    definition: {
+      name: "Human review regression",
+      objective: "Preserve exact evidence and honest unperformed checks",
+      scope: "Isolated native test; no guest or real workspace",
+      criteria: [],
+      policy: {
+        coordination: "peer",
+        participation: "private",
+        budget: { mode: "unlimited" },
+      },
+    },
+  });
+  const transfer = (transfer) =>
+    node.handle("artifactTransfer", { mission, transfer });
+  const bytes = Buffer.from("<h1>Isolated review fixture</h1>");
+  const { upload } = await transfer({
+    type: "begin",
+    control: mission,
+    conversation: "main",
+    path: "index.html",
+    media_type: "text/html",
+    size: bytes.length,
+  });
+  await transfer({
+    type: "chunk",
+    upload,
+    offset: 0,
+    hex: bytes.toString("hex"),
+  });
+  const { event: revision } = await transfer({
+    type: "publish",
+    control: mission,
+    conversation: "main",
+    artifact: null,
+    parents: [],
+    document: document("Human review fixture"),
+    uploads: [upload],
+    retain: [],
+  });
+  const { event: message } = await node.handle("postMessage", {
+    mission,
+    audience: "main",
+    text: "Fixture observation: the drawing leaves a visible gap.",
+  });
+  const form = new FormData();
+  for (const [key, value] of Object.entries({
+    verdict: "changes_requested",
+    summary: "The closed-loop caption contradicts the visible diagram.",
+    conditions: "Selected-path inspection only. Screenshot: circuit-gap.png.",
+    check_source_inspection: "not_run",
+    check_executed_tests: "not_run",
+    check_browser_check: "passed",
+    details_browser_check:
+      "Fixture preview on this Mac; selected controls responded.",
+    check_visual_inspection: "failed",
+    details_visual_inspection:
+      "Fixture preview; a visible gap contradicts its caption.",
+    evidence:
+      "Owner artifact-preview observations and screenshot circuit-gap.png.",
+  }))
+    form.set(key, value);
+  const request = (action) =>
+    node.handle("artifactAction", {
+      mission,
+      control: mission,
+      conversation: "main",
+      action,
+    });
+  const before = String(form.get("evidence"));
+  assert.throws(() => reviewFromForm(revision, form), /Move descriptions/);
+  assert.equal(
+    form.get("evidence"),
+    before,
+    "Invalid prose is never silently dropped",
+  );
+  form.set("evidence", "");
+  const action = reviewFromForm(revision, form);
+  // Reproduce the previous renderer's opaque Zod rejection before native write.
+  await assert.rejects(request({ ...action, evidence: before.split(/\s+/) }), {
+    name: "ZodError",
+  });
+  assert.equal(
+    (await node.handle("artifactDetail", { mission, revision })).reviews.length,
+    0,
+  );
+  // Empty optional links work; Not checked never becomes a performed check.
+  await request(action);
+  const unlinked = await node.handle("artifactDetail", { mission, revision });
+  assert.equal(unlinked.reviews.length, 1);
+  assert.deepEqual(unlinked.reviews[0].evidence, []);
+  assert.deepEqual(unlinked.reviews[0].checks, action.checks);
+  form.set("evidence", `[Message](harakiri://message/${message})\n${revision}`);
+  const linked = reviewFromForm(revision, form);
+  await request(linked);
+  const detail = await node.handle("artifactDetail", { mission, revision });
+  assert.equal(
+    detail.reviews.length,
+    1,
+    "The latest review by this author replaces their earlier projection",
+  );
+  const review = detail.reviews.find((review) => review.evidence.length === 2);
+  assert.equal(review.verdict, "changes_requested");
+  assert.deepEqual(review.evidence, [message, revision]);
+  assert.deepEqual(review.checks, linked.checks);
+  assert.deepEqual(
+    review.checks
+      .slice(0, 2)
+      .map(({ result, details }) => ({ result, details })),
+    Array.from({ length: 2 }, () => ({
+      result: "not_run",
+      details: "Not checked in this review.",
+    })),
+  );
+  assert.equal(review.conditions, form.get("conditions"));
+  assert.equal(detail.artifact.accepted, false);
+  // A syntactically valid ID is not permission to link a different record type.
+  await assert.rejects(request({ ...linked, evidence: [mission] }));
+  assert.equal(
+    (await node.handle("artifactDetail", { mission, revision })).reviews.length,
+    1,
+  );
+});
+
 test(
   "artifact transfers preserve exact bytes, scoped agent identity, private boundaries and offline restart",
   { timeout: 45000 },

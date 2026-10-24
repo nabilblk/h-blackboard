@@ -172,6 +172,39 @@ test("stale or different-control observations cannot establish a stop or useful 
   );
 });
 
+test("remote continuation review never invents changed instructions and clears on a fresh running report", () => {
+  const f = fixture();
+  f.mission.lifecycle.phase = "active";
+  f.agent.status = "direction_assigned";
+  const observation = {
+    expiresAt: 6000,
+    report: { control: "control", state: "review_required", issued_ms: 1000 },
+  };
+  const input = {
+    ...f,
+    contribution: undefined,
+    execution: undefined,
+    observation,
+  };
+  const interrupted = agentPresentation(input);
+  assert.equal(interrupted.cause, "contribution_review");
+  assert.match(interrupted.reason, /Leïla.*review.*continues/);
+  assert.doesNotMatch(interrupted.reason, /instructions|brief|policy changed/);
+  assert.equal(interrupted.action, null);
+
+  f.agent.status = "review_required";
+  const changedTerms = agentPresentation(input);
+  assert.equal(changedTerms.cause, "terms_changed");
+  assert.match(changedTerms.reason, /review changed instructions/);
+
+  f.agent.status = "direction_assigned";
+  observation.report.state = "running";
+  const resumed = agentPresentation(input);
+  assert.equal(resumed.cause, "executing");
+  assert.equal(resumed.state, "working");
+  assert.doesNotMatch(resumed.reason, /review|changed/);
+});
+
 test("Pause does not claim termination; confirmed stops are distinct from idle sessions", () => {
   const f = fixture();
   f.mission.lifecycle.phase = "paused";

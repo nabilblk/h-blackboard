@@ -1,23 +1,7 @@
 import { Field } from "../ui/Field";
 import { useState } from "react";
-import type { CheckResult, ReviewCheck } from "../application/contracts/node";
-
-export const reviewMethods = {
-  source_inspection: "Source inspection",
-  executed_tests: "Executed tests",
-  browser_check: "Browser checks",
-  visual_inspection: "Visual inspection",
-} as const;
-
-export function checksFromForm(data: FormData): ReviewCheck[] {
-  return Object.keys(reviewMethods).map((method) => ({
-    method: method as ReviewCheck["method"],
-    result: String(data.get(`check_${method}`)) as CheckResult,
-    details: String(
-      data.get(`details_${method}`) || "Not checked in this review.",
-    ).trim(),
-  }));
-}
+import type { CheckResult } from "../application/contracts/node";
+import { reviewMethods } from "../../shared/artifact-review.mjs";
 
 export function ReviewChecks() {
   const [results, setResults] = useState<Record<string, CheckResult>>({});

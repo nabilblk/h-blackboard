@@ -124,7 +124,7 @@ The default tests reject backend imports/direct native globals in screens and
 application dependencies in reusable controls. They also reject raw disclosures
 in desktop screens. This prevents the unstyled native controls from returning.
 
-## Connected workspace (0.5.0 source)
+## Connected workspace (0.5.1 source)
 
 Home, cross-mission Inbox, My agents, Discover and Settings stay outside the selected
 mission. Mission Conversation, Work, People and Brief share a stable shell. The
@@ -147,3 +147,13 @@ setup configuration, stop failures, appearance, compact keyboard navigation,
 exact artifact opening/acceptance and capability destinations. Native tests use
 a temporary protected profile and the real preload/service. Neither seeds the
 user's workspace or changes runtime credentials.
+
+Autonomous acceptance adds two source-blind tester personas: a mission owner and
+an independent contributor operating separate real desktop profiles. They use
+the visible UI, record actions and failures, inspect actual model-produced work,
+and retest after controlled engineering corrections. Keep baseline and corrected
+runs separate. Count product retries separately from browser-automation mistakes;
+exclude authentication and engineering pauses from product latency. Agent timings
+are proxy observations, not human usability benchmarks. Two profiles on one Mac
+do not prove independent-device behavior. A fixture pass, a running process, and
+an accepted deliverable remain different evidence.

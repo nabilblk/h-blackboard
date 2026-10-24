@@ -1,6 +1,6 @@
 # Usable artifacts
 
-## Decentralized desktop (unreleased protocol 13)
+## Decentralized desktop (unreleased protocol 14)
 
 Editable projects may contain up to **256 files**, **16 MiB per file**, **32 MiB
 total**, and **48 KiB of file descriptors**. Paths and file/directory conflicts are
@@ -40,6 +40,13 @@ at the top. A new publication cannot silently replace that choice. Type, review
 and conversation filters apply before pagination. A candidate or a Complete
 stage is not verification or acceptance. Review labels distinguish source,
 executed tests, browser and visual checks; historical scope remains visible.
+
+In **Add review**, describe observations and limitations in the review and check
+evidence fields. **Linked board records** is optional: paste copied message or
+artifact references, one per line, to link exact records. Full record IDs also
+work. Descriptions and screenshot filenames belong in the evidence text, not the
+record links. Invalid links are explained at the field without discarding the
+review. A saved review does not select a delivery candidate or accept the mission.
 
 When publishing a revision, `parents` names current revisions of **that same
 artifact**. `inputs` retains the old live dependency semantics. New `references`

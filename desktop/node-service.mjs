@@ -1288,6 +1288,17 @@ export class NodeService {
       ]);
       const grant = governance.grants.find((g) => g.id === grantId);
       const allowance = localAllowance(contribution, governance);
+      // Pause and closure change control without changing the reviewed brief.
+      // Preserve that cause before an old grant fails its exact-control check;
+      // the Active path still validates every permission and consent binding.
+      if (grantId && context.lifecycle.phase === "paused")
+        throw new Error(
+          "The mission was paused by its owner. This run permission no longer authorizes execution.",
+        );
+      if (grantId && ["closed", "archived"].includes(context.lifecycle.phase))
+        throw new Error(
+          `The mission was ${context.lifecycle.phase}. This run permission no longer authorizes execution.`,
+        );
       if (
         grantId &&
         (!grant ||

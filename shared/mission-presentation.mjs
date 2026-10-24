@@ -149,12 +149,18 @@ export function agentPresentation(input) {
       ? "Process stopped. The mission is paused."
       : "Waiting for the mission owner to resume.";
     responsible = isOwner ? "you" : "the mission owner";
-  } else if (lifecycle.action === "review" || observed === "review_required") {
+  } else if (
+    lifecycle.action === "review" ||
+    agent?.status === "review_required"
+  ) {
     cause = "terms_changed";
     reason = local
       ? "Mission instructions changed. Review them before continuing."
       : `Waiting for ${responsible} to review changed instructions.`;
     if (local) action = link("Review changed instructions");
+  } else if (observed === "review_required") {
+    cause = "contribution_review";
+    reason = `Waiting for ${responsible} to review how this contribution continues.`;
   } else if (lifecycle.action === "login" || observed === "sign_in") {
     cause =
       execution?.authentication?.failure === "expired"

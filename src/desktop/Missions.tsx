@@ -690,7 +690,7 @@ function MissionWorkspace({
                   setPanel("contribution");
                 }}
               >
-                Your contribution
+                Your participation
               </Button>
               <Button
                 onClick={() => {
@@ -1002,7 +1002,7 @@ function MissionWorkspace({
         ) : null}
         {participation ? (
           <ContextPanel
-            title="Your contribution"
+            title="Your participation"
             close={closePanel}
             error={error}
           >
@@ -1024,6 +1024,18 @@ function MissionWorkspace({
                           : "Joined · waiting for mission start"}
                 </Status>
               </header>
+              {contributions.some(
+                (contribution) => contribution.mission.missionId === mission.id,
+              ) ? (
+                <Button
+                  onClick={() => {
+                    setMemberTab("agents");
+                    setPanel("members");
+                  }}
+                >
+                  View existing agents
+                </Button>
+              ) : null}
               <p>
                 Choose a runtime, a dedicated local folder and your own
                 allowance. Preparation does not start work. You approve isolated
@@ -1048,8 +1060,8 @@ function MissionWorkspace({
                   </Field>
                   {role === "coordinator" ? (
                     <p className="d-field-help">
-                      Share this contribution in Members so the mission owner
-                      can select it for coordination. It waits for appointment;
+                      Share this contribution in People so the mission owner can
+                      select it for coordination. It waits for appointment;
                       preparing it does not replace the current Coordinator.
                     </p>
                   ) : null}

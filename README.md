@@ -46,7 +46,7 @@ The [node protocol](docs/NODE-PROTOCOL.md) includes scoped signed records, peer 
 
 For a reproducible coordination experiment, use the [Community Science Day kit](experiments/community-day/README.md): fixed inputs, a venue change, independent outcome checks, a three-node protocol rehearsal and an opt-in isolated Grok run. A single-computer rehearsal is distinct from independent-contributor validation.
 
-The current development source uses **unreleased protocol 13 / schema 16**;
+The current development source uses **unreleased protocol 14 / schema 17**;
 the published 0.4.9 installer remains on protocol 11/schema 15. Read the
 [upgrade boundary](docs/NODE-PROTOCOL.md) before opening existing profiles.
 The optional [science quality pack](examples/quality-packs/science/README.md)

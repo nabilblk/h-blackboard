@@ -477,3 +477,82 @@ test(
     }
   },
 );
+
+test(
+  "Pause retains its real cause while Resume still rejects the old exact-control permission",
+  { timeout: 45000 },
+  async (t) => {
+    const f = await fixture(t);
+    const grant = await f.grant(1);
+    await f.consent(grant);
+    const before = await f.node.executionContext(f.id, grant);
+    const approval = await f.agreements.approve(f.approval());
+    assert.equal(before.grant.id, grant);
+    await f.node.handle("pauseMission", {
+      mission: f.mission,
+      revision: f.control,
+      reason: "Owner requested a deliberate pause",
+    });
+    const paused = (await f.node.state()).missions.find(
+      (m) => m.id === f.mission,
+    );
+    assert.equal(
+      paused.lifecycle.terms_revision,
+      before.context.lifecycle.terms_revision,
+    );
+    let pauseReason;
+    await assert.rejects(f.node.executionContext(f.id, grant), (error) => {
+      assert.match(error.message, /mission was paused by its owner/);
+      pauseReason = error.message;
+      return true;
+    });
+    f.executions.store.update(f.id, {
+      grant,
+      execution: f.execution,
+      generation: 1,
+      reason: pauseReason,
+    });
+    await f.agreements.check(approval, paused);
+
+    await f.node.handle("startMission", {
+      mission: f.mission,
+      revision: paused.lifecycle.revision,
+      readiness: null,
+    });
+    const resumed = (await f.node.state()).missions.find(
+      (m) => m.id === f.mission,
+    );
+    assert.equal(
+      resumed.lifecycle.terms_revision,
+      before.context.lifecycle.terms_revision,
+    );
+    assert.notEqual(
+      resumed.lifecycle.revision,
+      before.context.lifecycle.revision,
+    );
+    await f.agreements.check(approval, resumed);
+    await assert.rejects(
+      f.node.executionContext(f.id, grant),
+      /current permission with consent/,
+    );
+    await assert.rejects(
+      f.agreements.advance(approval),
+      /Review and continue this contribution/,
+      "Clearer stop wording must not opt an interrupted approval into automatic continuation",
+    );
+    assert.equal((await f.ledger()).grants.length, 1);
+    assert.equal(f.provider.launches, 0);
+    assert.equal(f.agreements.local(f.id).expiresAt, approval.expiresAt);
+    assert.deepEqual(f.contribution().limits, before.contribution.limits);
+
+    await f.node.handle("missionAction", {
+      mission: f.mission,
+      revision: resumed.lifecycle.revision,
+      action: { type: "archive", reason: "Preserve this temporary test" },
+    });
+    await assert.rejects(
+      f.node.executionContext(f.id, grant),
+      /mission was archived/,
+    );
+  },
+);

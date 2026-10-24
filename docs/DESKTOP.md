@@ -14,26 +14,29 @@ agent automatically. Joining starts with an invitation, then a reviewed mission
 and explicit admission. Contributor approval, human Start and local Stop remain
 separate. See the [workspace guide](WORKSPACE.md).
 
-The local 0.5.0 installer is a development build. The landing download remains
-0.4.9 until the separate public release gates are satisfied. Version 0.5.0 uses
-protocol 13/schema 16; update peers together and back up profiles before testing.
+The landing download remains 0.4.9 until the separate public release gates are
+satisfied. Local installers are ad-hoc signed development builds, not notarized
+public releases. Back up profiles and update peers together before testing.
 
-Initial UI-only snapshot validation: 304 application tests, 108 Rust tests (one other test remains ignored),
-61 P2P/cross-language checks, 45 guest Python tests, all six browser suites, and real
-native temporary-profile journeys. Three local desktop profiles exercised
-admission, private messaging, owner-offline synchronization, revocation and the
-artifact lifecycle with isolated interactive preview. No live model run was made
-for this UI iteration. The local DMG passes image, mounted-content and deep
-signature checks. Its fresh-profile packaged identity/restart check still needs
-macOS Keychain approval; development-app identity and restart passed. This is an
-ad-hoc signed development build, not a notarized public release.
+Validation includes application, native protocol and renderer regressions, plus
+real temporary-profile journeys. Three native profiles exercise admission,
+private messages, owner-offline synchronization, revocation and exact artifact
+review with isolated offline preview. Autonomous owner/contributor personas also
+operate two real profiles with a Grok Build Coordinator and two Agents: changed
+instructions, plan revision, explicit Start, artifacts, messages, pause, saved
+session continuation and local allowance recovery. These are agent-operated
+proxies on one Mac, not a human usability study or independent-device evidence.
+
+Development-app protected identity and restart pass. The fresh-profile packaged
+identity check remains unverified because automation cannot approve its macOS
+Keychain dialog. Installer integrity/signature checks do not replace that check.
+Live artifact publication is not proof of educational quality or acceptance.
 
 ## Unreleased coordination improvements
 
 The current source uses **protocol 14 / schema 17**. The earlier local 0.5.0
-installer remains a protocol-13 snapshot; rebuild both peers for these changes.
-Downloaded 0.4.9 remains
-protocol 11/schema 15. Back up profiles and upgrade all peers together when
+installer is a protocol-13 snapshot; rebuild both peers for these changes.
+Downloaded 0.4.9 remains protocol 11/schema 15. Back up profiles and upgrade all peers together when
 testing this source; the changes below are not in the published 0.4.9 DMG.
 
 ### Activity and tool roles

@@ -932,7 +932,7 @@ async function discoveryProof(a) {
   );
   closePanel(c);
   c.click(".n-more-actions summary");
-  c.button("Your contribution", "document.querySelector('.n-more-actions')");
+  c.button("Your participation", "document.querySelector('.n-more-actions')");
   await c.wait(
     "!!document.querySelector('.n-participation')",
     "Contribution review did not open",
@@ -963,7 +963,7 @@ async function discoveryProof(a) {
   );
   closePanel(c);
   c.click(".n-more-actions summary");
-  c.button("Your contribution", "document.querySelector('.n-more-actions')");
+  c.button("Your participation", "document.querySelector('.n-more-actions')");
   c.button("Withdraw from mission…");
   c.button("Withdraw participation");
   await c.wait(

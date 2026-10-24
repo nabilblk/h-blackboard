@@ -4,7 +4,7 @@ import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
 import { Button } from "../ui/Button";
 import { useApplication } from "./ApplicationProvider";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -17,14 +17,17 @@ import { type ArtifactInspection } from "../application/contracts/workspace";
 import { agentContributorLabel } from "../../shared/agent-lifecycle.mjs";
 import { Text } from "../Markdown";
 import { ArtifactPublish } from "./ArtifactPublish";
-import { ReviewChecks, checksFromForm, reviewMethods } from "./ReviewChecks";
+import { ReviewChecks } from "./ReviewChecks";
+import {
+  reviewFromForm,
+  reviewMethods,
+} from "../../shared/artifact-review.mjs";
 import type {
   ArtifactAction,
   ArtifactKind,
   ArtifactCandidate,
   ArtifactDetail,
   ArtifactSummary,
-  ReviewVerdict,
   AgentView,
   WorkstreamView,
   MissionView,
@@ -89,6 +92,8 @@ export function ArtifactPanel({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reviewReferencesError, setReviewReferencesError] = useState("");
+  const reviewReferencesHelp = useId();
   const [editing, setEditing] = useState<{
     detail: ArtifactDetail | null;
   } | null>(null);
@@ -514,12 +519,13 @@ export function ArtifactPanel({
                   <h3>Reviews</h3>
                   {detail.may_review && !blocked ? (
                     <Button
-                      onClick={() =>
+                      onClick={() => {
+                        setReviewReferencesError("");
                         setReviewing({
                           detail,
                           control: mission.lifecycle.revision,
-                        })
-                      }
+                        });
+                      }}
                     >
                       Add review
                     </Button>
@@ -578,17 +584,20 @@ export function ArtifactPanel({
                     onSubmit={(e) => {
                       e.preventDefault();
                       const d = new FormData(e.currentTarget);
-                      action(reviewing.control, reviewing.detail, {
-                        type: "review",
-                        revision: reviewing.detail.revision,
-                        verdict: String(d.get("verdict")) as ReviewVerdict,
-                        summary: String(d.get("summary")).trim(),
-                        conditions: String(d.get("conditions")).trim(),
-                        checks: checksFromForm(d),
-                        evidence: String(d.get("evidence"))
-                          .split(/\s+/)
-                          .filter(Boolean),
-                      });
+                      let review;
+                      try {
+                        review = reviewFromForm(reviewing.detail.revision, d);
+                      } catch (error) {
+                        setReviewReferencesError((error as Error).message);
+                        e.currentTarget
+                          .querySelector<HTMLTextAreaElement>(
+                            'textarea[name="evidence"]',
+                          )
+                          ?.focus();
+                        return;
+                      }
+                      setReviewReferencesError("");
+                      action(reviewing.control, reviewing.detail, review);
                     }}
                   >
                     <p className="d-field-help">
@@ -629,13 +638,29 @@ export function ArtifactPanel({
                       />
                     </Field>
                     <Field>
-                      Evidence references · optional
+                      Linked board records · optional
                       <textarea
                         name="evidence"
                         rows={2}
-                        placeholder="Exact message or artifact revision references."
+                        aria-invalid={!!reviewReferencesError}
+                        aria-describedby={reviewReferencesHelp}
+                        onChange={() => setReviewReferencesError("")}
+                        placeholder="Paste copied message or artifact references, one per line."
                       />
                     </Field>
+                    <div id={reviewReferencesHelp}>
+                      <p className="d-field-help">
+                        Use Copy message reference or Copy revision reference on
+                        the board (up to 16 records). Full record IDs also work.
+                        Describe observations and screenshots in Review or the
+                        check evidence fields above.
+                      </p>
+                      {reviewReferencesError ? (
+                        <p className="d-error" role="alert">
+                          {reviewReferencesError}
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="n-action-row">
                       <Button variant="primary" type="submit" disabled={busy}>
                         Save review

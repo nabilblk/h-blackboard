@@ -844,7 +844,17 @@ async function network(app) {
   );
 }
 async function send(app, text) {
+  // Opening a private conversation renders its heading before the audience's
+  // write permission has loaded. Do not type into a still-disabled composer.
+  await app.wait(
+    `!!document.querySelector('#main-message:not(:disabled)')`,
+    "Conversation is not writable",
+  );
   app.browser("fill", "#main-message", text);
+  await app.wait(
+    `document.querySelector('#main-message')?.value===${JSON.stringify(text)} && !!document.querySelector('.n-composer button[type=submit]:not(:disabled)')`,
+    "Composer did not receive the message",
+  );
   app.click(".n-composer button[type=submit]");
   await app.wait(
     `[...document.querySelectorAll('.n-message-text')].some(e=>e.textContent===${JSON.stringify(text)})`,
@@ -1371,6 +1381,32 @@ try {
   for (const a of apps) {
     try {
       a.browser("screenshot", join(evidence, `${a.name}-failure.png`));
+      await writeFile(
+        join(evidence, `${a.name}-failure.json`),
+        JSON.stringify(
+          {
+            at: new Date().toISOString(),
+            error: String(error),
+            ui: a.evaluate(`({
+              text:document.querySelector('main')?.innerText,
+              composer:document.querySelector('#main-message')?.value,
+              blocked:document.querySelector('#main-message')?.disabled
+            })`),
+            node: a.evaluate("window.blackboardNode.state()"),
+            // These are isolated fixtures, never the user's actual missions.
+            messages: a.evaluate(`(async()=>{
+              const state=await window.blackboardNode.state();
+              return await Promise.all(state.missions.map(async mission=>({
+                mission:mission.id,
+                sent:await window.blackboardNode.queryMessages(mission.id,{view:'sent',audience:'main',thread:null,before:null,anchor:null,search:''})
+              })));
+            })()`),
+          },
+          null,
+          2,
+        ) + "\n",
+        { mode: 0o600 },
+      );
     } catch {}
   }
   throw error;

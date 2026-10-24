@@ -103,6 +103,52 @@ export function ContributionRenewal({
               . Participation: {review.definition.policy?.participation}.
               Mission budget: {review.definition.policy?.budget.mode}.
             </p>
+            {review.definition.policy?.budget.mode === "limited" ? (
+              <dl className="d-facts">
+                {[
+                  [
+                    "Managed turns",
+                    review.definition.policy.budget.turns?.toLocaleString(),
+                  ],
+                  [
+                    "Simultaneous agents",
+                    review.definition.policy.budget.concurrency?.toLocaleString(),
+                  ],
+                  [
+                    "Deadline",
+                    review.definition.policy.budget.deadline_ms
+                      ? new Date(
+                          review.definition.policy.budget.deadline_ms,
+                        ).toLocaleString()
+                      : null,
+                  ],
+                  [
+                    "Token limit",
+                    review.definition.policy.budget.tokens?.toLocaleString(),
+                  ],
+                  [
+                    "Model-cost limit",
+                    review.definition.policy.budget.model_cost_microusd
+                      ? new Intl.NumberFormat(undefined, {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 6,
+                        }).format(
+                          review.definition.policy.budget.model_cost_microusd /
+                            1_000_000,
+                        )
+                      : null,
+                  ],
+                ]
+                  .filter(([, value]) => value != null)
+                  .map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+              </dl>
+            ) : null}
           </Disclosure>
           <p className="d-field-help">
             Your workspace, login, internet setting and local limits stay the

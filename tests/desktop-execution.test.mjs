@@ -285,7 +285,11 @@ test("stopped guest guidance is refreshed once and cached only after every tool 
   const directory = mkdtempSync(join(tmpdir(), "hb-tool-refresh-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const provider = new LimaProvider({ directory });
-  const contribution = { id: randomUUID(), networkAccess: "restricted" };
+  const contribution = {
+    id: randomUUID(),
+    networkAccess: "restricted",
+    mission: { role: "agent" },
+  };
   const files = new Map();
   const installed = [];
   let writes = 0;
@@ -303,6 +307,12 @@ test("stopped guest guidance is refreshed once and cached only after every tool 
   assert.match(files.get("/opt/harakiri/agent.md"), /wait_for_work/);
   assert.match(files.get("/opt/harakiri/tools.json"), /artifact_browser/);
   assert.match(files.get("/opt/harakiri/tools.json"), /checkpoint_workspace/);
+  assert.ok(
+    !JSON.parse(files.get("/opt/harakiri/tools.json")).some(
+      (tool) => tool.name === "direct_agent",
+    ),
+    "Ordinary Agents must receive the Agent catalog inside the VM",
+  );
   assert.ok(files.has("/opt/harakiri/operations.py"));
   assert.ok(files.has("/opt/harakiri/project.py"));
   assert.ok(files.has("/opt/harakiri/checkpoint.py"));
@@ -333,6 +343,26 @@ test("stopped guest guidance is refreshed once and cached only after every tool 
   assert.equal(
     JSON.parse(files.get("/opt/harakiri/capabilities.json")).pack,
     "general",
+  );
+  await provider.syncTools({
+    ...contribution,
+    mission: { role: "coordinator" },
+  });
+  assert.ok(
+    JSON.parse(files.get("/opt/harakiri/tools.json")).some(
+      (tool) => tool.name === "direct_agent",
+    ),
+  );
+  await provider.syncTools({ ...contribution, role: "coordinator" });
+  assert.ok(
+    !JSON.parse(files.get("/opt/harakiri/tools.json")).some(
+      (tool) => tool.name === "direct_agent",
+    ),
+    "A misleading top-level role must not replace the prepared mission role",
+  );
+  await assert.rejects(
+    provider.syncTools({ id: contribution.id, role: "coordinator" }),
+    /prepared contribution role/,
   );
   assert.ok(
     [...files.keys()].every((path) => path.startsWith("/opt/harakiri/")),

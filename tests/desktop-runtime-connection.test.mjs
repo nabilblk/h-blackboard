@@ -29,6 +29,7 @@ const tools = [
   "read_tool_result",
   "capabilities",
   "publish_artifact",
+  "direct_agent",
 ].map((t) => `mcp__harakiri__${t}`);
 function transport(respond) {
   const child = new EventEmitter();

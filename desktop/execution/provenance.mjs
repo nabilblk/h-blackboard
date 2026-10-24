@@ -12,7 +12,7 @@ const hash = (value) =>
 
 export function effectiveConfiguration({
   runtime,
-  role = "coordinator",
+  role = "agent",
   networkAccess = "restricted",
   capabilityPack = "general",
   prompt,

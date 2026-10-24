@@ -106,6 +106,8 @@ try {
     "plan-ready",
     "terms-review",
     "running",
+    "resume-launching",
+    "resume-failed",
     "budget",
     "budget-reserved",
     "budget-expired",
@@ -197,6 +199,20 @@ try {
     }
     if (scene === "running") {
       assert.ok((await buttons()).includes("Stop environment"));
+      assert.equal(
+        await evaluate(
+          "document.querySelector('[aria-label=\"Latest agent update\"] strong').textContent",
+        ),
+        "shared shell",
+      );
+      const update = await evaluate(
+        "document.querySelector('[aria-label=\"Latest agent update\"]').textContent",
+      );
+      assert.match(update, /Imported a shared project/);
+      assert.doesNotMatch(
+        update,
+        /Old planning|Published an artifact|Recorded an artifact review/,
+      );
       await browser(
         "find",
         "role",
@@ -211,6 +227,14 @@ try {
         "Stop remains reachable when inspecting details",
       );
     }
+    if (scene.startsWith("resume-"))
+      assert.equal(
+        await evaluate(
+          "!!document.querySelector('[aria-label=\"Latest agent update\"]')",
+        ),
+        false,
+        "A new or failed startup must not show the previous run's output as current progress",
+      );
     if (scene === "budget") {
       assert.equal(
         await evaluate(
@@ -259,6 +283,38 @@ try {
   }
 
   // Network consent is explicit and cannot be changed during execution.
+  for (const scene of [
+    "mission-paused-ready",
+    "mission-paused-plan",
+    "mission-paused-contributor",
+  ]) {
+    await browser("open", `${origin}/?scene=${scene}`);
+    await browser("wait", '[aria-label="Mission control"]');
+    assert.deepEqual(await evaluate("window.networkFixture.calls"), []);
+    if (scene === "mission-paused-contributor") {
+      assert.ok(!(await buttons()).includes("Review and resume"));
+    } else {
+      await click("Review and resume");
+      assert.deepEqual(
+        await evaluate("window.networkFixture.calls"),
+        [],
+        "Opening Resume is review, never execution",
+      );
+      if (scene === "mission-paused-plan") {
+        await browser("wait", "--text", "Prepare to resume this mission");
+        assert.ok(!(await buttons()).includes("Resume and run"));
+      } else {
+        await browser("wait", "--text", "Resume this mission");
+        await click("Resume and run");
+        const calls = await evaluate("window.networkFixture.calls");
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].request.revision, "control");
+        assert.equal(calls[0].request.readiness, "readiness");
+      }
+    }
+    await browser("screenshot", join(evidence, `${scene}.png`));
+    results.push({ scene, passed: true });
+  }
   for (const scene of ["network-stopped", "network-running"]) {
     await browser("open", `${origin}/?scene=${scene}`);
     await browser("wait", "--text", "Access & limits");

@@ -28,7 +28,7 @@ import {
 } from "./contract.mjs";
 import { runtimeConnection } from "./runtime-connection.mjs";
 import { runtimeSpec, RUNTIME_LABELS } from "./runtime-specs.mjs";
-import { guestTools } from "./tools.mjs";
+import { contributionTools } from "./tools.mjs";
 import nodeErrors from "../../shared/node-errors.json" with { type: "json" };
 
 const exec = promisify(execFile);
@@ -279,11 +279,7 @@ export class LimaProvider {
     );
     files.push([
       "tools.json",
-      Buffer.from(
-        JSON.stringify(
-          guestTools(contribution.networkAccess, contribution.role),
-        ),
-      ),
+      Buffer.from(JSON.stringify(contributionTools(contribution))),
     ]);
     files.push([
       "capabilities.json",
@@ -457,9 +453,7 @@ export class LimaProvider {
       await this.guest(id, ["chmod", "0644", `/opt/harakiri/${file}`]);
     }
     await this.guest(id, ["tee", "/opt/harakiri/tools.json"], {
-      input: JSON.stringify(
-        guestTools(contribution.networkAccess, contribution.role),
-      ),
+      input: JSON.stringify(contributionTools(contribution)),
       maxBuffer: 256 * 1024,
     });
     await this.guest(id, ["tee", "/opt/harakiri/runtime.json"], {

@@ -1,6 +1,6 @@
 # Using the workspace
 
-The 0.5.0 source provides one workspace for missions you own and missions you join.
+The 0.5.1 source provides one workspace for missions you own and missions you join.
 Its default light appearance and dark toggle use the supplied designer system.
 This guide describes the new source and local development build, not the older
 0.4.9 download.

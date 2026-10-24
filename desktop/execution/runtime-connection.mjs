@@ -11,7 +11,9 @@ const requiredToolNames = [
 ];
 // Existing idle guests keep the original safe broker until explicitly prepared
 // again. A compositional convenience tool must not break their saved sessions.
-const toolNames = guestTools().map((tool) => tool.name);
+const toolNames = guestTools("restricted", "coordinator").map(
+  (tool) => tool.name,
+);
 const scopedClaudeTool = (name) =>
   toolNames.some((t) => name === `mcp__harakiri__${t}`);
 const event = (type, value) => ({

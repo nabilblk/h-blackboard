@@ -118,6 +118,41 @@ test(
       b.handle("publishObservation", { report: view.report }),
       /not allowed|Unknown|Unsupported|invalid/i,
     );
+    await a.handle("startMission", {
+      mission,
+      revision: (await a.state()).missions.find((m) => m.id === mission)
+        .lifecycle.revision,
+      readiness: null,
+    });
+    await a.handle("pauseMission", {
+      mission,
+      revision: (await a.state()).missions.find((m) => m.id === mission)
+        .lifecycle.revision,
+      reason: "Check confirmed remote stop",
+    });
+    const paused = (await a.state()).missions.find((m) => m.id === mission)
+      .lifecycle.revision;
+    await until(
+      async () =>
+        (await b.state()).missions.find((m) => m.id === mission).lifecycle
+          .revision === paused,
+    );
+    b.executions.store.read = () => ({ status: "stopped" });
+    b.executions.state = async () => ({
+      permissions: [],
+      agreement: { status: "active" },
+    });
+    await b.publishExecutionObservations();
+    await until(async () =>
+      (await a.handle("observations", { mission })).some(
+        (v) => v.report.control === paused && v.report.state === "stopped",
+      ),
+    );
+    assert.equal(
+      (await a.handle("observations", { mission }))[0].report.state,
+      "stopped",
+      "Waiting for Resume must not hide confirmed process termination",
+    );
     await a.handle("revokeMember", { mission, author });
     assert.equal((await a.handle("observations", { mission })).length, 0);
   },

@@ -25,7 +25,7 @@ authoring. Reviews carry explicit checks and browser execution evidence. See
 [the agent interface](docs/AGENT-INTERFACE.md) and [evaluation scenarios](examples/evals/README.md).
 These source changes are not included in the published 0.4.9 installer.
 
-The **0.5.0 source** also includes the connected workspace redesign: Home,
+The **0.5.1 source** also includes the connected workspace redesign: Home,
 cross-mission Inbox, My agents and Settings, with Conversation / Work / People /
 Brief inside each mission. The new interface uses the supplied designer's light
 and dark palettes and preserves the existing execution and consent boundaries.

@@ -181,6 +181,21 @@ export function MissionControl({
   const next = presentation.next;
   const editable =
     isOwner && !blocked && !["closed", "archived"].includes(l.phase);
+  // Pause is deliberate, so Resume is not a Needs you notification. Keep the
+  // owner control independent of presentation.next and its attention queue.
+  const canReviewResume =
+    editable &&
+    l.phase === "paused" &&
+    (!l.start_blockers.length ||
+      (!!l.plan &&
+        l.start_blockers.every(
+          (reason) => reason === "coordinator_not_ready",
+        )));
+  const openResumeReview = () => {
+    if (l.start_blockers.includes("coordinator_not_ready"))
+      setPlanReview(l.revision);
+    else setStartReview(pendingStart?.request.revision ?? l.revision);
+  };
   const reason = blocked
     ? presentation.summary
     : (next?.reason ??
@@ -260,6 +275,15 @@ export function MissionControl({
                 }}
               >
                 {next.action.label}
+              </Button>
+            ) : null}
+            {canReviewResume && !next?.action.review ? (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={openResumeReview}
+              >
+                Review and resume
               </Button>
             ) : null}
             {editable && l.phase === "active" ? (

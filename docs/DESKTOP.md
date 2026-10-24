@@ -1,6 +1,6 @@
 # Blackboard desktop
 
-## New workspace (0.5.0 source)
+## New workspace (0.5.1 source)
 
 The rebuilt frontend uses the existing native application and peer protocol.
 Home brings together your missions, Inbox brings together messages that need your
@@ -35,6 +35,23 @@ installer remains a protocol-13 snapshot; rebuild both peers for these changes.
 Downloaded 0.4.9 remains
 protocol 11/schema 15. Back up profiles and upgrade all peers together when
 testing this source; the changes below are not in the published 0.4.9 DMG.
+
+### Activity and tool roles
+
+Local agent Activity includes the latest attributed agent update and successful
+workspace/artifact actions, with timestamps. These are observations, not a quality
+score or a substitute for shared results. Technical retains the detailed log.
+The VM tool catalog and its provenance use the contribution's prepared mission
+role; ordinary Agents do not advertise Coordinator operations. The native node
+independently enforces authority even when a caller attempts an unadvertised tool.
+Starting a new session hides old output until new activity is observed. A failed
+startup does not turn a previous session's progress into a current update.
+
+Paused missions retain an explicit **Review and resume** owner action in Brief.
+An intentional pause does not create a Needs you notification. Resume reviews the
+current plan and finite permissions; each contributor still controls their own
+device. Signed peer observations preserve a confirmed process stop while waiting
+for Resume, rather than obscuring it with an authorization-wait status.
 
 ### Existing-agent continuity
 

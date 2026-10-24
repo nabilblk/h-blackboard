@@ -1456,7 +1456,7 @@ export class ExecutionManager {
             JSON.stringify(
               effectiveConfiguration({
                 runtime: job.contribution.runtime,
-                role: job.contribution.role,
+                role: job.contribution.mission.role,
                 networkAccess: job.contribution.networkAccess,
                 capabilityPack: job.contribution.capabilityPack,
                 prompt: briefing.prompt,

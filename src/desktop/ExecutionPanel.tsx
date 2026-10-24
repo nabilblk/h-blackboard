@@ -1,6 +1,7 @@
 import { observations } from "../application/observations";
 import { CapabilityPackSettings } from "./CapabilityPack";
 import { ExecutionRecovery } from "./ExecutionRecovery";
+import { ExecutionUpdate } from "./ExecutionUpdate";
 import { ViewTabs } from "../ui/ViewTabs";
 import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
@@ -203,6 +204,11 @@ export function ExecutionPanel({
           sign-in are unavailable. Continue from mission context and recovered
           source; a new run still needs your approval.
         </p>
+      ) : null}
+      {tab === "activity" &&
+      state &&
+      item.nodeBinding?.revision === mission?.lifecycle.terms_revision ? (
+        <ExecutionUpdate state={state} details={() => setTab("technical")} />
       ) : null}
       {tab === "activity" &&
       status === "stopped" &&

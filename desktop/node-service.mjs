@@ -1219,7 +1219,7 @@ export class NodeService {
       let reported = states[record?.status] ?? "setup";
       if (
         ["ready", "stopped"].includes(record?.status) &&
-        !["closed", "archived"].includes(mission.lifecycle.phase)
+        !["paused", "closed", "archived"].includes(mission.lifecycle.phase)
       ) {
         const view = await this.executions.state(c.id);
         if (

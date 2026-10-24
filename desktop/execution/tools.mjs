@@ -59,7 +59,20 @@ const coordinatorOperations = new Set([
   "clarify",
   "criterion",
 ]);
-export function guestTools(networkAccess = "restricted", role = "coordinator") {
+// Local contributions store the role inside mission. Never infer a privileged
+// catalog from an absent property or a loosely shaped caller object.
+export function contributionTools(contribution) {
+  const role = contribution.mission?.role;
+  if (!["agent", "coordinator"].includes(role))
+    throw new Error(
+      "A prepared contribution role is required for the tool catalog.",
+    );
+  return guestTools(contribution.networkAccess, role);
+}
+
+export function guestTools(networkAccess = "restricted", role = "agent") {
+  if (!["agent", "coordinator"].includes(role))
+    throw new Error("Unsupported agent role.");
   const advancedOperation = z.discriminatedUnion(
     "type",
     AgentOperation.options.filter(

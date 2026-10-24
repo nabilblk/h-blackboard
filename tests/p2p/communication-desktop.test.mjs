@@ -120,6 +120,21 @@ test(
       contributionId: co.id,
     });
     const control = (await current()).lifecycle.revision;
+    await assert.rejects(
+      worker.request({
+        type: "plan",
+        control,
+        text: "An Agent cannot replace the Coordinator's plan.",
+      }),
+    );
+    await assert.rejects(
+      worker.request({
+        type: "direct",
+        control,
+        registration: co.shared.registration,
+        text: "An Agent cannot direct the Coordinator.",
+      }),
+    );
     const plan = await channel.request({
       type: "plan",
       control,
@@ -171,6 +186,15 @@ test(
     assert.equal(
       (await worker.request({ type: "context" })).agent.direction.id,
       assignment.event,
+    );
+    await assert.rejects(
+      worker.request({
+        type: "clarify",
+        control: context.lifecycle.revision,
+        registration: agent.shared.registration,
+        direction: assignment.event,
+        text: "An Agent cannot issue Coordinator clarification, even for itself.",
+      }),
     );
     const task = await worker.request({
       type: "work",

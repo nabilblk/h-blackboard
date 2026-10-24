@@ -77,6 +77,15 @@ test("the advertised catalog excludes transport internals and human-only accepta
     !tools.some((t) => ["record_delivery", "checkpoint"].includes(t.name)),
   );
   const agentTools = guestTools("restricted", "agent");
+  assert.deepEqual(
+    tools,
+    agentTools,
+    "An omitted role must never default to Coordinator",
+  );
+  assert.throws(
+    () => guestTools("restricted", "owner"),
+    /Unsupported agent role/,
+  );
   assert.ok(!agentTools.some((t) => t.name === "direct_agent"));
   assert.ok(agentTools.some((t) => t.name === "review_artifact"));
   const operations = agentTools.find((t) => t.name === "board").inputSchema
@@ -84,9 +93,14 @@ test("the advertised catalog excludes transport internals and human-only accepta
   assert.ok(
     operations.every(
       (operation) =>
-        !["plan", "ready", "criterion", "direct"].includes(
-          operation.properties.type.const,
-        ),
+        ![
+          "plan",
+          "plan_artifact",
+          "ready",
+          "criterion",
+          "direct",
+          "clarify",
+        ].includes(operation.properties.type.const),
     ),
   );
   const id = "a".repeat(64);
@@ -131,6 +145,11 @@ test("effective configuration is reproducible; execution receipts never assert v
     guide: readFileSync("desktop/execution/guest/agent.md", "utf8"),
   };
   const a = effectiveConfiguration(input);
+  assert.equal(a.role, "agent");
+  assert.notEqual(
+    a.toolSchemaSha256,
+    effectiveConfiguration({ ...input, role: "coordinator" }).toolSchemaSha256,
+  );
   assert.deepEqual(a, effectiveConfiguration(input));
   assert.notEqual(
     a.promptSha256,

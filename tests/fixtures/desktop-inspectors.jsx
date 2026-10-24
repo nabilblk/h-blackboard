@@ -8,6 +8,8 @@ import "@fontsource/ibm-plex-mono/latin-400.css";
 import "../../src/desktop/desktop.css";
 import { MissionCompletionScene } from "./mission-completion";
 import { CoordinationReviewScene } from "./coordination-review";
+import { MissionControl } from "../../src/desktop/Lifecycle";
+import { missionPresentation } from "../../shared/mission-presentation.mjs";
 
 const scene = new URLSearchParams(location.search).get("scene") ?? "sign-in";
 const mission = {
@@ -63,6 +65,17 @@ if (scene === "plan-ready") {
   mission.lifecycle.readiness = { id: "ready" };
   mission.lifecycle.start_blockers = [];
 }
+if (scene.startsWith("mission-paused-")) {
+  mission.lifecycle.phase = "paused";
+  mission.lifecycle.plan = {
+    id: "plan",
+    text: "Continue the saved science activities.",
+  };
+  mission.lifecycle.start_blockers =
+    scene === "mission-paused-plan" ? ["coordinator_not_ready"] : [];
+  mission.lifecycle.readiness =
+    scene === "mission-paused-plan" ? null : { id: "readiness" };
+}
 const now = Date.now();
 const execution = {
   networkAccess: "restricted",
@@ -106,6 +119,63 @@ const execution = {
           }
         : null,
 };
+if (["running", "resume-launching", "resume-failed"].includes(scene)) {
+  execution.events = [
+    {
+      at: now - 10000,
+      type: "agent",
+      message: "Old planning message must not appear as a current update.",
+    },
+    { at: now - 1000, type: "runtime_ready", message: "{}" },
+    {
+      at: now - 900,
+      type: "agent",
+      message:
+        "Building the **shared shell** before integrating the activities.",
+    },
+    {
+      at: now - 100,
+      type: "tool_outcome",
+      message: JSON.stringify({ outcome: "ok", operation: "post_message" }),
+    },
+    {
+      at: now,
+      type: "tool_outcome",
+      message: JSON.stringify({
+        outcome: "rejected",
+        operation: "review_artifact",
+      }),
+    },
+  ];
+  execution.operations = [
+    { id: "old", kind: "publish", state: "complete", updatedAt: now - 2000 },
+    { id: "current", kind: "import", state: "complete", updatedAt: now - 50 },
+    { id: "failed", kind: "publish", state: "failed", updatedAt: now },
+  ];
+  if (scene.startsWith("resume-")) {
+    execution.record.status =
+      scene === "resume-launching" ? "launching" : "stopped";
+    execution.record.transitions = [
+      {
+        at: now + 1,
+        from: "stopped",
+        to: "reserving",
+        reason: "New permission",
+      },
+      { at: now + 2, from: "reserving", to: "launching", reason: "Starting" },
+      ...(scene === "resume-failed"
+        ? [
+            {
+              at: now + 3,
+              from: "launching",
+              to: "stopped",
+              reason: "Runtime did not start",
+            },
+          ]
+        : []),
+    ];
+  }
+}
 const denied = () =>
   Promise.reject(new Error("Renderer fixture cannot execute native actions"));
 const networkCalls = [];
@@ -221,6 +291,8 @@ const client = {
     setup: async (request) => networkCalls.push({ type: "setup", request }),
     agreements: async () => [],
     startState: async () => [],
+    reviewedStart: async (request) =>
+      networkCalls.push({ type: "reviewed-start", request }),
     completionState: async () => [],
   },
 };
@@ -239,7 +311,30 @@ createRoot(document.getElementById("root")).render(
     >
       <p className="d-label">Isolated UI fixture · {scene}</p>
       <div className="n-context-body">
-        {scene === "network-setup" ? (
+        {scene.startsWith("mission-paused-") ? (
+          <MissionControl
+            mission={mission}
+            isOwner={scene !== "mission-paused-contributor"}
+            blocked={false}
+            busy={false}
+            open
+            contributions={[]}
+            agents={[]}
+            perform={async (operation) => {
+              await operation();
+              return true;
+            }}
+            updated={async () => {}}
+            presentation={missionPresentation({
+              mission,
+              viewer:
+                scene === "mission-paused-contributor"
+                  ? "contributor"
+                  : "owner",
+            })}
+            act={denied}
+          />
+        ) : scene === "network-setup" ? (
           <AgentSetup
             mission={mission}
             localKey="owner"

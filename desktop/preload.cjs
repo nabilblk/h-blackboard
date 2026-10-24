@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld(
       }),
     prepare: (contributionId) =>
       executionCall("executionPrepare", { contributionId }),
+    setLimits: (contributionId, limits, expectedRevision) =>
+      executionCall("executionLimits", {
+        contributionId,
+        limits,
+        expectedRevision,
+      }),
     setNetwork: (contributionId, networkAccess, expectedRevision) =>
       executionCall("executionNetwork", {
         contributionId,
@@ -163,6 +169,7 @@ contextBridge.exposeInMainWorld(
       contributionId,
       networkRevision = null,
       capabilityRevision = null,
+      limitsRevision = null,
     ) =>
       nodeCall("consentGrant", {
         mission,
@@ -170,6 +177,7 @@ contextBridge.exposeInMainWorld(
         contributionId,
         networkRevision,
         capabilityRevision,
+        limitsRevision,
       }),
     governance: (mission) => nodeCall("governance", { mission }),
     govern: (mission, control, action) =>

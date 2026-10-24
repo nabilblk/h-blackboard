@@ -26,6 +26,7 @@ import {
 import {
   executionBinding,
   DirectionChanged,
+  localAllowance,
 } from "./execution/permissions.mjs";
 
 export { executionBinding } from "./execution/permissions.mjs";
@@ -949,10 +950,16 @@ export class NodeService {
         throw new Error(
           "Internet access changed. Review this agent's current access before approving.",
         );
+      if ((contribution.limitsRevision ?? null) !== request.limitsRevision)
+        throw new Error(
+          "Local allowance changed. Review the current limits before approving.",
+        );
       const ledger = await bridge.request({
         type: "governance",
         mission: request.mission,
       });
+      const allowance = localAllowance(contribution, ledger);
+      if (allowance.issue) throw new Error(allowance.issue);
       const grant = ledger.grants.find((g) => g.id === request.grant);
       if (
         !grant ||
@@ -1173,7 +1180,8 @@ export class NodeService {
         if (
           !permission ||
           permission.registration !== current.sharedAgent.registration ||
-          !permission.consent
+          !permission.consent ||
+          permission.consent_binding !== executionBinding(current)
         )
           throw new Error("Local permission and consent required.");
         if (closed || this.closed) throw new Error("Resource ledger closed.");
@@ -1279,6 +1287,7 @@ export class NodeService {
         channel.request({ type: "governance" }),
       ]);
       const grant = governance.grants.find((g) => g.id === grantId);
+      const allowance = localAllowance(contribution, governance);
       if (
         grantId &&
         (!grant ||
@@ -1330,24 +1339,27 @@ export class NodeService {
         if (budget?.deadline_ms && budget.deadline_ms <= Date.now())
           throw new Error("Mission deadline reached.");
         if (contribution.limits.mode === "bounded") {
-          const first = Math.min(
-            ...governance.grants
-              .filter(
-                (g) =>
-                  g.registration === local.sharedAgent.registration &&
-                  g.consent,
-              )
-              .map((g) => g.issued_ms),
-          );
-          const deadline = first + contribution.limits.minutes * 60000;
-          if (!Number.isSafeInteger(deadline) || deadline <= Date.now())
-            throw new Error("Local contribution time allowance expired.");
+          const deadline = allowance.deadline;
+          if (
+            deadline === null ||
+            !Number.isSafeInteger(deadline) ||
+            deadline <= Date.now()
+          )
+            throw new Error(
+              allowance.issue ?? "Local contribution time allowance expired.",
+            );
           grant.expires_ms = Math.min(grant.expires_ms, deadline);
         }
         if (budget?.deadline_ms)
           grant.expires_ms = Math.min(grant.expires_ms, budget.deadline_ms);
       }
-      return { contribution, context, governance, grant };
+      return {
+        contribution,
+        context,
+        governance,
+        grant,
+        localAllowance: allowance,
+      };
     } finally {
       channel.close();
     }

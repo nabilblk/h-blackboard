@@ -575,6 +575,12 @@ else {
                 );
               },
               executionPrepare: () => executions.prepare(id),
+              executionLimits: () =>
+                executions.setLimits(
+                  id,
+                  request.limits,
+                  request.expectedRevision,
+                ),
               executionNetwork: () =>
                 executions.setNetwork(
                   id,

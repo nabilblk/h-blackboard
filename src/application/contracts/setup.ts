@@ -16,6 +16,7 @@ export type ContributionApproval = {
   contributionId: string | null;
   networkRevision?: string | null;
   capabilityRevision?: string | null;
+  limitsRevision?: string | null;
   ownerPermission: boolean;
   minutes: number;
   turns: number;
@@ -87,6 +88,7 @@ export type PermissionRequest = {
   contributionId: string;
   networkRevision?: string | null;
   capabilityRevision?: string | null;
+  limitsRevision?: string | null;
   control: string;
   direction: string;
   turns: number;

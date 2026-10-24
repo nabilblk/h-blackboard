@@ -55,6 +55,15 @@ for Resume, rather than obscuring it with an authorization-wait status.
 
 ### Existing-agent continuity
 
+A stopped agent's **Access & limits → Local allowance** lets its contributor
+review the cumulative local cap while retaining its identity, login and files.
+Earlier turns remain charged; the time window retains its original start. Increase
+the total cap or choose no total local cap, then separately approve a fresh finite
+run. An unchanged cap is a no-op. A changed cap invalidates older execution
+consent, even if the contributor later restores the previous values. Expired caps
+are shown before a new run is approved; they cannot be overridden by a longer
+mission or session window. No peer or agent can edit another device's limits.
+
 - After an instruction change, each contributor can review the updated brief for
   the same Agent or Coordinator. The workspace, login and identity are retained;
   the environment must stop before review, and execution needs fresh approval.

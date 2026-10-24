@@ -23,6 +23,7 @@ export const agreementRequest = z
     contributionId: Id.nullable(),
     networkRevision: Id.nullable().default(null),
     capabilityRevision: Id.nullable().default(null),
+    limitsRevision: Id.nullable().default(null),
     ownerPermission: z.boolean(),
     minutes: z.number().int().min(1).max(1440),
     // Existing saved consent retains its original ten-minute limit. New UI
@@ -208,9 +209,10 @@ export class ContributionAgreements {
       );
     let binding = null;
     if (r.contributionId) {
-      const { contribution } = await this.node.executionContext(
+      const { contribution, localAllowance } = await this.node.executionContext(
         r.contributionId,
       );
+      if (localAllowance?.issue) throw new Error(localAllowance.issue);
       if (
         contribution.sharedAgent?.registration !== r.registration ||
         contribution.mission.missionId !== r.mission
@@ -219,6 +221,10 @@ export class ContributionAgreements {
       if ((contribution.capabilityRevision ?? null) !== r.capabilityRevision)
         throw new Error(
           "Authoring tools changed. Review this agent’s current toolkit before approving.",
+        );
+      if ((contribution.limitsRevision ?? null) !== r.limitsRevision)
+        throw new Error(
+          "Local allowance changed. Review the current limits before approving.",
         );
       if ((contribution.networkRevision ?? null) !== r.networkRevision)
         throw new Error(
@@ -686,6 +692,7 @@ export class ContributionAgreements {
         contributionId: id,
         networkRevision: a.request.networkRevision,
         capabilityRevision: a.request.capabilityRevision,
+        limitsRevision: a.request.limitsRevision,
       });
     await this.check(a, (await this.mission(mission.id)).mission);
     await this.executions.start(id, grant.id);

@@ -104,6 +104,7 @@ export function GroupContributionConsent({
                   contributionId: c.id,
                   networkRevision: c.networkRevision ?? null,
                   capabilityRevision: c.capabilityRevision ?? null,
+                  limitsRevision: c.limitsRevision ?? null,
                   ownerPermission: isOwner,
                   minutes: settings.minutes,
                   leaseMinutes: settings.leaseMinutes,
@@ -475,6 +476,7 @@ export function ContributionConsent({
                 contributionId: contribution?.id ?? null,
                 networkRevision: contribution?.networkRevision ?? null,
                 capabilityRevision: contribution?.capabilityRevision ?? null,
+                limitsRevision: contribution?.limitsRevision ?? null,
                 ownerPermission: isOwner,
                 minutes: settings.minutes,
                 leaseMinutes: settings.leaseMinutes,
@@ -613,6 +615,9 @@ export function StartMissionReview({
               capabilityRevision:
                 contributions.find((c) => c.sharedAgent?.registration === a.id)
                   ?.capabilityRevision ?? null,
+              limitsRevision:
+                contributions.find((c) => c.sharedAgent?.registration === a.id)
+                  ?.limitsRevision ?? null,
               ownerPermission: true,
               minutes: settings.minutes,
               leaseMinutes: settings.leaseMinutes,

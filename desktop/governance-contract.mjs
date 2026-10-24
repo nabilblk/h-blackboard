@@ -98,6 +98,7 @@ export const GovernanceRequests = {
       contributionId: z.string().min(1).max(80),
       networkRevision: z.string().uuid().nullable().default(null),
       capabilityRevision: z.string().uuid().nullable().default(null),
+      limitsRevision: z.string().uuid().nullable().default(null),
     })
     .strict(),
   governance: z.object({ mission: id }).strict(),

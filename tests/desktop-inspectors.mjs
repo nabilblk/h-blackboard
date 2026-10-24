@@ -282,6 +282,75 @@ try {
     results.push({ scene, passed: true });
   }
 
+  // Local cap edits preserve accumulated usage and require explicit review.
+  for (const scene of [
+    "limits-stopped",
+    "limits-running",
+    "limits-save-error",
+  ]) {
+    await browser("open", `${origin}/?scene=${scene}`);
+    await browser("wait", "--text", "Access & limits");
+    await click("Access & limits");
+    await browser("wait", '[aria-label="Local allowance"]');
+    assert.match(
+      await browser("get", "text", '[aria-label="Local allowance"]'),
+      /3 turns used or reserved/,
+    );
+    assert.equal(
+      await evaluate(
+        "[...document.querySelectorAll('button')].find(b=>b.textContent==='Review local allowance').disabled",
+      ),
+      scene === "limits-running",
+    );
+    if (scene !== "limits-running") {
+      await click("Review local allowance");
+      await browser("fill", 'input[name="localAllowanceMinutes"]', "120");
+      assert.equal(
+        await evaluate(
+          "[...document.querySelectorAll('button')].find(b=>b.textContent==='Apply local allowance').disabled",
+        ),
+        true,
+      );
+      await browser(
+        "check",
+        '[aria-label="Local allowance"] input[type="checkbox"]',
+      );
+      await click("Apply local allowance");
+      if (scene === "limits-save-error") {
+        await browser("wait", "--text", "Stop could not be confirmed.");
+        assert.equal(
+          await evaluate(
+            "document.querySelector('input[name=localAllowanceMinutes]').value",
+          ),
+          "120",
+          "Failed save retains the reviewed draft",
+        );
+        assert.deepEqual(await evaluate("window.networkFixture.calls"), []);
+      } else {
+        await browser("wait", "--text", "Local allowance saved.");
+        assert.deepEqual(await evaluate("window.networkFixture.calls"), [
+          {
+            type: "limits",
+            id: "fixture-local",
+            limits: {
+              mode: "bounded",
+              concurrency: 1,
+              turns: 20,
+              minutes: 120,
+            },
+            expectedRevision: null,
+          },
+        ]);
+        assert.match(
+          await browser("get", "text", '[aria-label="Local allowance"]'),
+          /3 turns used or reserved/,
+        );
+      }
+    }
+    await browser("screenshot", join(evidence, `${scene}.png`));
+    results.push({ scene, passed: true });
+  }
+
   // Network consent is explicit and cannot be changed during execution.
   for (const scene of [
     "mission-paused-ready",

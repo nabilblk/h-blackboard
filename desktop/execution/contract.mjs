@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { Id, NetworkAccess, CapabilityPack } from "../model.mjs";
+import { Id, NetworkAccess, CapabilityPack, Limits } from "../model.mjs";
 
 // Separate from the trusted-local web runner's v1 protocol. That provider is
 // deliberately not an implementation of this contract.
@@ -134,6 +134,13 @@ export const ExecutionRequests = {
     .object({ contributionId: Id, checkpoint: Hash })
     .strict(),
   executionPrepare: z.object({ contributionId: Id }).strict(),
+  executionLimits: z
+    .object({
+      contributionId: Id,
+      limits: Limits,
+      expectedRevision: Id.nullable(),
+    })
+    .strict(),
   executionNetwork: z
     .object({
       contributionId: Id,

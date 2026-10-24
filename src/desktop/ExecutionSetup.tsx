@@ -195,15 +195,23 @@ export function RunApproval({
     execution.capabilityRevision ?? item.capabilityRevision ?? null;
   const networkRevision =
     execution.networkRevision ?? item.networkRevision ?? null;
+  const limitsRevision =
+    execution.limitsRevision ?? item.limitsRevision ?? null;
   const [review, setReview] = useState<
     Pick<
       PermissionRequest,
-      "id" | "control" | "direction" | "networkRevision" | "capabilityRevision"
+      | "id"
+      | "control"
+      | "direction"
+      | "networkRevision"
+      | "capabilityRevision"
+      | "limitsRevision"
     >
   >(() => ({
     id: crypto.randomUUID(),
     networkRevision,
     capabilityRevision,
+    limitsRevision,
     control: mission.lifecycle.revision,
     direction: planning
       ? mission.lifecycle.revision
@@ -242,6 +250,7 @@ export function RunApproval({
             direction: r.direction,
             networkRevision: r.networkRevision ?? null,
             capabilityRevision: r.capabilityRevision ?? null,
+            limitsRevision: r.limitsRevision ?? null,
           });
           setTurns(r.turns);
           setMinutes(r.minutes);
@@ -266,6 +275,7 @@ export function RunApproval({
   }, [item.id, mission.id, retryRestore, setup]);
   const stale =
     (review.capabilityRevision ?? null) !== capabilityRevision ||
+    (review.limitsRevision ?? null) !== limitsRevision ||
     (review.networkRevision ?? null) !== networkRevision ||
     review.control !== mission.lifecycle.revision ||
     review.direction !==
@@ -385,6 +395,7 @@ export function RunApproval({
                 id: crypto.randomUUID(),
                 networkRevision,
                 capabilityRevision,
+                limitsRevision,
                 control: mission.lifecycle.revision,
                 direction: planning
                   ? mission.lifecycle.revision

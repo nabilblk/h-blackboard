@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { Id, NetworkAccess, CapabilityPack } from "../model.mjs";
+import { Id, NetworkAccess, CapabilityPack, Limits } from "../model.mjs";
 import { currentPermissions } from "./permissions.mjs";
 import {
   cleanLoginOutput,
@@ -207,6 +207,7 @@ export class ExecutionManager {
     let agent = null,
       permissions = [],
       direction = null,
+      localAllowance = null,
       permissionProblem = null;
     if (!this.closed && !this.busy.has(id)) {
       try {
@@ -214,6 +215,8 @@ export class ExecutionManager {
         permissions = currentPermissions(current, record);
         agent = current.context.agent;
         direction = current.context.agent.direction ?? null;
+        localAllowance = current.localAllowance ?? null;
+        permissionProblem = localAllowance?.issue ?? null;
       } catch (error) {
         permissionProblem = error.message;
       }
@@ -225,11 +228,14 @@ export class ExecutionManager {
       permissions,
       direction,
       permissionProblem,
+      localAllowance,
       policy: runtimePolicy(contribution.runtime, contribution.networkAccess),
       networkAccess: contribution.networkAccess ?? "restricted",
       networkRevision: contribution.networkRevision ?? null,
       capabilityPack: contribution.capabilityPack ?? "general",
       capabilityRevision: contribution.capabilityRevision ?? null,
+      limits: contribution.limits,
+      limitsRevision: contribution.limitsRevision ?? null,
       capacity: this.provider.maximum ?? 1,
       busy: this.busy.has(id),
       events,
@@ -522,7 +528,74 @@ export class ExecutionManager {
     // fails, the saved choice remains visible and preparation can be retried.
     if (changed) await this.prepare(id);
   }
-  async withStoppedContribution(id, action) {
+  async setLimits(id, input, expectedRevision) {
+    const limits = Limits.parse(input);
+    if (expectedRevision !== null) Id.parse(expectedRevision);
+    const validate = (current) => {
+      if ((current.limitsRevision ?? null) !== expectedRevision)
+        throw new Error(
+          "Local allowance changed. Review the current limits again.",
+        );
+      if (current.mission.role === "coordinator" && limits.concurrency !== 1)
+        throw new Error("A Coordinator contribution has one execution slot.");
+      return (
+        JSON.stringify(Limits.parse(current.limits)) !== JSON.stringify(limits)
+      );
+    };
+    return this.withStoppedContribution(
+      id,
+      () => {
+        this.node.contributors.store.update((local) => {
+          const current = local.contributions.find((c) => c.id === id);
+          if (
+            !current ||
+            current.status !== "prepared" ||
+            current.sharedAgent?.withdrawn ||
+            (current.limitsRevision ?? null) !== expectedRevision
+          )
+            throw new Error(
+              "Local allowance changed. Review the current limits again.",
+            );
+          if (
+            current.mission.role === "coordinator" &&
+            limits.concurrency !== 1
+          )
+            throw new Error(
+              "A Coordinator contribution has one execution slot.",
+            );
+          if (
+            JSON.stringify(Limits.parse(current.limits)) ===
+            JSON.stringify(limits)
+          )
+            return;
+          current.limits = limits;
+          current.limitsRevision = randomUUID();
+          local.activity.unshift({
+            id: randomUUID(),
+            at: new Date().toISOString(),
+            type: "limits_changed",
+            contributionId: id,
+            label:
+              "Local allowance reviewed; fresh execution approval required",
+          });
+          local.activity = local.activity.slice(0, 1000);
+        });
+        this.log(
+          id,
+          "limits_changed",
+          "Local allowance changed. Previous execution consent is invalid; review a fresh contribution approval.",
+        );
+      },
+      "local allowance",
+      validate,
+    );
+  }
+  async withStoppedContribution(
+    id,
+    action,
+    subject = "changed mission instructions",
+    validate = () => true,
+  ) {
     return this.exclusive(id, async () => {
       const contribution = this.contribution(id);
       if (
@@ -531,13 +604,14 @@ export class ExecutionManager {
         contribution.sharedAgent?.withdrawn
       )
         throw new Error("Choose an active local contribution.");
+      if (validate(contribution) === false) return;
       if (
         this.preparations.has(id) ||
         this.authentications.get(id)?.handle ||
         this.authentications.get(id)?.view.status === "starting"
       )
         throw new Error(
-          "Finish or cancel setup and sign-in before reviewing changed instructions.",
+          `Finish or cancel setup and sign-in before reviewing ${subject}.`,
         );
       const record = this.store.read(id);
       if (
@@ -545,13 +619,10 @@ export class ExecutionManager {
         (inflight.has(record.status) || record.status === "preparing")
       )
         throw new Error(
-          "Stop and recover this agent before reviewing changed instructions.",
+          `Stop and recover this agent before reviewing ${subject}.`,
         );
       if (record) {
-        await this.settle(
-          id,
-          "Stopped before reviewing changed mission instructions.",
-        );
+        await this.settle(id, `Stopped before reviewing ${subject}.`);
         if (this.store.read(id)?.status === "recovery_required")
           throw new Error(
             "The environment's stop or accounting is unconfirmed. Recover it before continuing.",
@@ -561,7 +632,7 @@ export class ExecutionManager {
           "The environment's stop is unconfirmed. Recover it before continuing.",
         );
       }
-      // The callback rechecks signed current terms after termination. Holding
+      // The callback rechecks the reviewed state after termination. Holding
       // this exclusion prevents a Start, login or access change in between.
       return action();
     });

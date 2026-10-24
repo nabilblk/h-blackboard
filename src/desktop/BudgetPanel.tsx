@@ -383,7 +383,14 @@ export function BudgetPanel({
                       }
                       onClick={() =>
                         void perform(async () => {
-                          await node.consentGrant(mission.id, g.id, local.id);
+                          await node.consentGrant(
+                            mission.id,
+                            g.id,
+                            local.id,
+                            local.networkRevision,
+                            local.capabilityRevision,
+                            local.limitsRevision,
+                          );
                           await refresh();
                         })
                       }

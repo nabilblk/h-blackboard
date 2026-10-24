@@ -86,13 +86,17 @@ const execution = {
   events: [],
   record: {
     status:
-      scene === "running" || scene === "network-running"
+      scene === "running" ||
+      scene === "network-running" ||
+      scene === "limits-running"
         ? "running"
         : [
               "planning",
               "network-stopped",
               "terms-review",
               "plan-ready",
+              "limits-stopped",
+              "limits-save-error",
             ].includes(scene)
           ? "ready"
           : "login_required",
@@ -119,6 +123,21 @@ const execution = {
           }
         : null,
 };
+if (scene.startsWith("limits-")) {
+  execution.limits = {
+    mode: "bounded",
+    concurrency: 1,
+    turns: 20,
+    minutes: 60,
+  };
+  execution.limitsRevision = null;
+  execution.localAllowance = {
+    used: 3,
+    remaining: 17,
+    deadline: now - 1000,
+    issue: "The local time cap has expired.",
+  };
+}
 if (["running", "resume-launching", "resume-failed"].includes(scene)) {
   execution.events = [
     {
@@ -256,6 +275,19 @@ const client = {
     state: async () => ({ ...execution, observedAt: Date.now() }),
     signIn: denied,
     stop: denied,
+    setLimits: async (id, limits, expectedRevision) => {
+      if (scene === "limits-save-error")
+        throw new Error("Stop could not be confirmed. Limits are unchanged.");
+      networkCalls.push({ type: "limits", id, limits, expectedRevision });
+      execution.limits = limits;
+      execution.limitsRevision = crypto.randomUUID();
+      execution.localAllowance = {
+        used: 3,
+        remaining: 17,
+        deadline: now + 3600000,
+        issue: null,
+      };
+    },
     setCapabilityPack: async (id, capabilityPack, expectedRevision) => {
       networkCalls.push({
         type: "toolkit",

@@ -36,6 +36,7 @@ export type Contribution = {
   capabilityPack?: CapabilityPack;
   networkRevision?: string;
   capabilityRevision?: string;
+  limitsRevision?: string;
   sharedAgent?: {
     registration: string;
     author: string;
@@ -63,7 +64,8 @@ export type LocalState = {
       | "consent_revoked"
       | "network_changed"
       | "capabilities_changed"
-      | "instructions_reviewed";
+      | "instructions_reviewed"
+      | "limits_changed";
     contributionId: string | null;
     label: string;
   }[];
@@ -209,6 +211,7 @@ export type NodeAPI = {
     contributionId: string,
     networkRevision?: string | null,
     capabilityRevision?: string | null,
+    limitsRevision?: string | null,
   ): Promise<{ event: string }>;
   governance(mission: string): Promise<import("./node").GovernanceView>;
   govern(

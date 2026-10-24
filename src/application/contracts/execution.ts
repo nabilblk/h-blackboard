@@ -1,6 +1,6 @@
 import type { AgentView, GrantView } from "./node";
 import type { ContributionAgreement } from "./setup";
-import type { NetworkAccess, CapabilityPack } from "./workspace";
+import type { NetworkAccess, CapabilityPack, Limits } from "./workspace";
 export type RemoteObservation = {
   contributor: string;
   remaining_ms: number;
@@ -53,6 +53,14 @@ export type ExecutionState = {
   capabilityPack?: CapabilityPack;
   networkRevision?: string | null;
   capabilityRevision?: string | null;
+  limits?: Limits;
+  limitsRevision?: string | null;
+  localAllowance?: {
+    deadline: number | null;
+    used: number;
+    remaining: number | null;
+    issue: string | null;
+  };
   observedAt: number;
   error?: string;
   agent?: AgentView | null;
@@ -96,6 +104,11 @@ export type ExecutionAPI = {
   state(id: string): Promise<ExecutionState>;
   overview(mission: string): Promise<Record<string, ExecutionState>>;
   prepare(id: string): Promise<void>;
+  setLimits(
+    id: string,
+    limits: Limits,
+    expectedRevision: string | null,
+  ): Promise<void>;
   setNetwork(
     id: string,
     networkAccess: NetworkAccess,

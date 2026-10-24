@@ -67,6 +67,7 @@ export const Contribution = z
     // policy must not resurrect an old grant or standing agreement.
     networkRevision: Id.optional(),
     capabilityRevision: Id.optional(),
+    limitsRevision: Id.optional(),
     sharedAgent: z
       .object({
         registration: z.string().regex(/^[a-f0-9]{64}$/),
@@ -101,6 +102,7 @@ export const Activity = z
       "network_changed",
       "capabilities_changed",
       "instructions_reviewed",
+      "limits_changed",
     ]),
     contributionId: Id.nullable(),
     label: Label,

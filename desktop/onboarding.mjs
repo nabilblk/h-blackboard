@@ -41,6 +41,7 @@ const permission = z
     contributionId: Id,
     networkRevision: Id.nullable().default(null),
     capabilityRevision: Id.nullable().default(null),
+    limitsRevision: Id.nullable().default(null),
     control: Hash,
     direction: Hash,
     turns: z.number().int().min(1).max(10000),
@@ -347,6 +348,10 @@ export class OnboardingService {
       throw new Error("Review the changed permission as a new action.");
     if (previousJob?.status === "complete") return previousJob;
     const c = this.executions.contribution(r.contributionId);
+    if ((c.limitsRevision ?? null) !== r.limitsRevision)
+      throw new Error(
+        "Local allowance changed. Review the current limits before approving.",
+      );
     if ((c.capabilityRevision ?? null) !== r.capabilityRevision)
       throw new Error(
         "Authoring tools changed. Review this agent’s current toolkit before approving.",
@@ -368,6 +373,8 @@ export class OnboardingService {
         "Mission control changed. Review the current plan and direction again.",
       );
     const current = await this.node.executionContext(c.id);
+    if (current.localAllowance?.issue)
+      throw new Error(current.localAllowance.issue);
     const planning = mission.lifecycle.phase === "preparing";
     if (
       planning
@@ -483,6 +490,7 @@ export class OnboardingService {
           contributionId: c.id,
           networkRevision: r.networkRevision,
           capabilityRevision: r.capabilityRevision,
+          limitsRevision: r.limitsRevision,
         });
       // Persist launch intent before calling the enforcing manager. A retry
       // never dispatches a second run for this reviewed permission.

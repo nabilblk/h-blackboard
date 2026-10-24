@@ -2,6 +2,7 @@ import { observations } from "../application/observations";
 import { CapabilityPackSettings } from "./CapabilityPack";
 import { ExecutionRecovery } from "./ExecutionRecovery";
 import { ExecutionUpdate } from "./ExecutionUpdate";
+import { LocalAllowanceSettings } from "./LocalAllowance";
 import { ViewTabs } from "../ui/ViewTabs";
 import { Disclosure } from "../ui/Disclosure";
 import { Field } from "../ui/Field";
@@ -110,8 +111,10 @@ export function ExecutionPanel({
       const execution = await api.state(item.id);
       setState(execution);
       setGrants(execution.permissions);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Execution operation failed.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -124,6 +127,7 @@ export function ExecutionPanel({
   const supported = !!runtimeLabel && !!item.nodeBinding;
   const status = state?.record?.status;
   const working = !!status && active.has(status);
+  const allowanceBlocked = !working && !!state?.localAllowance?.issue;
   const available =
     item.status === "prepared" &&
     !item.sharedAgent?.withdrawn &&
@@ -152,6 +156,7 @@ export function ExecutionPanel({
     state?.capabilityRevision ?? item.capabilityRevision ?? null;
   const networkRevision =
     state?.networkRevision ?? item.networkRevision ?? null;
+  const limitsRevision = state?.limitsRevision ?? item.limitsRevision ?? null;
   return (
     <section className="d-panel n-execution" aria-label="Local agent execution">
       <header>
@@ -230,7 +235,18 @@ export function ExecutionPanel({
         </div>
       ) : null}
       {tab === "access" && state?.permissionProblem ? (
-        <p className="d-field-help">{state.permissionProblem}</p>
+        state.permissionProblem !== state.localAllowance?.issue ? (
+          <p className="d-field-help">{state.permissionProblem}</p>
+        ) : null
+      ) : null}
+      {tab === "activity" && allowanceBlocked ? (
+        <section className="d-panel" aria-label="Local allowance needs review">
+          <h4>Local allowance reached</h4>
+          <p>{state?.localAllowance?.issue}</p>
+          <Button variant="primary" onClick={() => setTab("access")}>
+            Review local allowance
+          </Button>
+        </section>
       ) : null}
       <section hidden={tab !== "technical"} aria-label="Environment and source">
         <h4>Environment and source</h4>
@@ -315,6 +331,30 @@ export function ExecutionPanel({
         item.status === "prepared" &&
         !item.sharedAgent?.withdrawn ? (
           <>
+            <LocalAllowanceSettings
+              value={state?.limits ?? item.limits}
+              revision={limitsRevision}
+              observed={state?.localAllowance}
+              disabled={
+                busy ||
+                !state ||
+                !!state.error ||
+                state.busy ||
+                active.has(status ?? "") ||
+                status === "preparing" ||
+                status === "recovery_required" ||
+                signInOpen
+              }
+              save={(value, revision) =>
+                act(async () => {
+                  await api.setLimits(item.id, value, revision);
+                  setReviewRun(false);
+                  setNotice(
+                    "Local allowance saved. Review a fresh contribution approval to continue.",
+                  );
+                })
+              }
+            />
             <CapabilityPackSettings
               value={capabilityPack}
               revision={capabilityRevision}
@@ -603,6 +643,7 @@ export function ExecutionPanel({
           mission &&
           item.nodeBinding?.revision === mission.lifecycle.terms_revision &&
           state?.agent &&
+          !allowanceBlocked &&
           [
             "ready",
             "stopped",
@@ -622,6 +663,8 @@ export function ExecutionPanel({
                 capabilityPack,
                 networkRevision: networkRevision ?? undefined,
                 capabilityRevision: capabilityRevision ?? undefined,
+                limits: state?.limits ?? item.limits,
+                limitsRevision: limitsRevision ?? undefined,
               }}
               isOwner={owner === mission.owner}
             />
@@ -629,6 +672,7 @@ export function ExecutionPanel({
           {tab === "activity" &&
           mission &&
           state?.agent &&
+          !allowanceBlocked &&
           ["ready", "stopped", "waiting", "running"].includes(status ?? "") &&
           (mission.lifecycle.phase !== "preparing" ||
             item.mission.role !== "coordinator") ? (
@@ -642,6 +686,7 @@ export function ExecutionPanel({
             </Button>
           ) : null}
           {tab === "access" &&
+          !allowanceBlocked &&
           !working &&
           ["ready", "stopped"].includes(status ?? "") &&
           mission?.lifecycle.phase === "active" ? (
@@ -661,6 +706,7 @@ export function ExecutionPanel({
           {((tab === "activity" && mission?.lifecycle.phase === "preparing") ||
             (tab === "access" && manual)) &&
           item.nodeBinding?.revision === mission?.lifecycle.terms_revision &&
+          !allowanceBlocked &&
           !working &&
           ["ready", "stopped"].includes(status ?? "") &&
           (mission?.lifecycle.phase === "preparing" ||
@@ -750,6 +796,7 @@ export function ExecutionPanel({
                           item.id,
                           networkRevision,
                           capabilityRevision,
+                          limitsRevision,
                         );
                       await api.start(item.id, permission.id);
                     })

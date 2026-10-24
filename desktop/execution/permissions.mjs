@@ -26,9 +26,37 @@ export function executionBinding(contribution) {
         ...(contribution.networkRevision
           ? { networkRevision: contribution.networkRevision }
           : {}),
+        ...(contribution.limitsRevision
+          ? { limitsRevision: contribution.limitsRevision }
+          : {}),
       }),
     )
     .digest("hex");
+}
+
+// Cumulative local limits retain every historical reservation/charge. Editing
+// the cap never resets usage. The native reservation ledger independently checks
+// its consent timestamp; this host deadline is the stricter permission-time cap.
+export function localAllowance(contribution, governance, now = Date.now()) {
+  const grants = governance.grants.filter(
+    (g) => g.registration === contribution.sharedAgent?.registration,
+  );
+  const used = grants.reduce((sum, g) => sum + g.charged + g.reserved, 0);
+  if (contribution.limits.mode !== "bounded")
+    return { deadline: null, used, remaining: null, issue: null };
+  const consented = grants.filter((g) => g.consent);
+  const deadline = consented.length
+    ? Math.min(...consented.map((g) => g.issued_ms)) +
+      contribution.limits.minutes * 60000
+    : null;
+  const remaining = Math.max(0, contribution.limits.turns - used);
+  const issue =
+    deadline !== null && (!Number.isSafeInteger(deadline) || deadline <= now)
+      ? "The local time cap has expired. Review Local allowance in Access & limits before approving another run."
+      : !remaining
+        ? "The local turn cap is used. Review Local allowance in Access & limits before approving another run."
+        : null;
+  return { deadline, used, remaining, issue };
 }
 
 // Fresh human approval may follow a policy change before an older, consented

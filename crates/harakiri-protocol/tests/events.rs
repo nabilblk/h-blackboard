@@ -12,6 +12,7 @@ fn genesis() -> Event {
             previous: None,
             authority: None,
             created_at_ms: None,
+            terms_reviews: Default::default(),
             payload: Payload::MissionCreated {
                 definition: MissionDefinition {
                     name: "Community event".into(),
@@ -71,6 +72,101 @@ fn unsupported_versions_and_private_audiences_fail_closed() {
 }
 
 #[test]
+fn terms_review_evidence_is_versioned_signed_and_bounded_without_changing_legacy_bytes() {
+    let identity = Identity::from_seed([1; 32]);
+    let original = genesis();
+    let mut body = original.body.clone();
+    body.version = 14;
+    body.mission = Some(original.id.clone());
+    body.sequence = 1;
+    body.previous = Some(original.id.clone());
+    body.authority = Some(original.id.clone());
+    body.payload = Payload::AgentTermsReviewed {
+        registration: "aa".repeat(32),
+        control: original.id.clone(),
+    };
+    let reviewed = identity.sign(body.clone()).unwrap();
+    assert_eq!(Event::verify(reviewed.bytes()).unwrap().body, body);
+    body.version = 13;
+    assert!(identity.sign(body.clone()).is_err());
+    body.payload = Payload::MessageSent {
+        text: "Updated scope".into(),
+        to: None,
+        thread: None,
+    };
+    body.terms_reviews.insert("aa".repeat(32), reviewed.id);
+    assert!(identity.sign(body.clone()).is_err());
+    body.version = 14;
+    let bound = identity.sign(body.clone()).unwrap();
+    assert_eq!(
+        Event::verify(bound.bytes()).unwrap().body.terms_reviews,
+        body.terms_reviews
+    );
+    body.terms_reviews.insert("bad".into(), "bb".repeat(32));
+    assert!(identity.sign(body.clone()).is_err());
+    body.terms_reviews.clear();
+    for i in 0..=limits::MAX_AGENTS {
+        body.terms_reviews
+            .insert(format!("{i:064x}"), "bb".repeat(32));
+    }
+    assert!(identity.sign(body).is_err());
+    // The default field is absent, including after decode and re-signing.
+    assert_eq!(
+        identity
+            .sign(Event::verify(original.bytes()).unwrap().body)
+            .unwrap()
+            .bytes(),
+        original.bytes()
+    );
+    assert!(
+        !serde_json::to_value(&original.body)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("terms_reviews")
+    );
+}
+
+#[test]
+fn larger_v14_envelopes_do_not_widen_legacy_record_limits() {
+    let identity = Identity::from_seed([1; 32]);
+    let original = genesis();
+    let body = EventBody {
+        version: 14,
+        mission: Some(original.id.clone()),
+        author: identity.public_key(),
+        audience: "main".into(),
+        sequence: 1,
+        previous: Some(original.id.clone()),
+        authority: Some(original.id),
+        created_at_ms: None,
+        terms_reviews: Default::default(),
+        payload: Payload::ArtifactPublished {
+            title: "Large manifest".into(),
+            files: (0..256)
+                .map(|i| harakiri_protocol::ArtifactFile {
+                    path: format!("{}-{i}.txt", "a".repeat(190)),
+                    hash: "bb".repeat(32),
+                    size: 1,
+                    media_type: "text/plain".into(),
+                })
+                .collect(),
+        },
+    };
+    let large = identity.sign(body.clone()).unwrap();
+    assert!(large.bytes().len() > limits::LEGACY_MAX_EVENT_BYTES);
+    assert!(large.bytes().len() <= limits::MAX_EVENT_BYTES);
+    assert!(
+        identity
+            .sign(EventBody {
+                version: 13,
+                ..body
+            })
+            .is_err()
+    );
+}
+
+#[test]
 fn published_vector_matches_the_rust_implementation() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../protocol/fixtures/genesis-v1.json");
@@ -99,6 +195,7 @@ fn scoped_v2_and_domain_separated_claim_vectors() {
             previous: None,
             authority: Some(genesis().id),
             created_at_ms: Some(1790899200000),
+            terms_reviews: Default::default(),
             payload: Payload::AudienceCreated {
                 readers: vec![
                     identity.public_key(),
@@ -172,6 +269,7 @@ fn communication_v5_signed_vectors_and_downgrade_rejection() {
             previous: None,
             authority: Some("09".repeat(32)),
             created_at_ms: Some(1790899200000),
+            terms_reviews: Default::default(),
             payload,
         };
         let e = identity.sign(body.clone()).unwrap();
@@ -233,6 +331,7 @@ fn work_v6_vectors_preserve_exact_direction_and_parallel_attempt_references() {
             previous: None,
             authority: Some("0c".repeat(32)),
             created_at_ms: Some(1790899200000),
+            terms_reviews: Default::default(),
             payload,
         };
         let e = identity.sign(body.clone()).unwrap();
@@ -331,6 +430,7 @@ fn artifact_v7_vectors_preserve_private_scope_files_and_exact_reviews() {
             previous: None,
             authority: Some("09".repeat(32)),
             created_at_ms: Some(1790899200000),
+            terms_reviews: Default::default(),
             payload: Payload::ArtifactRecorded {
                 control: "01".repeat(32),
                 authorization: None,
@@ -428,6 +528,7 @@ fn governance_v8_vectors_bind_allocations_and_exact_artifact_plans() {
             previous: None,
             authority: Some("09".repeat(32)),
             created_at_ms: Some(1790899200000),
+            terms_reviews: Default::default(),
             payload,
         };
         let e = identity.sign(body.clone()).unwrap();
@@ -473,6 +574,7 @@ fn scoped_reviews_preserve_legacy_bytes_and_reject_contradictory_claims() {
         previous: None,
         authority: Some("09".repeat(32)),
         created_at_ms: None,
+        terms_reviews: Default::default(),
         payload: Payload::ArtifactRecorded {
             control: "01".repeat(32),
             authorization: None,

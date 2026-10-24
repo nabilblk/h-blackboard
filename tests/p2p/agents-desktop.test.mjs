@@ -203,5 +203,86 @@ test(
         .snapshot()
         .contributions.every((c) => c.execution.allowed === false),
     );
+    // Current instructions can be explicitly reviewed without another offer,
+    // workspace, login or execution permission. A lost local write is retryable.
+    const before = contributors.store
+      .read()
+      .contributions.find((c) => c.id === second.id);
+    const review = await n.handle("reviewContribution", {
+      mission,
+      role: "agent",
+    });
+    let stopped = 0;
+    n.executions = {
+      withStoppedContribution: async (_id, action) => {
+        stopped++;
+        return action();
+      },
+    };
+    const renew = contributors.renewNode.bind(contributors);
+    contributors.renewNode = () => {
+      throw new Error("lost local write");
+    };
+    await assert.rejects(
+      n.handle("renewContribution", {
+        contributionId: second.id,
+        reviewId: review.reviewId,
+      }),
+      /lost local write/,
+    );
+    assert.equal(
+      contributors.store.read().contributions.find((c) => c.id === second.id)
+        .nodeBinding.revision,
+      before.nodeBinding.revision,
+    );
+    contributors.renewNode = renew;
+    await n.handle("renewContribution", {
+      contributionId: second.id,
+      reviewId: review.reviewId,
+    });
+    const after = contributors.store
+      .read()
+      .contributions.find((c) => c.id === second.id);
+    assert.equal(stopped, 2);
+    assert.equal(after.workspace, before.workspace);
+    assert.deepEqual(after.sharedAgent, before.sharedAgent);
+    assert.deepEqual(after.limits, before.limits);
+    assert.equal(
+      after.nodeBinding.revision,
+      (await current()).lifecycle.terms_revision,
+    );
+    assert.equal((await n.handle("agents", { mission })).total, 2);
+    assert.notEqual(
+      (await n.handle("agents", { mission })).items.find(
+        (a) => a.identity.label === "Schedule researcher",
+      ).status,
+      "review_required",
+    );
+    // Terms changing during confirmed stop requires another visible review.
+    const stale = await n.handle("reviewContribution", {
+      mission,
+      role: "agent",
+    });
+    n.executions.withStoppedContribution = async (_id, action) => {
+      await n.handle("updateInstructions", {
+        mission,
+        revision: (await current()).lifecycle.revision,
+        definition: { ...definition, scope: "Rain forecast" },
+      });
+      return action();
+    };
+    await assert.rejects(
+      n.handle("renewContribution", {
+        contributionId: second.id,
+        reviewId: stale.reviewId,
+      }),
+      /changed/,
+    );
+    assert.equal(
+      contributors.store.read().contributions.find((c) => c.id === second.id)
+        .nodeBinding.revision,
+      after.nodeBinding.revision,
+    );
+    n.executions = null;
   },
 );

@@ -51,6 +51,7 @@ pub fn activity(payload: &Payload) -> Option<(&'static str, String)> {
         Payload::CoordinatorPlanArtifact{..}=>Some(("plan","Coordinator selected an exact artifact revision as the shared plan.".into())),
         Payload::CoordinatorPlanned { text, .. } => Some(("plan", text.clone())),
         Payload::AgentOffered { identity, .. } => Some(("agent", format!("{} ({}) shared with the mission. Prepared contribution; execution has not started.", identity.label, identity.runtime))),
+        Payload::AgentTermsReviewed { .. } => Some(("agent", "The contributor reviewed the current mission instructions for this agent. Execution still needs separate approval.".into())),
         Payload::AgentWithdrawn { .. } => Some(("agent", "An agent contribution was withdrawn by its contributor. Previous work remains in the conversation.".into())),
         Payload::AgentDirected { text, .. } => Some(("direction", format!("Direction assigned in Main. Assignment is not an acknowledgment or a running process.\n\n{text}"))),
         Payload::CoordinatorReadied { .. } => Some(("readiness", "Coordinator acknowledged the current mission instructions and shared plan. Waiting for the mission owner to start.".into())),
@@ -152,7 +153,7 @@ impl Store {
             let offers: Vec<_> = records.values().filter(|e| matches!(&e.body.payload, Payload::AgentOffered {identity,..} if identity.author==c.identity.author)).collect();
             if !offers.is_empty() {
                 let offer = offers[0];
-                let unavailable = offers.len()!=1 || self.is_revoked(mission,&offer.body.author)? || records.values().any(|e| matches!(&e.body.payload,Payload::AgentWithdrawn {registration} if registration==&offer.id)) || match &offer.body.payload {Payload::AgentOffered {control,..}=>history.at(control)?.lifecycle.terms_revision!=p.lifecycle.terms_revision,_=>true};
+                let unavailable = offers.len()!=1 || self.is_revoked(mission,&offer.body.author)? || records.values().any(|e| matches!(&e.body.payload,Payload::AgentWithdrawn {registration} if registration==&offer.id)) || self.agent_reviewed_terms(mission, &offer.id)? != p.lifecycle.terms_revision;
                 if unavailable {
                     p.lifecycle.readiness = None;
                     p.lifecycle

@@ -203,13 +203,16 @@ export function agentPresentation(input) {
     reason =
       execution.agreement.message ||
       "Waiting for authorized work within your approval.";
-  } else if (
-    phase === "preparing" &&
-    (!planning || !mission.lifecycle.start_blockers.length)
-  ) {
+  } else if (phase === "preparing" && !planning) {
     cause = "mission_start";
     responsible = isOwner ? "you" : "the mission owner";
     reason = "Waiting for the mission owner to review and start.";
+  } else if (planning && mission.lifecycle.readiness) {
+    cause = "planning_ready";
+    responsible = isOwner ? "you" : "the mission owner";
+    reason =
+      "The plan is ready. You can ask the Coordinator to revise it before Start.";
+    if (local && isOwner) action = link("Revise plan with Coordinator");
   } else if (
     agent?.status === "waiting_for_direction" ||
     observed === "awaiting_direction"
@@ -237,9 +240,17 @@ export function agentPresentation(input) {
   ) {
     cause = planning ? "planning_approval" : "local_approval";
     reason = planning
-      ? "Allow a bounded session to prepare the plan."
+      ? mission.lifecycle.readiness
+        ? "The plan is ready. You can ask the Coordinator to revise it before Start."
+        : "Allow a bounded session to prepare the plan."
       : "Review how this agent may continue on this Mac.";
-    action = link(planning ? "Review planning session" : "Review contribution");
+    action = link(
+      planning
+        ? mission.lifecycle.readiness
+          ? "Revise plan with Coordinator"
+          : "Review planning session"
+        : "Review contribution",
+    );
   } else if (local && lifecycle.attention) action = link("Inspect agent");
   if (
     !local &&
@@ -274,7 +285,7 @@ export function agentPresentation(input) {
       : (observation?.report.issued_ms ?? null),
     source: local ? "Observed on this Mac" : "Contributor’s signed report",
     reference: local ? contribution.id : (agent?.id ?? null),
-    attention: !!action || urgent,
+    attention: (!!action && cause !== "planning_ready") || urgent,
     stopConfirmed: stopped,
   };
 }
@@ -441,7 +452,7 @@ export function missionPresentation({
       },
       urgent: status.urgent,
     };
-    if (status.action) decisions.push(item);
+    if (status.action && status.attention) decisions.push(item);
     else if (
       ["waiting", "unknown", "setup", "stopping"].includes(status.state) ||
       status.urgent

@@ -522,6 +522,50 @@ export class ExecutionManager {
     // fails, the saved choice remains visible and preparation can be retried.
     if (changed) await this.prepare(id);
   }
+  async withStoppedContribution(id, action) {
+    return this.exclusive(id, async () => {
+      const contribution = this.contribution(id);
+      if (
+        contribution.status !== "prepared" ||
+        !contribution.nodeBinding ||
+        contribution.sharedAgent?.withdrawn
+      )
+        throw new Error("Choose an active local contribution.");
+      if (
+        this.preparations.has(id) ||
+        this.authentications.get(id)?.handle ||
+        this.authentications.get(id)?.view.status === "starting"
+      )
+        throw new Error(
+          "Finish or cancel setup and sign-in before reviewing changed instructions.",
+        );
+      const record = this.store.read(id);
+      if (
+        record &&
+        (inflight.has(record.status) || record.status === "preparing")
+      )
+        throw new Error(
+          "Stop and recover this agent before reviewing changed instructions.",
+        );
+      if (record) {
+        await this.settle(
+          id,
+          "Stopped before reviewing changed mission instructions.",
+        );
+        if (this.store.read(id)?.status === "recovery_required")
+          throw new Error(
+            "The environment's stop or accounting is unconfirmed. Recover it before continuing.",
+          );
+      } else if (!(await this.provider.terminate({ contribution })).stopped) {
+        throw new Error(
+          "The environment's stop is unconfirmed. Recover it before continuing.",
+        );
+      }
+      // The callback rechecks signed current terms after termination. Holding
+      // this exclusion prevents a Start, login or access change in between.
+      return action();
+    });
+  }
   async setCapabilityPack(id, capabilityPack, expectedRevision) {
     CapabilityPack.parse(capabilityPack);
     if (expectedRevision !== null) Id.parse(expectedRevision);
@@ -1201,7 +1245,7 @@ export class ExecutionManager {
             if (!args || Object.keys(args).length)
               throw new Error("Capabilities takes no arguments.");
             return {
-              protocol: 13,
+              protocol: 14,
               network: job.contribution.networkAccess ?? "restricted",
               authoring: authoringPack(job.contribution.capabilityPack),
               artifactBrowser: {

@@ -24,6 +24,20 @@ fn command(s: &mut Store, owner: &Identity, mission: &str, action: Action) -> Ev
     s.control(owner, mission, &revision, action).unwrap()
 }
 fn appoint(s: &mut Store, owner: &Identity, mission: &str, c: &Identity) -> Event {
+    let terms = s.control_state(mission).unwrap().lifecycle.terms_revision;
+    s.offer_agent(
+        owner,
+        mission,
+        &terms,
+        harakiri_protocol::agents::AgentIdentity {
+            author: c.public_key(),
+            label: "Festival Coordinator".into(),
+            runtime: "grok".into(),
+            role: harakiri_protocol::agents::AgentRole::Coordinator,
+            contributor_name: "Owner".into(),
+        },
+    )
+    .unwrap();
     command(
         s,
         owner,

@@ -673,20 +673,15 @@ impl Store {
                     .event(registration)?
                     .ok_or_else(|| anyhow!("registration unavailable"))?;
                 let Payload::AgentOffered {
-                    control: offered_control,
                     identity: offered_identity,
+                    ..
                 } = &offered.body.payload
                 else {
                     anyhow::bail!("registration required")
                 };
-                ensure!(
-                    self.control_history(e.mission_id())?
-                        .at(offered_control)?
-                        .lifecycle
-                        .terms_revision
-                        == p.lifecycle.terms_revision,
-                    "stale contribution terms"
-                );
+                if !self.validate_agent_terms(e, registration, control)? {
+                    return Ok(false);
+                }
                 ensure!(
                     offered_identity.role != harakiri_protocol::agents::AgentRole::Coordinator
                         || p.lifecycle

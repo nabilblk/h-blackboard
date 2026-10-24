@@ -7,6 +7,7 @@ import { Field } from "../ui/Field";
 import { Button } from "../ui/Button";
 import { useApplication } from "./ApplicationProvider";
 import { ContributionConsent } from "./ContributionApproval";
+import { ContributionRenewal } from "./ContributionRenewal";
 import { useEffect, useState } from "react";
 import { Play, Square, Download, Upload, ShieldCheck } from "lucide-react";
 import { type Contribution } from "../application/contracts/workspace";
@@ -177,6 +178,25 @@ export function ExecutionPanel({
           { value: "technical", label: "Technical" },
         ]}
       />
+      {tab !== "technical" &&
+      mission &&
+      item.status === "prepared" &&
+      !item.sharedAgent?.withdrawn &&
+      item.nodeBinding &&
+      item.nodeBinding.revision !== mission.lifecycle.terms_revision &&
+      !["closed", "archived"].includes(mission.lifecycle.phase) ? (
+        <ContributionRenewal
+          item={item}
+          mission={mission}
+          working={working || busy}
+          done={async () => {
+            setState(await api.state(item.id));
+            setNotice(
+              "Updated instructions accepted. Review the next run when ready.",
+            );
+          }}
+        />
+      ) : null}
       {tab === "activity" && state?.record?.reconstructedAt ? (
         <p className="d-field-help" role="status">
           This environment was recreated. The previous runtime conversation and
@@ -575,6 +595,7 @@ export function ExecutionPanel({
           ) : null}
           {tab === "access" &&
           mission &&
+          item.nodeBinding?.revision === mission.lifecycle.terms_revision &&
           state?.agent &&
           [
             "ready",
@@ -631,10 +652,9 @@ export function ExecutionPanel({
                 : ""}
             </label>
           ) : null}
-          {((tab === "activity" &&
-            mission?.lifecycle.phase === "preparing" &&
-            mission.lifecycle.start_blockers.length > 0) ||
+          {((tab === "activity" && mission?.lifecycle.phase === "preparing") ||
             (tab === "access" && manual)) &&
+          item.nodeBinding?.revision === mission?.lifecycle.terms_revision &&
           !working &&
           ["ready", "stopped"].includes(status ?? "") &&
           (mission?.lifecycle.phase === "preparing" ||
@@ -652,7 +672,9 @@ export function ExecutionPanel({
                     onClick={() => setReviewRun((v) => !v)}
                   >
                     {mission.lifecycle.phase === "preparing"
-                      ? "Review planning session"
+                      ? mission.lifecycle.readiness
+                        ? "Revise plan with Coordinator"
+                        : "Review planning session"
                       : "Review next run"}
                   </Button>
                   {reviewRun && state ? (

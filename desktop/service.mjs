@@ -66,7 +66,7 @@ export class ContributorService {
           execution.blockers.unshift({
             code: "mission_terms_changed",
             message:
-              "Mission instructions changed. Review them and prepare a new contribution.",
+              "Mission instructions changed. Review them to continue with this agent and its saved work.",
           });
         if (
           item.status === "revoked" &&
@@ -139,6 +139,56 @@ export class ContributorService {
         "The prepared workspace was moved or replaced. Prepare a new contribution.",
       );
     return item;
+  }
+
+  reviewableContribution(id, checked, reviewId) {
+    const review = this.reviewed(
+      this.reviews,
+      reviewId,
+      "The instructions review",
+    );
+    const item = this.store.read().contributions.find((c) => c.id === id);
+    if (
+      !item ||
+      item.status !== "prepared" ||
+      item.sharedAgent?.withdrawn ||
+      item.mission.missionId !== checked.mission ||
+      item.nodeBinding?.owner !== checked.owner ||
+      review.mission.missionId !== checked.mission ||
+      review.mission.role !== item.mission.role ||
+      review.nodeBinding?.owner !== checked.owner ||
+      review.nodeBinding?.revision !== checked.reviewed_revision
+    )
+      throw new Error(
+        "The mission or contribution changed. Review its current instructions again.",
+      );
+    if (
+      realpathSync(item.workspace) !== item.workspace ||
+      !sameIdentity(identity(item.workspace), item.workspaceIdentity)
+    )
+      throw new Error(
+        "The saved workspace moved or was replaced. Restore it before continuing.",
+      );
+    return item;
+  }
+
+  renewNode(id, checked, reviewId) {
+    const reviewed = this.reviewableContribution(id, checked, reviewId);
+    this.store.update((state) => {
+      const item = state.contributions.find((c) => c.id === id);
+      if (
+        !item ||
+        item.status !== "prepared" ||
+        item.sharedAgent?.withdrawn ||
+        item.nodeBinding?.revision !== reviewed.nodeBinding.revision
+      )
+        throw new Error("Contribution changed. Review its instructions again.");
+      if (item.nodeBinding.revision === checked.reviewed_revision) return;
+      item.nodeBinding.revision = checked.reviewed_revision;
+      item.mission.name = checked.definition.name;
+      item.mission.inspectedAt = new Date(this.now()).toISOString();
+      event(state, "instructions_reviewed", item.mission.name, id);
+    });
   }
 
   markAgentShared(id, sharedAgent) {

@@ -41,7 +41,7 @@ fn scoped_review_upgrade_preserves_v9_history_and_sets_downgrade_barrier() {
     assert_eq!(
         db.pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
             .unwrap(),
-        16
+        17
     );
 }
 
@@ -108,6 +108,7 @@ fn unauthorized_author_and_cross_mission_grants_are_rejected() {
         previous: None,
         authority: Some(a.id.clone()),
         created_at_ms: None,
+        terms_reviews: Default::default(),
         payload: Payload::MessagePosted {
             text: "forged membership".into(),
         },
@@ -199,6 +200,7 @@ fn schema_seven_preserves_old_messages_and_requires_pending_applicants_to_review
             previous: None,
             authority: None,
             created_at_ms: None,
+            terms_reviews: Default::default(),
             payload: Payload::MissionCreated {
                 definition: definition(),
                 endpoint: "01".repeat(32),

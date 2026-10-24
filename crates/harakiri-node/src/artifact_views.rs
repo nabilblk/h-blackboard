@@ -88,11 +88,11 @@ impl Store {
         if let Some(reg) = self.agent_registration(e.mission_id(), &e.body.author)? {
             let offer = self.offer(e.mission_id(), &reg)?;
             let records = self.agent_records(e.mission_id())?;
-            let reviewed = match &offer.body.payload {
-                Payload::AgentOffered { control, .. } => control,
-                _ => return Ok(true),
-            };
-            if self.is_revoked(e.mission_id(),&offer.body.author)? || records.values().any(|r|matches!(&r.body.payload,Payload::AgentWithdrawn{registration} if registration==&reg)) || history.at(reviewed)?.lifecycle.terms_revision!=history.current()?.lifecycle.terms_revision {return Ok(true);}
+            if self.is_revoked(e.mission_id(), &offer.body.author)?
+                || records.values().any(|r| matches!(&r.body.payload, Payload::AgentWithdrawn { registration } if registration == &reg))
+                || self.agent_reviewed_terms(e.mission_id(), &reg)? != history.current()?.lifecycle.terms_revision {
+                return Ok(true);
+            }
         }
         if let Some((_, doc, _)) = revision(e) {
             for (input, relation) in doc

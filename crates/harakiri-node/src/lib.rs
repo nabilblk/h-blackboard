@@ -4,6 +4,7 @@ pub mod peer;
 pub mod store;
 
 pub mod admission;
+mod agent_terms;
 pub mod agents;
 mod briefing;
 pub mod communication;

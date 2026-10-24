@@ -53,15 +53,21 @@ export function ExecutionRecovery({
     >
       {checkpoint ? (
         <div className="d-panel">
-          <h4>Source checkpoint saved</h4>
+          <h4>
+            {checkpoint.files
+              ? "Source checkpoint saved"
+              : "No source files captured yet"}
+          </h4>
           <p>
             {checkpoint.files} files ·{" "}
             {new Date(checkpoint.at).toLocaleString()}
           </p>
           <p className="d-field-help">
-            {state.record?.reconstructedAt
-              ? "The previous environment was replaced. Its runtime conversation and sign-in are unavailable; this separate copy can recover selected source files."
-              : "This separate copy can recover selected source if the environment is lost. It does not contain the agent’s login or conversation."}
+            {!checkpoint.files
+              ? "This checkpoint contains no source files to restore. Published artifacts and the agent’s environment are separate."
+              : state.record?.reconstructedAt
+                ? "The previous environment was replaced. Its runtime conversation and sign-in are unavailable; this separate copy can recover selected source files."
+                : "This separate copy can recover selected source if the environment is lost. It does not contain the agent’s login or conversation."}
           </p>
           <Disclosure title="Recover source or inspect exclusions">
             <p>
@@ -69,7 +75,7 @@ export function ExecutionRecovery({
               work stays in place. Review it with the agent before resuming.
             </p>
             <Button
-              disabled={busy || !stopped}
+              disabled={busy || !stopped || !checkpoint.files}
               onClick={() =>
                 void act(async () => {
                   const result = await api.restoreCheckpoint(id, checkpoint.id);

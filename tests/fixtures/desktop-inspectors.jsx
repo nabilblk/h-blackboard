@@ -58,6 +58,11 @@ const item = {
   },
   limits: { mode: "unlimited", concurrency: 1 },
 };
+if (scene === "terms-review") item.nodeBinding.revision = "old-terms";
+if (scene === "plan-ready") {
+  mission.lifecycle.readiness = { id: "ready" };
+  mission.lifecycle.start_blockers = [];
+}
 const now = Date.now();
 const execution = {
   networkAccess: "restricted",
@@ -70,7 +75,12 @@ const execution = {
     status:
       scene === "running" || scene === "network-running"
         ? "running"
-        : scene === "planning" || scene === "network-stopped"
+        : [
+              "planning",
+              "network-stopped",
+              "terms-review",
+              "plan-ready",
+            ].includes(scene)
           ? "ready"
           : "login_required",
     reason: "Fixture observation",
@@ -104,6 +114,23 @@ const client = {
   workspace: {},
   missions: {
     state: async () => ({ identity: { owner: "owner" }, missions: [mission] }),
+    reviewContribution: async (id, role) => {
+      networkCalls.push({ type: "review-terms", id, role });
+      return {
+        reviewId: "review-fixture",
+        definition: mission.definition,
+        mission: item.mission,
+        nodeBinding: {
+          owner: mission.owner,
+          revision: mission.lifecycle.terms_revision,
+        },
+      };
+    },
+    renewContribution: async (input) => {
+      networkCalls.push({ type: "renew-terms", input });
+      item.nodeBinding.revision = mission.lifecycle.terms_revision;
+      return {};
+    },
     governance: async () => ({
       criteria: [],
       allocations:
@@ -153,7 +180,9 @@ const client = {
     artifacts: async () => ({ items: [], after: null }),
   },
   execution: {
-    overview: async () => ({ [item.id]: await client.execution.state(item.id) }),
+    overview: async () => ({
+      [item.id]: await client.execution.state(item.id),
+    }),
     state: async () => ({ ...execution, observedAt: Date.now() }),
     signIn: denied,
     stop: denied,

@@ -2,7 +2,7 @@
 
 ## Coordination and quality tools (unreleased)
 
-The source branch includes protocol-13 coordination changes; published 0.4.9
+The source branch includes protocol-14 coordination changes; published 0.4.9
 does not contain them. The Slack mission remains the working surface.
 The complete tool catalog, delivery contract, guidance and authoring workflow
 are documented in [Agent collaboration interface](AGENT-INTERFACE.md).
@@ -16,6 +16,22 @@ and additional workstreams remain optional. Human Start and acceptance stay
 human actions. Stopped guests refresh the root-owned tool/guide bundle and
 restricted runtime configuration before their next run; credentials and
 workspace files stay in place. No global host configuration is edited.
+
+**Changing the brief.** Open a local agent → **Review updated instructions** to
+read the current objective, scope and completion criteria, then explicitly accept.
+The desktop confirms the environment is stopped and accounting is settled before
+recording the review. It rechecks the signed terms after stopping and retains the
+same registration, VM, runtime session, login, files, internet policy and local
+limits. A changed or expired review, concurrent setup/login, unconfirmed stop or
+withdrawn consent blocks renewal. Lost-response retries reconcile the same signed
+review. A new run needs current execution permission and contributor approval.
+An owner cannot renew another contributor's consent.
+
+**Revising a ready plan.** Before Start, **Revise plan with Coordinator** opens the
+existing Coordinator. Post the correction in its conversation and approve another
+bounded planning session. It reads the current brief and pending messages, updates
+the plan and acknowledges readiness. This does not start the mission or release
+workers; the human reviews and starts separately.
 
 **Context and waiting.** `read_briefing` exposes focused sections and a bounded
 overview over one captured native snapshot. Its Main/workstream pages omit governance bookkeeping before

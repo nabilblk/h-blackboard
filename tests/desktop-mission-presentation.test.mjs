@@ -105,6 +105,10 @@ test("planning, human Start and execution are separate without competing next ac
   assert.equal(project(f).summary, "Plan ready for your review");
   assert.equal(project(f).decisions.length, 1);
   assert.equal(project(f).next.action.destination, "controls");
+  assert.equal(
+    agentPresentation(f).action.label,
+    "Revise plan with Coordinator",
+  );
   assert.equal(project(f, { viewer: "contributor" }).next, null);
 });
 

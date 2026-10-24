@@ -1,7 +1,7 @@
 # Desktop release procedure
 
 Development packaging remains `npm run desktop:dmg`, with an explicit ad-hoc
-signature and no notarization claim. Source currently uses protocol 13. Choose a
+signature and no notarization claim. Source currently uses protocol 14. Choose a
 new application version for a public release, update the lockfile, and require
 matching peer versions. Do not replace the published 0.4.9 preview with a different
 wire protocol under the same version.

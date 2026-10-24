@@ -534,6 +534,7 @@ export function StartMissionReview({
   cancel,
   done,
   saved,
+  revisePlan,
 }: {
   mission: MissionView;
   agents: AgentView[];
@@ -541,6 +542,7 @@ export function StartMissionReview({
   cancel: () => void;
   done: () => Promise<void>;
   saved?: StartJob | null;
+  revisePlan?: () => void;
 }) {
   const { setup } = useApplication();
   const [snapshot] = useState(
@@ -639,6 +641,11 @@ export function StartMissionReview({
         {(mission.lifecycle.operational_plan ?? mission.lifecycle.plan)?.text ??
           mission.definition.objective}
       </p>
+      {revisePlan && !saved && !request ? (
+        <Button type="button" disabled={busy} onClick={revisePlan}>
+          Revise plan with Coordinator
+        </Button>
+      ) : null}
       {saved ? (
         <p role="status">
           Your reviewed start is saved. Continue to reconcile its outcome;

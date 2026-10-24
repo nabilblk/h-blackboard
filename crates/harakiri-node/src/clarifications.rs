@@ -94,22 +94,19 @@ impl Store {
         let Some(_) = self.event(control)? else {
             return Ok(false);
         };
-        let Payload::AgentOffered {
-            control: reviewed,
-            identity,
-        } = &offer.body.payload
-        else {
+        let Payload::AgentOffered { identity, .. } = &offer.body.payload else {
             return Err(anyhow!("agent registration required"));
         };
         let mission = event.mission_id();
         let history = self.control_history(mission)?;
         let state = history.at(control)?;
         ensure!(
-            offer.mission_id() == mission
-                && state.lifecycle.phase == MissionPhase::Active
-                && history.at(reviewed)?.lifecycle.terms_revision == state.lifecycle.terms_revision,
+            offer.mission_id() == mission && state.lifecycle.phase == MissionPhase::Active,
             "clarification requires matching active mission terms"
         );
+        if !self.validate_agent_terms(event, registration, control)? {
+            return Ok(false);
+        }
         match &event.body.payload {
             Payload::AgentClarified { direction, .. } => {
                 ensure!(

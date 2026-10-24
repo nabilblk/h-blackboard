@@ -21,7 +21,7 @@ export function effectiveConfiguration({
   const policy = runtimePolicy(runtime, networkAccess);
   return {
     version: 1,
-    protocol: 13,
+    protocol: 14,
     briefing: BRIEFING_VERSION,
     runtime,
     runtimeVersion: policy.runtimeVersion,

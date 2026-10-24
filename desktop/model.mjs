@@ -100,6 +100,7 @@ export const Activity = z
       "consent_revoked",
       "network_changed",
       "capabilities_changed",
+      "instructions_reviewed",
     ]),
     contributionId: Id.nullable(),
     label: Label,

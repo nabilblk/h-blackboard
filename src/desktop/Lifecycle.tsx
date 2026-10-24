@@ -136,6 +136,24 @@ export function MissionControl({
   );
   const selected =
     candidates.find((c) => c.id === choice)?.id ?? candidates[0]?.id ?? "";
+  const coordinatorRow = presentation.rows.find(
+    (r) => r.agent.identity.author === l.coordinator?.identity.author,
+  );
+  const revisePlan =
+    isOwner && l.phase === "preparing" && l.plan && coordinatorRow
+      ? () => {
+          setStartReview(null);
+          act({
+            label: "Revise plan with Coordinator",
+            destination: "agent",
+            agent: coordinatorRow.agent.id,
+            contribution:
+              contributions.find(
+                (c) => c.sharedAgent?.registration === coordinatorRow.agent.id,
+              )?.id ?? null,
+          });
+        }
+      : undefined;
   const stale = contributions.some(
     (c) =>
       c.status === "prepared" &&
@@ -320,6 +338,7 @@ export function MissionControl({
               mission={mission}
               agents={agents}
               contributions={contributions}
+              revisePlan={revisePlan}
               cancel={() => setStartReview(null)}
               done={async () => {
                 await updated();
@@ -335,8 +354,8 @@ export function MissionControl({
           {stale ? (
             <p className="n-review-needed" role="status">
               The mission instructions changed. Your earlier contribution terms
-              are preserved; review the new instructions and prepare a new
-              contribution.
+              are preserved. Open each local agent to review the updated brief
+              and keep its saved work.
             </p>
           ) : null}
           {coordinated && l.coordinator ? (
@@ -373,6 +392,11 @@ export function MissionControl({
               }
             >
               <p className="n-preserve">{currentPlan.text}</p>
+              {revisePlan ? (
+                <Button onClick={revisePlan}>
+                  Revise plan with Coordinator
+                </Button>
+              ) : null}
               {l.operational_plan ? (
                 <p className="d-field-help">
                   Updated within the approved mission. The original Start and

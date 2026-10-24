@@ -19,6 +19,7 @@ pub fn is_agent_record(p: &Payload) -> bool {
     matches!(
         p,
         Payload::AgentOffered { .. }
+            | Payload::AgentTermsReviewed { .. }
             | Payload::AgentWithdrawn { .. }
             | Payload::AgentDirected { .. }
             | Payload::AgentAcknowledged { .. }
@@ -340,20 +341,10 @@ impl Store {
             .filter(|m| m.revoked)
             .map(|m| m.author)
             .collect();
-        let mut terms_by_control = BTreeMap::new();
         for e in records.values() {
             match &e.body.payload {
-                Payload::AgentOffered {
-                    identity,
-                    control: reviewed,
-                } => {
+                Payload::AgentOffered { identity, .. } => {
                     *identities.entry(&identity.author).or_default() += 1;
-                    if !terms_by_control.contains_key(reviewed) {
-                        terms_by_control.insert(
-                            reviewed.clone(),
-                            control.at(reviewed)?.lifecycle.terms_revision,
-                        );
-                    }
                 }
                 Payload::AgentWithdrawn { registration } => {
                     withdrawn.insert(registration);
@@ -384,14 +375,10 @@ impl Store {
         let assignments = self.work_assignments(mission)?;
         let mut views = Vec::new();
         for e in records.values() {
-            let Payload::AgentOffered {
-                control: reviewed,
-                identity,
-            } = &e.body.payload
-            else {
+            let Payload::AgentOffered { identity, .. } = &e.body.payload else {
                 continue;
             };
-            let terms = terms_by_control[reviewed].clone();
+            let terms = self.agent_reviewed_terms(mission, &e.id)?;
             let mut direction = None;
             let status = if frozen || identities[identity.author.as_str()] > 1 {
                 AgentStatus::Conflict
@@ -539,24 +526,17 @@ impl Store {
             action: ControlAction::Start { participants, .. },
         } = &e.body.payload
         {
-            let p = self.control_history(mission)?.at(previous)?;
             for id in participants {
                 let Some(offer) = self.event(id)? else {
                     return Ok(false);
                 };
-                let Payload::AgentOffered { control, .. } = &offer.body.payload else {
-                    anyhow::bail!("start requires agent registrations")
-                };
                 ensure!(
-                    offer.mission_id() == mission
-                        && self
-                            .control_history(mission)?
-                            .at(control)?
-                            .lifecycle
-                            .terms_revision
-                            == p.lifecycle.terms_revision,
-                    "start includes stale or foreign contribution"
+                    matches!(offer.body.payload, Payload::AgentOffered { .. }),
+                    "start requires agent registrations"
                 );
+                if !self.validate_agent_terms(e, id, previous)? {
+                    return Ok(false);
+                }
             }
         }
         if !is_agent_record(&e.body.payload) {
@@ -599,15 +579,42 @@ impl Store {
                     "agent identity must be separate from human identity"
                 );
             }
+            Payload::AgentTermsReviewed {
+                registration,
+                control,
+            } => {
+                let Some(offer) = self.event(registration)? else {
+                    return Ok(false);
+                };
+                if self.event(control)?.is_none() {
+                    return Ok(false);
+                }
+                ensure!(
+                    offer.mission_id() == mission
+                        && matches!(offer.body.payload, Payload::AgentOffered { .. }),
+                    "agent registration required"
+                );
+                ensure!(
+                    e.body.author == offer.body.author && e.body.sequence > offer.body.sequence,
+                    "original contributor review required"
+                );
+                ensure!(
+                    !matches!(
+                        history.at(control)?.lifecycle.phase,
+                        MissionPhase::Closed | MissionPhase::Archived
+                    ),
+                    "mission is closed or archived"
+                );
+                // Both records use the contributor's serial main writer. A
+                // later withdrawal does not invalidate this historical review.
+                ensure!(!records.values().any(|r| r.body.author == e.body.author && r.body.sequence < e.body.sequence && matches!(&r.body.payload, Payload::AgentWithdrawn { registration: id } if id == registration)), "agent withdrawn before review");
+            }
             Payload::AgentWithdrawn { registration }
             | Payload::AgentDirected { registration, .. } => {
                 let Some(offer) = self.event(registration)? else {
                     return Ok(false);
                 };
-                let Payload::AgentOffered {
-                    control: reviewed, ..
-                } = &offer.body.payload
-                else {
+                let Payload::AgentOffered { .. } = &offer.body.payload else {
                     anyhow::bail!("agent registration required")
                 };
                 ensure!(offer.mission_id() == mission, "foreign contribution");
@@ -620,10 +627,12 @@ impl Store {
                         matches!(
                             p.lifecycle.phase,
                             MissionPhase::Preparing | MissionPhase::Active
-                        ) && history.at(reviewed)?.lifecycle.terms_revision
-                            == p.lifecycle.terms_revision,
+                        ),
                         "direction requires current preparing or active mission terms"
                     );
+                    if !self.validate_agent_terms(e, registration, control)? {
+                        return Ok(false);
+                    }
                     ensure!(
                         e.body.author == history.root.body.author
                             || p.lifecycle

@@ -365,6 +365,7 @@ export const NodeRequests = {
       limits: Limits,
     })
     .strict(),
+  renewContribution: z.object({ reviewId: Id, contributionId: Id }).strict(),
   issueInvitation: z.object({ mission: id }).strict(),
   copyInvitation: z.object({ mission: id }).strict(),
   inspectInvitation: z.object({ ticket }).strict(),
@@ -719,6 +720,47 @@ export class NodeService {
         contributionId: native.contributionId,
       });
       this.contributionReviews.delete(request.reviewId);
+      return this.contributors.snapshot();
+    }
+    if (method === "renewContribution") {
+      const review = this.contributionReviews.get(request.reviewId);
+      if (!review || !this.contributors || !this.executions)
+        throw new Error(
+          "Review the updated instructions before continuing this agent.",
+        );
+      // The token is tied to a locally displayed, expiring native review. A
+      // renderer cannot supply terms, a registration, or broader permissions.
+      this.contributors.reviewableContribution(
+        request.contributionId,
+        review,
+        request.reviewId,
+      );
+      await this.executions.withStoppedContribution(
+        request.contributionId,
+        async () => {
+          const checked = await bridge.request({
+            type: "review_contribution",
+            mission: review.mission,
+          });
+          const item = this.contributors.reviewableContribution(
+            request.contributionId,
+            checked,
+            request.reviewId,
+          );
+          if (item.sharedAgent)
+            await bridge.request({
+              type: "review_agent_terms",
+              mission: checked.mission,
+              registration: item.sharedAgent.registration,
+              terms: checked.reviewed_revision,
+            });
+          // A lost response or failed local write can retry the same native proof.
+          // No execution approval, workspace or identity is replaced here.
+          this.contributors.renewNode(item.id, checked, request.reviewId);
+        },
+      );
+      this.contributionReviews.delete(request.reviewId);
+      this.contributors.reviews.delete(request.reviewId);
       return this.contributors.snapshot();
     }
     if (method === "appointCoordinator") {

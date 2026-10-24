@@ -313,17 +313,12 @@ impl Store {
             .is_some_and(|c| c.identity.author == e.body.author);
         if let Some(reg) = &agent {
             let offer = self.offer(mission, reg)?;
-            let Payload::AgentOffered {
-                control: reviewed,
-                identity,
-            } = &offer.body.payload
-            else {
+            let Payload::AgentOffered { identity, .. } = &offer.body.payload else {
                 unreachable!()
             };
-            ensure!(
-                history.at(reviewed)?.lifecycle.terms_revision == state.lifecycle.terms_revision,
-                "agent terms changed"
-            );
+            if !self.validate_agent_terms(e, reg, current)? {
+                return Ok(false);
+            }
             ensure!(
                 (identity.role == AgentRole::Coordinator) == co,
                 "Coordinator appointment mismatch"

@@ -87,6 +87,18 @@ fn exact_start_snapshot_late_direction_and_human_precedence_survive_reordering()
         )
         .unwrap();
     history.push(admitted.bytes().to_vec());
+    let coordinator_offer = s
+        .offer_agent(
+            &contributor,
+            m,
+            m,
+            AgentIdentity {
+                role: AgentRole::Coordinator,
+                ..descriptor(&coordinator, "Coordinator")
+            },
+        )
+        .unwrap();
+    history.push(coordinator_offer.bytes().to_vec());
     let appointment = command(
         &mut s,
         &owner,

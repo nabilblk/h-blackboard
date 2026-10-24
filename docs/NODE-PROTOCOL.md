@@ -1,11 +1,27 @@
 # Experimental local node and peer protocol
 
-## Unreleased protocol v13 / schema 16
+## Unreleased protocol v14 / schema 17
 
-The development branch negotiates `harakiri/sync/13`. Update connected peers
+The development branch negotiates `harakiri/sync/14`. Update connected peers
 together and back up profiles before opening this build. Published 0.4.9 still
 uses v11/schema 15. The schema migration preserves signed records; an older
 executable cannot reopen the upgraded profile.
+
+Protocol 14 adds contributor-signed `AgentTermsReviewed {registration, control}`
+records. Schema 17 adds a downgrade barrier without rewriting signed bytes.
+A human contributor can accept changed instructions for their existing
+agent registration. The original identity, workspace and historical records stay
+intact. Withdrawal, revocation and conflicting identity history remain terminal
+for execution. Review is neither a direction nor an execution grant.
+
+Signed envelopes pin exact review evidence in `terms_reviews`, mapping a
+registration to its original offer or a later review record. Historical validation
+never consults a future “latest consent.” Missing named dependencies wait for
+synchronization; absent or mismatched proof cannot authorize changed terms.
+Coordinator-authored v14 records also pin their own registration proof. Empty
+maps remain omitted, preserving older canonical bytes. Protocol v14 raises the
+bounded event ceiling to 128 KiB to accommodate a 512-agent Start with renewed
+proofs; replication remains byte- and count-bounded. Upgrade every peer together.
 
 Protocol 13 adds active operational plans, direction-bound clarification and
 explicit acknowledgment. An operational plan does not replace the Start-approved

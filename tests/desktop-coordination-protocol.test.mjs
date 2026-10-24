@@ -63,7 +63,7 @@ test("briefing preserves the mission and current identity while explicitly bound
     seconds: 300,
   });
   assert.match(prompt, /Coordinator/);
-  assert.match(prompt, /protocol 13/);
+  assert.match(prompt, /protocol 14/);
   assert.match(prompt, /resuming an older saved conversation/);
   assert.match(prompt, /relation:"citation"/);
   assert.match(prompt, /must Start before implementation/);

@@ -737,11 +737,7 @@ impl Store {
                 let Some(offer) = self.event(registration)? else {
                     return Ok(false);
                 };
-                let Payload::AgentOffered {
-                    control: reviewed,
-                    identity,
-                } = &offer.body.payload
-                else {
+                let Payload::AgentOffered { identity, .. } = &offer.body.payload else {
                     bail!("agent registration required")
                 };
                 ensure!(
@@ -756,11 +752,12 @@ impl Store {
                 let history = self.control_history(mission)?;
                 let state = history.at(control)?;
                 ensure!(
-                    state.lifecycle.phase == MissionPhase::Active
-                        && history.at(reviewed)?.lifecycle.terms_revision
-                            == state.lifecycle.terms_revision,
+                    state.lifecycle.phase == MissionPhase::Active,
                     "invalid acknowledgment terms"
                 );
+                if !self.validate_agent_terms(e, registration, control)? {
+                    return Ok(false);
+                }
                 let Some(d) = self.event(direction)? else {
                     return Ok(false);
                 };
@@ -1017,6 +1014,7 @@ impl Store {
             let agent_registration = match &e.body.payload {
                 Payload::AgentOffered { .. } => Some(e.id.clone()),
                 Payload::AgentDirected { registration, .. }
+                | Payload::AgentTermsReviewed { registration, .. }
                 | Payload::AgentClarified { registration, .. }
                 | Payload::AgentClarificationAcknowledged { registration, .. }
                 | Payload::AgentWithdrawn { registration }

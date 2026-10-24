@@ -119,7 +119,7 @@ export function agentLifecycle({
     return result(
       "waiting",
       "Review required",
-      "Mission instructions changed. Review the new terms before preparing a replacement.",
+      "Mission instructions changed. Review the updated brief to keep this agent and its saved work.",
       "review",
       true,
     );

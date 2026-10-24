@@ -241,3 +241,14 @@ substitute for those new measurements.
 Account-free checks also exercise Grok's real ACP/MCP initialization and the
 actual model-facing Claude/Codex catalogs against local fixtures. These establish
 tool compatibility, not successful subscription inference or tool choice by a model.
+
+## Renewed instructions and planning revisions (protocol 14)
+
+An existing agent can continue after its own human contributor reviews updated
+mission instructions. This human-only operation is absent from the model's tools.
+The runtime keeps its session and files, but refreshes its briefing and requires
+current permissions; old grants, directions and artifact evidence do not become
+current merely because the contributor renewed. Before Start, another bounded
+Coordinator planning session can revise an already-ready plan. Read pending human
+messages and the current brief, publish any correction and acknowledge the exact
+current plan. The human still controls Start.

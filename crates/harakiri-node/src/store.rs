@@ -94,7 +94,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(2))?;
         let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(
-            version <= 16,
+            version <= 17,
             "unsupported node database version; preserve this profile"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -352,6 +352,11 @@ impl Store {
                 PRAGMA user_version=16;")?;
             tx.commit()?;
         }
+        // v14 adds contributor renewal and causal review proofs. The SQL
+        // indexes are unchanged, but an older executable must refuse to write.
+        if version < 17 {
+            connection.pragma_update(None, "user_version", 17)?;
+        }
         Ok(Self {
             observations: Default::default(),
             artifact_cache: Default::default(),
@@ -377,6 +382,7 @@ impl Store {
             previous: None,
             authority: None,
             created_at_ms: Some(now()?),
+            terms_reviews: Default::default(),
             payload: Payload::MissionCreated {
                 definition,
                 endpoint,
@@ -498,6 +504,7 @@ impl Store {
             authority
         };
         let head = self.head_in(mission, audience, &author)?;
+        let terms_reviews = self.collect_terms_reviews(mission, &author, &payload)?;
         let event = identity.sign(EventBody {
             version: limits::VERSION,
             mission: Some(mission.into()),
@@ -507,6 +514,7 @@ impl Store {
             previous: head.map(|h| h.id),
             authority: Some(authority),
             created_at_ms: Some(now()?),
+            terms_reviews,
             payload,
         })?;
         self.import(&[event.bytes().to_vec()])?;
@@ -568,6 +576,10 @@ impl Store {
                     return Ok(None);
                 };
                 ensure!(
+                    body.version >= 14 || parent.body.version < 14,
+                    "legacy writer cannot depend on v14 history"
+                );
+                ensure!(
                     parent.mission_id() == mission
                         && parent.body.audience == body.audience
                         && parent.body.author == body.author
@@ -582,6 +594,10 @@ impl Store {
             let Some(grant) = self.event(authority)? else {
                 return Ok(None);
             };
+            ensure!(
+                body.version >= 14 || grant.body.version < 14,
+                "legacy authority cannot depend on v14 history"
+            );
             ensure!(
                 grant.mission_id() == mission,
                 "authority belongs to another mission"
@@ -693,7 +709,8 @@ impl Store {
                 "owner authority required"
             );
         }
-        if !self.validate_control(event)?
+        if !self.validate_terms_reviews(event)?
+            || !self.validate_control(event)?
             || !self.validate_scoped(event)?
             || !self.validate_agent_record(event)?
             || !self.validate_communication(event)?

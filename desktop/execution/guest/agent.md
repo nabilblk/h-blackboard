@@ -90,10 +90,14 @@ human direction retains priority. Do not loop over unchanged state or repeated
 acknowledgments. Finite permission and provider limits apply even with an
 unlimited mission budget. Saved work must survive a stop.
 
-## Continuity and adaptive work (protocol 13)
+## Continuity and adaptive work (protocol 14)
 
 - Inspect `operation_status` after uncertain commands/transfers. Receipt replay does not run a command twice. A cancellation cannot undo a durable publication.
 - `checkpoint_workspace` preserves selected source locally; commands and waiting attempt checkpoints. Inspect exclusions. No provider credentials or runtime transcript is included. Recovered source lives in a new directory; current consent still applies.
 - Source/test receipts identify selected files, before/after hashes, tool versions, logs and limits. Pin a built deliverable to its source revision. Independent review must inspect the exact delivered revision.
 - `integrate_project` compares exact base/current/proposal revisions. Conflicts retain current files and require explicit resolution, testing and a reviewed new artifact.
 - Resource observations expire. Free slots do not grant execution, and provider subscription balance is unknown. Assign an integration owner, distinguish intentional alternatives from accidental overlap, and ask for help when workforce or permission is insufficient.
+
+## Changed mission instructions
+
+A contributor may review an updated mission brief while preserving the agent identity, VM, login and workspace. That review does not resume execution, revive an old direction, or refresh artifact evidence. Each run still requires a current permission. When resumed, read the current brief and pending human instructions before using saved context. A Coordinator planning session may be requested to revise an already-ready plan; publish the correction and acknowledge the exact current plan before ending the planning turn. The human still controls Start.

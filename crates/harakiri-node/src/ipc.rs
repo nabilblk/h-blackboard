@@ -185,6 +185,12 @@ pub enum Command {
         mission: String,
         registration: String,
     },
+    /// Host-only contributor confirmation; never an agent runtime operation.
+    ReviewAgentTerms {
+        mission: String,
+        registration: String,
+        terms: String,
+    },
     DirectAgent {
         mission: String,
         revision: String,
@@ -564,6 +570,10 @@ pub fn run(name: &str, require_policy: bool) -> Result<()> {
                     Command::WithdrawAgent{mission,registration} => {
                         let e=store.withdraw_agent(&identity,&mission,&registration)?;
                         Ok(serde_json::json!({"event":e.id}))
+                    }
+                    Command::ReviewAgentTerms{mission,registration,terms} => {
+                        let e=store.review_agent_terms(&identity,&mission,&registration,&terms)?;
+                        Ok(serde_json::json!({"event":e.id,"registration":registration,"terms":terms}))
                     }
                     Command::DirectAgent{mission,revision,registration,text,clarification} => {
                         let e=if let Some(direction)=clarification {

@@ -1,12 +1,15 @@
 //! Safety limits are protocol limits, independent of a mission's compute budget.
-pub const VERSION: u16 = 13;
+pub const VERSION: u16 = 14;
 pub const MAX_AUDIENCES: usize = 1024;
 pub const MAX_AGENTS: usize = 512;
 pub const MAX_AGENT_RECORDS: usize = 4096;
 pub const MAX_CONTROL_EVENTS: usize = 2048;
 // A Coordinator cannot consume the owner’s entire control history allowance.
 pub const MAX_COORDINATOR_EVENTS: usize = 1536;
-pub const MAX_EVENT_BYTES: usize = 64 * 1024;
+// A full Start may carry 512 exact participant registrations and review proofs.
+// Transport pages remain independently byte-bounded.
+pub const MAX_EVENT_BYTES: usize = 128 * 1024;
+pub const LEGACY_MAX_EVENT_BYTES: usize = 64 * 1024;
 pub const MAX_BATCH_EVENTS: usize = 64;
 pub const MAX_FRAME_BYTES: usize = 6 * 1024 * 1024;
 pub const MAX_PENDING_EVENTS: usize = 256;

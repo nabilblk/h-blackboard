@@ -240,6 +240,7 @@ contextBridge.exposeInMainWorld(
     reviewContribution: (mission, role) =>
       nodeCall("reviewContribution", { mission, role }),
     prepareContribution: (input) => nodeCall("prepareContribution", input),
+    renewContribution: (input) => nodeCall("renewContribution", input),
     issueInvitation: (mission) => nodeCall("issueInvitation", { mission }),
     copyInvitation: (mission) => nodeCall("copyInvitation", { mission }),
     inspectInvitation: (ticket) => nodeCall("inspectInvitation", { ticket }),

@@ -103,6 +103,8 @@ try {
     "signing-in",
     "expired",
     "planning",
+    "plan-ready",
+    "terms-review",
     "running",
     "budget",
     "budget-reserved",
@@ -148,6 +150,51 @@ try {
     }
     if (scene === "planning")
       assert.ok((await buttons()).includes("Review planning session"));
+    if (scene === "plan-ready")
+      assert.ok((await buttons()).includes("Revise plan with Coordinator"));
+    if (scene === "terms-review") {
+      assert.ok((await buttons()).includes("Review updated instructions"));
+      assert.equal(
+        (await buttons()).includes("Review planning session"),
+        false,
+      );
+      await click("Review updated instructions");
+      await browser(
+        "wait",
+        "--text",
+        "Six activities, accessible spaces and a practical afternoon schedule.",
+      );
+      assert.equal(
+        await evaluate(
+          "Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Accept updated instructions').disabled",
+        ),
+        true,
+      );
+      await browser(
+        "screenshot",
+        join(evidence, "terms-review-before-acceptance.png"),
+      );
+      await browser(
+        "check",
+        '[aria-label="Updated mission instructions"] input[type="checkbox"]',
+      );
+      await click("Accept updated instructions");
+      await browser("wait", "--text", "Updated instructions accepted.");
+      assert.deepEqual(await evaluate("window.networkFixture.calls"), [
+        { type: "review-terms", id: "fixture-mission", role: "coordinator" },
+        {
+          type: "renew-terms",
+          input: {
+            contributionId: "fixture-local",
+            reviewId: "review-fixture",
+          },
+        },
+      ]);
+      assert.equal(
+        (await buttons()).includes("Review updated instructions"),
+        false,
+      );
+    }
     if (scene === "running") {
       assert.ok((await buttons()).includes("Stop environment"));
       await browser(

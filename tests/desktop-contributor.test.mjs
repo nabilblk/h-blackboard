@@ -83,6 +83,79 @@ function fixture(t) {
   };
 }
 
+test("renewing reviewed node terms preserves identity, workspace and local restrictions", async (t) => {
+  const f = fixture(t),
+    h = (c) => c.repeat(64);
+  const checked = {
+    mission: h("a"),
+    owner: h("b"),
+    reviewed_revision: h("c"),
+    definition: { name: "Original mission" },
+  };
+  const review = f.service.reviewNode(checked, "agent");
+  const choice = await f.service.handle("chooseWorkspace", {});
+  await f.service.handle(
+    "prepare",
+    {
+      reviewId: review.reviewId,
+      workspaceChoiceId: choice.id,
+      runtime: "grok",
+      networkAccess: "restricted",
+      limits: { mode: "bounded", concurrency: 1, turns: 10, minutes: 20 },
+    },
+    { nodeRevision: checked.reviewed_revision },
+  );
+  const before = f.store.read().contributions[0];
+  writeFileSync(join(before.workspace, "saved.txt"), "retained work");
+  const next = {
+    ...checked,
+    reviewed_revision: h("d"),
+    definition: { name: "Updated mission" },
+  };
+  const updated = f.service.reviewNode(next, "agent");
+  assert.throws(
+    () => f.service.reviewableContribution(before.id, next, review.reviewId),
+    /changed|expired/,
+  );
+  f.service.renewNode(before.id, next, updated.reviewId);
+  const after = f.store.read().contributions[0];
+  assert.deepEqual(
+    { ...after, mission: before.mission, nodeBinding: before.nodeBinding },
+    before,
+  );
+  assert.equal(after.nodeBinding.revision, h("d"));
+  assert.equal(after.mission.name, "Updated mission");
+  assert.equal(
+    readFileSync(join(after.workspace, "saved.txt"), "utf8"),
+    "retained work",
+  );
+  f.service.renewNode(before.id, next, updated.reviewId);
+  assert.equal(
+    f.store.read().activity.filter((a) => a.type === "instructions_reviewed")
+      .length,
+    1,
+  );
+  const wrongRole = f.service.reviewNode(next, "coordinator");
+  assert.throws(
+    () => f.service.renewNode(before.id, next, wrongRole.reviewId),
+    /changed/,
+  );
+  f.advance(REVIEW_TTL_MS + 1);
+  assert.throws(
+    () => f.service.renewNode(before.id, next, updated.reviewId),
+    /expired/,
+  );
+  const fresh = f.service.reviewNode(next, "agent");
+  f.store.update((s) => {
+    s.contributions[0].status = "revoked";
+    s.contributions[0].revokedAt = new Date().toISOString();
+  });
+  assert.throws(
+    () => f.service.renewNode(before.id, next, fresh.reviewId),
+    /changed/,
+  );
+});
+
 test("a prepared contribution persists ownership, exact local terms and an empty dedicated workspace", async (t) => {
   const f = fixture(t);
   const input = await f.preparation();

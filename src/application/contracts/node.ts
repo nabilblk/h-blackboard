@@ -895,6 +895,12 @@ export type Command =
     }
   | { type: "withdraw_agent"; mission: string; registration: string }
   | {
+      type: "review_agent_terms";
+      mission: string;
+      registration: string;
+      terms: string;
+    }
+  | {
       type: "direct_agent";
       mission: string;
       revision: string;

@@ -18,7 +18,7 @@ The local 0.5.0 installer is a development build. The landing download remains
 0.4.9 until the separate public release gates are satisfied. Version 0.5.0 uses
 protocol 13/schema 16; update peers together and back up profiles before testing.
 
-Validation: 304 application tests, 108 Rust tests (one other test remains ignored),
+Initial UI-only snapshot validation: 304 application tests, 108 Rust tests (one other test remains ignored),
 61 P2P/cross-language checks, 45 guest Python tests, all six browser suites, and real
 native temporary-profile journeys. Three local desktop profiles exercised
 admission, private messaging, owner-offline synchronization, revocation and the
@@ -30,9 +30,23 @@ ad-hoc signed development build, not a notarized public release.
 
 ## Unreleased coordination improvements
 
-The current source uses **protocol 13 / schema 16**. Downloaded 0.4.9 remains
+The current source uses **protocol 14 / schema 17**. The earlier local 0.5.0
+installer remains a protocol-13 snapshot; rebuild both peers for these changes.
+Downloaded 0.4.9 remains
 protocol 11/schema 15. Back up profiles and upgrade all peers together when
 testing this source; the changes below are not in the published 0.4.9 DMG.
+
+### Existing-agent continuity
+
+- After an instruction change, each contributor can review the updated brief for
+  the same Agent or Coordinator. The workspace, login and identity are retained;
+  the environment must stop before review, and execution needs fresh approval.
+- Before Start, **Revise plan with Coordinator** opens another bounded planning
+  session on the existing Coordinator. Workers keep waiting for human Start.
+- Pending invitations expose the public verification key in the join flow and
+  Home. Message owner badges identify the mission owner independently of who is
+  viewing the conversation. Interrupted creation before submission restores the
+  saved brief; an uncertain submitted request still requires reconciliation.
 
 ### Dependable collaboration iteration
 
@@ -76,7 +90,7 @@ approval remain separate evidence gates.
   preview. Type/review/conversation filters cover saved accessible history.
   Reviews show what was actually checked; details explain changed inputs.
   Publication, candidate selection, verification and human acceptance remain
-  separate. See [artifact relationships](NODE-PROTOCOL.md#unreleased-protocol-v13--schema-16).
+  separate. See [artifact relationships](NODE-PROTOCOL.md#unreleased-protocol-v14--schema-17).
 - Intentional Pause is a calm state. Stop actions apply to running or uncertain
   local execution. Contributor names precede technical keys where available.
 - Agents receive a fuller participation guide, coherent snapshots, explicit

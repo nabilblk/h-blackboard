@@ -62,7 +62,8 @@ export type LocalState = {
       | "contribution_prepared"
       | "consent_revoked"
       | "network_changed"
-      | "capabilities_changed";
+      | "capabilities_changed"
+      | "instructions_reviewed";
     contributionId: string | null;
     label: string;
   }[];
@@ -299,6 +300,10 @@ export type NodeAPI = {
     role: "agent" | "coordinator",
   ): Promise<ContributionReview>;
   prepareContribution(input: PrepareInput): Promise<LocalState>;
+  renewContribution(input: {
+    reviewId: string;
+    contributionId: string;
+  }): Promise<LocalState>;
   issueInvitation(mission: string): Promise<{ ticket: string }>;
   copyInvitation(mission: string): Promise<null>;
   inspectInvitation(ticket: string): Promise<InvitationReview>;

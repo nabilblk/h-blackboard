@@ -192,6 +192,12 @@ pub enum Payload {
         control: String,
         identity: crate::agents::AgentIdentity,
     },
+    /// The original contributor accepts new mission terms for the same agent.
+    /// This changes neither its identity nor any execution permission.
+    AgentTermsReviewed {
+        registration: String,
+        control: String,
+    },
     AgentWithdrawn {
         registration: String,
     },
@@ -230,6 +236,11 @@ pub struct EventBody {
     /// Display metadata only; never authority or a conflict-resolution clock.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at_ms: Option<u64>,
+    /// Exact contribution proofs observed by this writer. An offer proves its
+    /// original terms; a contributor review proves renewed terms. Omission
+    /// preserves every earlier signed encoding and never implies later review.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub terms_reviews: std::collections::BTreeMap<String, String>,
     pub payload: Payload,
 }
 
@@ -275,6 +286,12 @@ impl EventBody {
             || self
                 .created_at_ms
                 .is_some_and(|v| v > 9_007_199_254_740_991)
+            || (self.version < 14 && !self.terms_reviews.is_empty())
+            || self.terms_reviews.len() > limits::MAX_AGENTS
+            || self
+                .terms_reviews
+                .iter()
+                .any(|(registration, proof)| !is_hash(registration) || !is_hash(proof))
         {
             return Err(Error::Invalid("header"));
         }
@@ -479,6 +496,14 @@ impl EventBody {
                     {
                         identity.validate()?;
                     }
+                    Payload::AgentTermsReviewed {
+                        registration,
+                        control,
+                    } if self.version >= 14
+                        && self.audience == "main"
+                        && self.terms_reviews.is_empty()
+                        && is_hash(registration)
+                        && is_hash(control) => {}
                     Payload::AgentWithdrawn { registration }
                         if self.version >= 4
                             && self.audience == "main"
@@ -614,6 +639,9 @@ impl Event {
             key.verify_strict(data, &sig).map_err(|_| Error::Signature)
         })?;
         let body: EventBody = codec::decode(signed.payload.as_deref().ok_or(Error::Encoding)?)?;
+        if body.version < 14 && bytes.len() > limits::LEGACY_MAX_EVENT_BYTES {
+            return Err(Error::Limit);
+        }
         if body.author != hex::encode(key_bytes) {
             return Err(Error::Signature);
         }

@@ -309,6 +309,68 @@ test("drafting: changed brief invalidates review and concurrent creation is not 
   await creating;
   assert.equal(f.missions.length, 1);
 });
+test("drafting: interruption before dispatch preserves the brief and permits a reviewed retry", async (t) => {
+  for (const status of ["creating", "uncertain"]) {
+    const f = await fixture(t);
+    f.service.edit({
+      id: f.draft.id,
+      changes: {
+        mode: "manual",
+        name: "Electricity lessons",
+        objective: "Create three interactive lessons",
+        criteria: ["Learners can build and explain a complete circuit"],
+      },
+    });
+    const review = f.service.review({ id: f.draft.id });
+    const interrupted = f.service.read();
+    interrupted.status = status;
+    assert.equal(interrupted.creation, null);
+    f.service.save(interrupted);
+
+    const recovered = new DraftingService(f);
+    const current = await recovered.current();
+    assert.equal(current.status, "error");
+    assert.match(current.error, /before your mission was submitted/);
+    assert.deepEqual(current.brief, interrupted.brief);
+    assert.deepEqual(f.calls, [], "reopening must not enroll or create");
+    const renewed = recovered.review({ id: current.id });
+    assert.deepEqual(renewed.definition, review.definition);
+    const created = await recovered.create({
+      id: current.id,
+      review: renewed.id,
+      acknowledgeOpenDecisions: true,
+    });
+    assert.equal(created.status, "created");
+    assert.equal(f.missions.length, 1);
+    assert.equal(
+      f.calls.filter((call) => call.method === "createMission").length,
+      1,
+    );
+  }
+});
+test("drafting: interruption after dispatch stays frozen when the result is unknown", async (t) => {
+  const f = await fixture(t);
+  f.service.edit({
+    id: f.draft.id,
+    changes: { name: "Study", objective: "Explore options" },
+  });
+  const review = f.service.review({ id: f.draft.id });
+  const interrupted = f.service.read();
+  interrupted.status = "creating";
+  interrupted.creation = { before: [] };
+  f.service.save(interrupted);
+  const recovered = new DraftingService(f);
+  assert.equal((await recovered.current()).status, "uncertain");
+  await assert.rejects(
+    recovered.create({
+      id: f.draft.id,
+      review: review.id,
+      acknowledgeOpenDecisions: true,
+    }),
+    /already in progress or needs recovery/,
+  );
+  assert.deepEqual(f.calls, []);
+});
 test("drafting: uncertain creation reconciles the native record after restart without another create", async (t) => {
   const f = await fixture(t);
   f.service.edit({

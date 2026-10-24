@@ -161,6 +161,12 @@ export function CreateMission({
     );
   const thinking = draft.status === "thinking";
   const frozen = ["creating", "created", "uncertain"].includes(draft.status);
+  const visibleError =
+    saveError ||
+    error ||
+    (draft.status === "error" && draft.mode !== "assisted"
+      ? draft.error
+      : null);
   const readiness = briefReadiness(draft.brief, draft.policy);
   const runtime = runtimes.find((r) => r.runtime === draft.runtime);
   const lastChange = [...draft.changes].reverse().find((c) => !c.undone);
@@ -233,9 +239,9 @@ export function CreateMission({
           }
         />
       </div>
-      {saveError || error ? (
+      {visibleError ? (
         <div className="md-error" role="alert">
-          <p>{saveError || error}</p>
+          <p>{visibleError}</p>
           {saveError ? (
             <Button size="compact" onClick={() => void act(async () => {})}>
               Retry saving

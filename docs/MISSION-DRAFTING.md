@@ -108,6 +108,11 @@ Changing the provider sends the current brief and conversation to that provider.
   is lost, Harakiri checks newly created local missions before considering the
   result recovered; it never automatically repeats an uncertain create. Check
   **My missions** before explicitly discarding an uncertain draft.
+- In the 0.5.0 source workspace, interruption during identity setup, before a
+  mission request is submitted, restores the editable brief. Open **Create
+  mission**, review the saved content and explicitly create it again. This is
+  distinct from an uncertain submitted request, which remains protected against
+  a duplicate create.
 - Conversation history is bounded to 80 messages; the final two slots are
   reserved so a reply can finish. Once full, the brief remains editable and
   reviewable. Up to 16 suggestions can be retained for undo, within an 8 MiB

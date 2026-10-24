@@ -72,10 +72,15 @@ export class DraftingService {
         draft.error =
           "Drafting was interrupted. Your brief and conversation are saved. Send a message to continue.";
         this.save(draft);
-      } else if (draft.status === "creating") {
-        draft.status = "uncertain";
-        draft.error =
-          "Creation was interrupted. Checking local missions before any retry.";
+      } else if (["creating", "uncertain"].includes(draft.status)) {
+        // The dispatch checkpoint is persisted before createMission is called.
+        // Without it, interruption happened during identity setup: no mission
+        // request could have been sent. Preserve the brief and let its owner
+        // review it again. Also repair journals frozen by older app versions.
+        draft.status = draft.creation ? "uncertain" : "error";
+        draft.error = draft.creation
+          ? "Creation was interrupted. Checking local missions before any retry."
+          : "Setup was interrupted before your mission was submitted. Your brief is saved. Review it to continue.";
         this.save(draft);
       }
     } catch {
